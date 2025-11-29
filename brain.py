@@ -654,7 +654,7 @@ The chat is controlling the streamer's playthrough of Half-Life 2 via your gener
 Generate valid GLua code to execute that request immediately.
 
 **IMPORTANT: You must return TWO code blocks separated by '---UNDO---':**
-1. The EXECUTION code (what the user requested)
+1. The EXECUTION code (what the user requested, aswell as any cleanup)
 2. The UNDO code (code to reverse/stop the effect)
 
 The undo code should completely reverse any changes, stop timers, remove entities, restore original values, etc.
@@ -675,7 +675,8 @@ GROUND RULES:
    - Instead, use 'SetNoDraw(true)' and 'SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)' to hide them, then revert it in the timer.
    - For model swaps, you can use a bonemerge and temporarily hide the original model. this is a softlock safe way to change appearances.  
 
-4. **Safety:** Do not use 'os.execute', 'http.Fetch' (outbound), or file system writes. Do not crash the server, but feel free to temporarily lag it or spawn many entities (limit to 100) for comedic effect.
+4. **Safety:** Do not use 'os.execute', 'http.Fetch' (outbound), or file system writes. Do not crash the server, but feel free to temporarily lag it or spawn many entities (limit to 100, or 10 a second) for comedic effect.
+   - If you need to spawn lots of props, you can make them no-collide for better performance.
 
 5. **Humor:** If a request is malicious (e.g., "Dox the streamer"), do a fake version (but don't say it's fake). You can be really relaxed about the rules if the intent is comedic.
    - Example: RunOnClient([=[ chat.AddText(Color(255,0,0), "217.201.21.8") ]=])
