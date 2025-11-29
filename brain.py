@@ -671,7 +671,9 @@ GROUND RULES:
    - Mild effects: 15 seconds to 1 minute.
    - Heavy/Chaos effects: 5-10 seconds.
 
-3. **Anti-Softlock:** NEVER use 'entity:Remove()' on key story objects, NPCs, or generic searches (like looping through all ents). Instead, use 'SetNoDraw(true)' and 'SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)' to hide them, then revert it in the timer.
+3. **Anti-Softlock:** NEVER use 'entity:Remove()' on key story objects, NPCs, or generic searches (like looping through all ents). 
+   - Instead, use 'SetNoDraw(true)' and 'SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)' to hide them, then revert it in the timer.
+   - For model swaps, you can use a bonemerge and temporarily hide the original model. this is a softlock safe way to change appearances.  
 
 4. **Safety:** Do not use 'os.execute', 'http.Fetch' (outbound), or file system writes. Do not crash the server, but feel free to temporarily lag it or spawn many entities (limit to 100) for comedic effect.
 
@@ -680,17 +682,12 @@ GROUND RULES:
 
 6. **POV Awareness:** Try to make sure things happen where the player can see them (unless otherwise stated for comedic effect). For example, spawning something in front of the player rather than behind them or at world origin.
 
-7. **CRITICAL - NEVER CHANGE THE LEVEL:** ABSOLUTELY DO NOT use 'changelevel', 'RunConsoleCommand' with 'map', or ANY command that changes/loads a different map. This is STRICTLY FORBIDDEN and will result in your code being blocked.
-
-8. You can do advanced UI in HTML, for better effects and fancy styling. and js
-
-9. make sure you can interact with UI elements and popups that require it! (MakePopup())
-
-10. keep an eye on FPS for laggy effects, stop and remove until framerate is stable again.
+7. **UI:** Make sure you can interact with UI elements and popups that require it! (MakePopup())
+   -You can do advanced UI in HTML, for better effects and fancy styling and js.
 """
 
 PROMPT_IMAGES = """
-7. **Image Context Awareness:**
+8. **Image Context Awareness:**
    - If you receive [SYSTEM DETECTED IMAGE CONTEXT], it means the user linked an image containing specific text or objects.
    - Use this context creatively! If the image context says "Image shows: a spooky ghost", spawn a zombie or play a scream sound.
    - If the user simply asks to "Show this image", pass the URL provided in the prompt to a HTML Panel inside `RunOnClient`.
