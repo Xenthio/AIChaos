@@ -1,0 +1,23 @@
+# AI Chaos Dependencies
+
+# Core Web Framework
+Flask==3.0.0
+
+# OpenAI/OpenRouter API Client
+openai==1.0.0
+
+# Image Processing & AI Models (Optional - for image scanning)
+transformers==4.35.0
+torch==2.1.0
+easyocr==1.7.0
+Pillow==10.1.0
+numpy==1.24.3
+
+# Twitch Integration (Optional)
+twitchio==2.9.0
+
+# YouTube Integration (Optional)
+pytchat==0.5.6
+
+# HTTP Requests
+requests==2.31.0
