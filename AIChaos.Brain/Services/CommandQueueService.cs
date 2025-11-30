@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Services;
@@ -14,7 +15,16 @@ public class CommandQueueService
     private int _nextId = 1;
     private int _nextPayloadId = 1;
     
+    private static readonly string SavedPayloadsDirectory = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "..", "saved_payloads");
+    private static readonly string SavedPayloadsFile = Path.Combine(SavedPayloadsDirectory, "payloads.json");
+    
     public UserPreferences Preferences { get; } = new();
+    
+    public CommandQueueService()
+    {
+        LoadSavedPayloads();
+    }
     
     /// <summary>
     /// Adds a command to the queue and history.
@@ -173,6 +183,7 @@ public class CommandQueueService
             };
             
             _savedPayloads.Add(payload);
+            PersistSavedPayloads();
             return payload;
         }
     }
@@ -199,7 +210,58 @@ public class CommandQueueService
             if (payload == null) return false;
             
             _savedPayloads.Remove(payload);
+            PersistSavedPayloads();
             return true;
+        }
+    }
+    
+    /// <summary>
+    /// Loads saved payloads from file on startup.
+    /// </summary>
+    private void LoadSavedPayloads()
+    {
+        try
+        {
+            if (File.Exists(SavedPayloadsFile))
+            {
+                var json = File.ReadAllText(SavedPayloadsFile);
+                var payloads = JsonSerializer.Deserialize<List<SavedPayload>>(json);
+                if (payloads != null)
+                {
+                    _savedPayloads.AddRange(payloads);
+                    // Set next ID to be higher than any existing
+                    if (_savedPayloads.Any())
+                    {
+                        _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If loading fails, start fresh
+        }
+    }
+    
+    /// <summary>
+    /// Persists saved payloads to file.
+    /// </summary>
+    private void PersistSavedPayloads()
+    {
+        try
+        {
+            // Ensure directory exists
+            Directory.CreateDirectory(SavedPayloadsDirectory);
+            
+            var json = JsonSerializer.Serialize(_savedPayloads, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(SavedPayloadsFile, json);
+        }
+        catch
+        {
+            // Silently ignore persistence errors
         }
     }
 }

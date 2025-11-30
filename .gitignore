@@ -3,6 +3,9 @@ sightengine_keys.txt
 openrouter_api_key.txt
 settings.json
 
+# Saved Payloads (user data)
+saved_payloads/
+
 # .NET build artifacts
 bin/
 obj/
