@@ -50,6 +50,11 @@
                         <label for="includeHistoryInAi" style="margin: 0;">Feed history to AI context</label>
                     </div>
                     
+                    <div class="form-group checkbox-group" style="margin-bottom: 0;">
+                        <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+                        <label for="autoRefresh" style="margin: 0;">Auto-refresh (5s)</label>
+                    </div>
+                    
                     <div class="form-group" style="margin-bottom: 0; display: flex; align-items: center; gap: 10px;">
                         <label for="maxHistoryLength" style="margin: 0; white-space: nowrap;">Max History:</label>
                         <input type="number" id="maxHistoryLength" min="10" max="500" value="50" style="width: 80px;" onchange="updatePreferences()">
@@ -84,6 +89,28 @@
         let isLoggedIn = false;
         let adminPassword = '';
         let commandHistory = [];
+        let autoRefreshInterval = null;
+        
+        function toggleAutoRefresh() {
+            const autoRefresh = document.getElementById('autoRefresh').checked;
+            
+            if (autoRefresh) {
+                // Start auto-refresh every 5 seconds
+                autoRefreshInterval = setInterval(() => {
+                    loadHistory();
+                    loadSavedPayloads();
+                }, 5000);
+            } else {
+                // Stop auto-refresh
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+            
+            // Save preference to localStorage
+            localStorage.setItem('historyAutoRefresh', autoRefresh);
+        }
         
         // Check admin status on load
         async function checkAdminStatus() {
@@ -134,6 +161,11 @@
             document.getElementById('historyContent').classList.remove('hidden');
             loadHistory();
             loadSavedPayloads();
+            
+            // Start auto-refresh if checkbox was saved as checked
+            if (document.getElementById('autoRefresh').checked) {
+                toggleAutoRefresh();
+            }
         }
         
         async function loadHistory() {
@@ -392,6 +424,13 @@ ${escapeHtml(p.undoCode)}
         
         // Initialize
         checkAdminStatus();
+        
+        // Restore auto-refresh preference
+        const savedAutoRefresh = localStorage.getItem('historyAutoRefresh') === 'true';
+        if (savedAutoRefresh) {
+            document.getElementById('autoRefresh').checked = true;
+            // Will start auto-refresh after login
+        }
     </script>
 </body>
 </html>
