@@ -243,7 +243,9 @@ public class SetupController : ControllerBase
             new { id = "google/gemini-2.5-flash", name = "Gemini Flash 2.5", provider = "Google" },
             new { id = "google/gemini-flash-1.5", name = "Gemini Flash 1.5", provider = "Google" },
             new { id = "meta-llama/llama-3.1-70b-instruct", name = "Llama 3.1 70B", provider = "Meta" },
-            new { id = "mistralai/mixtral-8x22b-instruct", name = "Mixtral 8x22B", provider = "Mistral" }
+            new { id = "mistralai/mixtral-8x22b-instruct", name = "Mixtral 8x22B", provider = "Mistral" },
+            new { id = "x-ai/grok-code-fast-1", name = "Grok Code Fast 1", provider = "xAI" },
+            new { id = "x-ai/grok-4.1-fast:free", name = "Grok 4.1 Fast (Free)", provider = "xAI" }
         };
         
         return Ok(new { 
