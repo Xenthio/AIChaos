@@ -151,7 +151,9 @@ public class ChaosController : ControllerBase
             executionCode,
             undoCode,
             request.Source ?? "web",
-            request.Author ?? "anonymous");
+            request.Author ?? "anonymous",
+            null,
+            request.UserId);
         
         return Ok(new TriggerResponse
         {
@@ -159,7 +161,8 @@ public class ChaosController : ControllerBase
             CodePreview = executionCode,
             HasUndo = true,
             CommandId = entry.Id,
-            WasBlocked = false
+            WasBlocked = false,
+            AiResponse = entry.AiResponse
         });
     }
     
@@ -172,6 +175,19 @@ public class ChaosController : ControllerBase
         return Ok(new HistoryResponse
         {
             History = _commandQueue.GetHistory(),
+            Preferences = _commandQueue.Preferences
+        });
+    }
+    
+    /// <summary>
+    /// Gets command history for a specific user (filtered by userId).
+    /// </summary>
+    [HttpGet("api/history/user/{userId}")]
+    public ActionResult<HistoryResponse> GetUserHistory(string userId)
+    {
+        return Ok(new HistoryResponse
+        {
+            History = _commandQueue.GetHistoryForUser(userId),
             Preferences = _commandQueue.Preferences
         });
     }

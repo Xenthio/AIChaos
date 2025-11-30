@@ -29,7 +29,7 @@ public class CommandQueueService
     /// <summary>
     /// Adds a command to the queue and history.
     /// </summary>
-    public CommandEntry AddCommand(string userPrompt, string executionCode, string undoCode, string source = "web", string author = "anonymous", string? imageContext = null)
+    public CommandEntry AddCommand(string userPrompt, string executionCode, string undoCode, string source = "web", string author = "anonymous", string? imageContext = null, string? userId = null, string? aiResponse = null)
     {
         lock (_lock)
         {
@@ -44,6 +44,8 @@ public class CommandQueueService
                 ImageContext = imageContext,
                 Source = source,
                 Author = author,
+                UserId = userId,
+                AiResponse = aiResponse,
                 Status = CommandStatus.Queued
             };
             
@@ -88,6 +90,17 @@ public class CommandQueueService
         lock (_lock)
         {
             return new List<CommandEntry>(_history);
+        }
+    }
+    
+    /// <summary>
+    /// Gets command history filtered by user ID.
+    /// </summary>
+    public List<CommandEntry> GetHistoryForUser(string userId)
+    {
+        lock (_lock)
+        {
+            return _history.Where(c => c.UserId == userId).ToList();
         }
     }
     

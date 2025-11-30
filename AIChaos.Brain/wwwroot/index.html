@@ -42,6 +42,18 @@
         const promptInput = document.getElementById('promptInput');
         const sendBtn = document.getElementById('sendBtn');
         
+        // Generate or retrieve a unique user ID for this browser
+        function getUserId() {
+            let userId = localStorage.getItem('aichaos_user_id');
+            if (!userId) {
+                userId = 'user_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+                localStorage.setItem('aichaos_user_id', userId);
+            }
+            return userId;
+        }
+        
+        const userId = getUserId();
+        
         function log(msg, type = 'normal') {
             const el = document.createElement('div');
             el.className = 'log-entry ' + type;
@@ -61,13 +73,16 @@
                 const response = await fetch('/trigger', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text })
+                    body: JSON.stringify({ prompt: text, userId: userId })
                 });
                 
                 const data = await response.json();
                 
                 if (data.status === 'queued') {
                     log(`✓ ${text}`, 'success');
+                    if (data.aiResponse) {
+                        log(`💬 AI: ${data.aiResponse}`, 'info');
+                    }
                     loadRecentCommands();
                 } else if (data.status === 'ignored') {
                     log(`✗ BLOCKED: ${data.message}`, 'error');
@@ -93,14 +108,15 @@
         
         async function loadRecentCommands() {
             try {
-                const response = await fetch('/api/history');
+                // Load only this user's commands
+                const response = await fetch(`/api/history/user/${encodeURIComponent(userId)}`);
                 const data = await response.json();
                 
                 const container = document.getElementById('recentCommands');
                 const recent = data.history.slice(-10).reverse();
                 
                 if (recent.length === 0) {
-                    container.innerHTML = '<div class="empty-state">Commands will appear here...</div>';
+                    container.innerHTML = '<div class="empty-state">Your commands will appear here...</div>';
                     return;
                 }
                 
@@ -109,8 +125,11 @@
                         <div style="flex: 1;">
                             <div class="history-time">${new Date(cmd.timestamp).toLocaleTimeString()}</div>
                             <div class="history-prompt">${escapeHtml(cmd.userPrompt)}</div>
+                            ${cmd.aiResponse ? `<div class="history-response">💬 ${escapeHtml(cmd.aiResponse)}</div>` : ''}
+                            ${cmd.status === 'Failed' && cmd.errorMessage ? `<div class="history-error">⚠️ ${escapeHtml(cmd.errorMessage)}</div>` : ''}
                         </div>
                         <span class="history-source ${cmd.source}">${cmd.source}</span>
+                        <span class="history-status status-${cmd.status.toLowerCase()}">${cmd.status}</span>
                         <div class="history-actions">
                             <button onclick="repeatCommand(${cmd.id})" class="btn-info btn-small">🔁</button>
                             <button onclick="undoCommand(${cmd.id})" class="btn-warning btn-small">↩</button>

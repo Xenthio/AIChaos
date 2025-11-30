@@ -15,8 +15,10 @@ public class CommandEntry
     public string? ImageContext { get; set; }
     public string Source { get; set; } = "web"; // web, twitch, youtube
     public string Author { get; set; } = "anonymous";
+    public string? UserId { get; set; } // Unique ID for web users to track their own commands
     public CommandStatus Status { get; set; } = CommandStatus.Pending;
     public string? ErrorMessage { get; set; }
+    public string? AiResponse { get; set; } // Non-code AI response message for the user
     public DateTime? ExecutedAt { get; set; }
 }
 
@@ -37,6 +39,7 @@ public class TriggerRequest
     public string Prompt { get; set; } = "";
     public string? Source { get; set; }
     public string? Author { get; set; }
+    public string? UserId { get; set; }
 }
 
 /// <summary>
@@ -51,6 +54,7 @@ public class TriggerResponse
     public int? CommandId { get; set; }
     public string? ContextFound { get; set; }
     public bool WasBlocked { get; set; }
+    public string? AiResponse { get; set; } // Non-code response from AI to display to user
 }
 
 /// <summary>
