@@ -13,17 +13,20 @@ public class ChaosController : ControllerBase
 {
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
+    private readonly InteractiveAiService _interactiveAi;
     private readonly SettingsService _settingsService;
     private readonly ILogger<ChaosController> _logger;
     
     public ChaosController(
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
+        InteractiveAiService interactiveAi,
         SettingsService settingsService,
         ILogger<ChaosController> logger)
     {
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
+        _interactiveAi = interactiveAi;
         _settingsService = settingsService;
         _logger = logger;
     }
@@ -66,12 +69,40 @@ public class ChaosController : ControllerBase
     /// Reports execution result from GMod (success or error).
     /// </summary>
     [HttpPost("report")]
-    public ActionResult<ApiResponse> ReportResult([FromBody] ExecutionResultRequest request)
+    public async Task<ActionResult<ApiResponse>> ReportResult([FromBody] ExecutionResultRequest request)
     {
+        // Check if this is an interactive session command (negative IDs)
+        if (request.CommandId < 0)
+        {
+            var handled = await _interactiveAi.ReportResultAsync(
+                request.CommandId, 
+                request.Success, 
+                request.Error, 
+                request.ResultData);
+            
+            if (handled)
+            {
+                _logger.LogInformation("[INTERACTIVE] Reported result for command #{CommandId}", request.CommandId);
+                return Ok(new ApiResponse
+                {
+                    Status = "success",
+                    Message = "Interactive result recorded",
+                    CommandId = request.CommandId
+                });
+            }
+        }
+        
         if (request.CommandId <= 0)
         {
             return Ok(new ApiResponse { Status = "ignored", Message = "No command ID to report" });
         }
+        
+        // Check if this is a regular command that's also part of an interactive session
+        var interactiveHandled = await _interactiveAi.ReportResultAsync(
+            request.CommandId, 
+            request.Success, 
+            request.Error, 
+            request.ResultData);
         
         if (_commandQueue.ReportExecutionResult(request.CommandId, request.Success, request.Error))
         {
@@ -278,6 +309,8 @@ public class ChaosController : ControllerBase
         _commandQueue.Preferences.IncludeHistoryInAi = prefs.IncludeHistoryInAi;
         _commandQueue.Preferences.HistoryEnabled = prefs.HistoryEnabled;
         _commandQueue.Preferences.MaxHistoryLength = prefs.MaxHistoryLength;
+        _commandQueue.Preferences.InteractiveModeEnabled = prefs.InteractiveModeEnabled;
+        _commandQueue.Preferences.InteractiveMaxIterations = prefs.InteractiveMaxIterations;
         
         _logger.LogInformation("[PREFERENCES] Updated preferences");
         
@@ -363,6 +396,92 @@ public class ChaosController : ControllerBase
         {
             Status = "error",
             Message = "Payload not found"
+        });
+    }
+    
+    /// <summary>
+    /// Triggers an interactive AI session that can iterate with the game.
+    /// </summary>
+    [HttpPost("trigger/interactive")]
+    public async Task<ActionResult<InteractiveSessionResponse>> TriggerInteractive([FromBody] InteractiveTriggerRequest request)
+    {
+        if (string.IsNullOrEmpty(request.Prompt))
+        {
+            return BadRequest(new InteractiveSessionResponse
+            {
+                Status = "error",
+                Message = "No prompt provided"
+            });
+        }
+        
+        _logger.LogInformation("[INTERACTIVE] Starting interactive session for: {Prompt}", request.Prompt);
+        
+        var session = await _interactiveAi.CreateSessionAsync(request);
+        
+        return Ok(new InteractiveSessionResponse
+        {
+            Status = session.IsComplete ? (session.WasSuccessful ? "complete" : "failed") : "in_progress",
+            Message = session.IsComplete 
+                ? (session.WasSuccessful ? "Session completed successfully" : "Session failed") 
+                : "Session started - waiting for game response",
+            SessionId = session.Id,
+            Iteration = session.CurrentIteration,
+            CurrentPhase = session.CurrentPhase.ToString(),
+            IsComplete = session.IsComplete,
+            FinalCode = session.FinalExecutionCode,
+            Steps = session.Steps
+        });
+    }
+    
+    /// <summary>
+    /// Gets the status of an interactive session.
+    /// </summary>
+    [HttpGet("api/interactive/{sessionId}")]
+    public ActionResult<InteractiveSessionResponse> GetInteractiveSession(int sessionId)
+    {
+        var session = _interactiveAi.GetSession(sessionId);
+        
+        if (session == null)
+        {
+            return NotFound(new InteractiveSessionResponse
+            {
+                Status = "error",
+                Message = "Session not found"
+            });
+        }
+        
+        return Ok(new InteractiveSessionResponse
+        {
+            Status = session.IsComplete ? (session.WasSuccessful ? "complete" : "failed") : "in_progress",
+            SessionId = session.Id,
+            Iteration = session.CurrentIteration,
+            CurrentPhase = session.CurrentPhase.ToString(),
+            IsComplete = session.IsComplete,
+            FinalCode = session.FinalExecutionCode,
+            Steps = session.Steps
+        });
+    }
+    
+    /// <summary>
+    /// Gets all active interactive sessions.
+    /// </summary>
+    [HttpGet("api/interactive/active")]
+    public ActionResult<object> GetActiveSessions()
+    {
+        var sessions = _interactiveAi.GetActiveSessions();
+        
+        return Ok(new
+        {
+            count = sessions.Count,
+            sessions = sessions.Select(s => new
+            {
+                sessionId = s.Id,
+                prompt = s.UserPrompt,
+                phase = s.CurrentPhase.ToString(),
+                iteration = s.CurrentIteration,
+                maxIterations = s.MaxIterations,
+                createdAt = s.CreatedAt
+            })
         });
     }
 }

@@ -439,3 +439,17 @@ code {
     border-radius: 3px;
     font-size: 12px;
 }
+
+.phase-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--info);
+    color: #000;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.interactive-step {
+    border-left: 3px solid var(--info);
+}

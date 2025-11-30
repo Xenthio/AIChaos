@@ -46,15 +46,16 @@ if SERVER then
         net.Broadcast()
     end
     
-    -- Helper Function: Report execution result back to server
-    local function ReportResult(commandId, success, errorMsg)
-        if not commandId or commandId <= 0 then return end
+    -- Helper Function: Report execution result back to server (with optional captured data)
+    local function ReportResult(commandId, success, errorMsg, resultData)
+        if not commandId then return end
         
         local reportUrl = BASE_URL .. "/report"
         local body = {
             command_id = commandId,
             success = success,
-            error = errorMsg
+            error = errorMsg,
+            result_data = resultData
         }
         
         HTTP({
@@ -79,19 +80,27 @@ if SERVER then
     -- 2. Helper Function: Run the code safely
     local function ExecuteAICode(code, commandId)
         print("[AI Chaos] Running generated code...")
+        
+        -- Clear any previous captured data
+        _AI_CAPTURED_DATA = nil
+        
         local success, err = pcall(function()
             -- Print whole code for debugging
             print("[AI Chaos] Executing code:\n" .. code)
             RunString(code)
         end)
 
+        -- Get captured data if any (used by interactive mode)
+        local capturedData = _AI_CAPTURED_DATA
+        _AI_CAPTURED_DATA = nil
+
         if success then
             --PrintMessage(HUD_PRINTTALK, "[AI] Event triggered!")
-            ReportResult(commandId, true, nil)
+            ReportResult(commandId, true, nil, capturedData)
         else
             PrintMessage(HUD_PRINTTALK, "[AI] Code Error: " .. tostring(err))
             print("[AI Error]", err)
-            ReportResult(commandId, false, tostring(err))
+            ReportResult(commandId, false, tostring(err), capturedData)
         end
     end
 

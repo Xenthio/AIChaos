@@ -24,9 +24,25 @@
             <div class="form-group">
                 <textarea id="promptInput" placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
             </div>
+            
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" id="interactiveMode" style="width: 18px; height: 18px;">
+                    <span>🔄 Interactive Mode</span>
+                    <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors automatically)</span>
+                </label>
+            </div>
+            
             <button id="sendBtn" onclick="sendPrompt()">⚡ SEND CHAOS</button>
             
             <div id="status" style="margin-top: 15px;"></div>
+            
+            <div id="interactiveStatus" class="hidden" style="margin-top: 15px; padding: 15px; background: rgba(0,255,0,0.1); border-radius: 8px;">
+                <h4 style="margin: 0 0 10px 0;">🔄 Interactive Session</h4>
+                <div id="interactivePhase">Phase: <span class="phase-badge">Starting...</span></div>
+                <div id="interactiveIteration">Iteration: <span>0/5</span></div>
+                <div id="interactiveSteps" style="margin-top: 10px;"></div>
+            </div>
         </div>
         
         <div class="card">
@@ -53,6 +69,8 @@
         }
         
         const userId = getUserId();
+        let currentInteractiveSessionId = null;
+        let interactivePollingInterval = null;
         
         function log(msg, type = 'normal') {
             const el = document.createElement('div');
@@ -65,39 +83,133 @@
             const text = promptInput.value.trim();
             if (!text) return;
             
+            const isInteractive = document.getElementById('interactiveMode').checked;
+            
             promptInput.disabled = true;
             sendBtn.disabled = true;
-            sendBtn.textContent = "⏳ GENERATING...";
+            sendBtn.textContent = isInteractive ? "🔄 STARTING SESSION..." : "⏳ GENERATING...";
             
             try {
-                const response = await fetch('/trigger', {
+                const endpoint = isInteractive ? '/trigger/interactive' : '/trigger';
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text, userId: userId })
+                    body: JSON.stringify({ 
+                        prompt: text, 
+                        userId: userId,
+                        maxIterations: 5
+                    })
                 });
                 
                 const data = await response.json();
                 
-                if (data.status === 'queued') {
-                    log(`✓ ${text}`, 'success');
-                    if (data.aiResponse) {
-                        log(`💬 AI: ${data.aiResponse}`, 'info');
-                    }
-                    loadRecentCommands();
-                } else if (data.status === 'ignored') {
-                    log(`✗ BLOCKED: ${data.message}`, 'error');
+                if (isInteractive) {
+                    handleInteractiveResponse(data, text);
                 } else {
-                    log(`✗ ERROR: ${JSON.stringify(data)}`, 'error');
+                    if (data.status === 'queued') {
+                        log(`✓ ${text}`, 'success');
+                        if (data.aiResponse) {
+                            log(`💬 AI: ${data.aiResponse}`, 'info');
+                        }
+                        loadRecentCommands();
+                    } else if (data.status === 'ignored') {
+                        log(`✗ BLOCKED: ${data.message}`, 'error');
+                    } else {
+                        log(`✗ ERROR: ${JSON.stringify(data)}`, 'error');
+                    }
+                    resetSendButton();
                 }
             } catch (err) {
                 log(`✗ NETWORK ERROR: ${err.message}`, 'error');
+                resetSendButton();
             }
             
             promptInput.value = '';
+        }
+        
+        function resetSendButton() {
             promptInput.disabled = false;
             sendBtn.disabled = false;
             sendBtn.textContent = "⚡ SEND CHAOS";
             promptInput.focus();
+        }
+        
+        function handleInteractiveResponse(data, originalPrompt) {
+            const statusContainer = document.getElementById('interactiveStatus');
+            statusContainer.classList.remove('hidden');
+            
+            if (data.status === 'in_progress') {
+                currentInteractiveSessionId = data.sessionId;
+                log(`🔄 Interactive session started: ${originalPrompt}`, 'info');
+                updateInteractiveUI(data);
+                startInteractivePolling(data.sessionId);
+            } else if (data.status === 'complete') {
+                log(`✓ Interactive session completed: ${originalPrompt}`, 'success');
+                updateInteractiveUI(data);
+                finishInteractiveSession();
+            } else if (data.status === 'failed') {
+                log(`✗ Interactive session failed: ${data.message}`, 'error');
+                updateInteractiveUI(data);
+                finishInteractiveSession();
+            } else {
+                log(`✗ Interactive error: ${JSON.stringify(data)}`, 'error');
+                finishInteractiveSession();
+            }
+        }
+        
+        function updateInteractiveUI(data) {
+            document.querySelector('#interactivePhase .phase-badge').textContent = data.currentPhase || 'Unknown';
+            document.querySelector('#interactiveIteration span').textContent = `${data.iteration || 0}/${5}`;
+            
+            const stepsContainer = document.getElementById('interactiveSteps');
+            if (data.steps && data.steps.length > 0) {
+                stepsContainer.innerHTML = data.steps.map(step => `
+                    <div class="interactive-step" style="margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; font-size: 12px;">
+                        <div><strong>Step ${step.stepNumber}:</strong> ${step.phase}</div>
+                        ${step.aiThinking ? `<div style="color: var(--text-dim);">💭 ${escapeHtml(step.aiThinking.substring(0, 100))}${step.aiThinking.length > 100 ? '...' : ''}</div>` : ''}
+                        ${step.success === true ? '<span style="color: var(--success);">✓ Success</span>' : ''}
+                        ${step.success === false ? `<span style="color: var(--error);">✗ ${escapeHtml(step.error || 'Failed')}</span>` : ''}
+                    </div>
+                `).join('');
+            }
+        }
+        
+        function startInteractivePolling(sessionId) {
+            // Poll every 2 seconds for session updates
+            interactivePollingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/interactive/${sessionId}`);
+                    const data = await response.json();
+                    
+                    updateInteractiveUI(data);
+                    
+                    if (data.isComplete) {
+                        if (data.status === 'complete') {
+                            log(`✓ Interactive session completed successfully!`, 'success');
+                        } else {
+                            log(`✗ Interactive session failed after ${data.iteration} iterations`, 'error');
+                        }
+                        finishInteractiveSession();
+                        loadRecentCommands();
+                    }
+                } catch (err) {
+                    console.error('Error polling interactive session:', err);
+                }
+            }, 2000);
+        }
+        
+        function finishInteractiveSession() {
+            if (interactivePollingInterval) {
+                clearInterval(interactivePollingInterval);
+                interactivePollingInterval = null;
+            }
+            currentInteractiveSessionId = null;
+            resetSendButton();
+            
+            // Hide the interactive status after a delay
+            setTimeout(() => {
+                document.getElementById('interactiveStatus').classList.add('hidden');
+            }, 5000);
         }
         
         promptInput.addEventListener('keydown', (e) => {

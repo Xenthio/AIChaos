@@ -159,6 +159,17 @@ public class CommandQueueService
     }
     
     /// <summary>
+    /// Queues code for interactive sessions with a specific command ID.
+    /// </summary>
+    public void QueueInteractiveCode(int commandId, string code)
+    {
+        lock (_lock)
+        {
+            _queue.Add((commandId, code));
+        }
+    }
+    
+    /// <summary>
     /// Reports the execution result from GMod.
     /// </summary>
     public bool ReportExecutionResult(int commandId, bool success, string? error)

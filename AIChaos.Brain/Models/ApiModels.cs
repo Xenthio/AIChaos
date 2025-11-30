@@ -108,6 +108,8 @@ public class UserPreferences
     public bool IncludeHistoryInAi { get; set; } = true;
     public bool HistoryEnabled { get; set; } = true;
     public int MaxHistoryLength { get; set; } = 50;
+    public bool InteractiveModeEnabled { get; set; } = false;
+    public int InteractiveMaxIterations { get; set; } = 5;
 }
 
 /// <summary>
@@ -194,4 +196,99 @@ public class ExecutionResultRequest
     
     [JsonPropertyName("error")]
     public string? Error { get; set; }
+    
+    [JsonPropertyName("result_data")]
+    public string? ResultData { get; set; }
+}
+
+/// <summary>
+/// Request to trigger an interactive chat session.
+/// </summary>
+public class InteractiveTriggerRequest
+{
+    public string Prompt { get; set; } = "";
+    public string? Source { get; set; }
+    public string? Author { get; set; }
+    public string? UserId { get; set; }
+    public int MaxIterations { get; set; } = 5;
+}
+
+/// <summary>
+/// Response from an interactive chat session.
+/// </summary>
+public class InteractiveSessionResponse
+{
+    public string Status { get; set; } = "";
+    public string? Message { get; set; }
+    public int SessionId { get; set; }
+    public int Iteration { get; set; }
+    public string? CurrentPhase { get; set; }
+    public bool IsComplete { get; set; }
+    public string? FinalCode { get; set; }
+    public List<InteractionStep> Steps { get; set; } = new();
+}
+
+/// <summary>
+/// A single step in an interactive session.
+/// </summary>
+public class InteractionStep
+{
+    public int StepNumber { get; set; }
+    public string Phase { get; set; } = "";
+    public string? Code { get; set; }
+    public bool? Success { get; set; }
+    public string? Error { get; set; }
+    public string? ResultData { get; set; }
+    public string? AiThinking { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// An interactive AI session that can iterate with the game.
+/// </summary>
+public class InteractiveSession
+{
+    public int Id { get; set; }
+    public string UserPrompt { get; set; } = "";
+    public string Source { get; set; } = "web";
+    public string Author { get; set; } = "anonymous";
+    public string? UserId { get; set; }
+    public int MaxIterations { get; set; } = 5;
+    public int CurrentIteration { get; set; } = 0;
+    public InteractivePhase CurrentPhase { get; set; } = InteractivePhase.Preparing;
+    public bool IsComplete { get; set; } = false;
+    public bool WasSuccessful { get; set; } = false;
+    public string? FinalExecutionCode { get; set; }
+    public string? FinalUndoCode { get; set; }
+    public List<InteractionStep> Steps { get; set; } = new();
+    public List<ChatMessage> ConversationHistory { get; set; } = new();
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? CompletedAt { get; set; }
+    
+    // Pending execution state
+    public int? PendingCommandId { get; set; }
+    public string? PendingCode { get; set; }
+}
+
+/// <summary>
+/// Phases of an interactive session.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum InteractivePhase
+{
+    Preparing,      // AI is gathering information
+    Generating,     // AI is generating main code
+    Testing,        // Code is being tested
+    Fixing,         // AI is fixing errors
+    Complete,       // Session finished successfully
+    Failed          // Session failed after max iterations
+}
+
+/// <summary>
+/// A message in the AI conversation history.
+/// </summary>
+public class ChatMessage
+{
+    public string Role { get; set; } = "";
+    public string Content { get; set; } = "";
 }
