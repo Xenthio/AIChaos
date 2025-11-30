@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AIChaos.Brain.Models;
 
 /// <summary>
@@ -54,7 +56,10 @@ public class TriggerResponse
 /// </summary>
 public class PollResponse
 {
+    [JsonPropertyName("has_code")]
     public bool HasCode { get; set; }
+    
+    [JsonPropertyName("code")]
     public string? Code { get; set; }
 }
 

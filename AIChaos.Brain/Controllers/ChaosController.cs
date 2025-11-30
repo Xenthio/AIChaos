@@ -30,11 +30,19 @@ public class ChaosController : ControllerBase
     
     /// <summary>
     /// Polls for the next command in the queue (called by GMod).
+    /// Supports both GET and POST for compatibility with various tunnel services.
     /// </summary>
+    [HttpGet("poll")]
     [HttpPost("poll")]
     public ActionResult<PollResponse> Poll()
     {
+        // Log incoming request for debugging
+        _logger.LogDebug("Poll request received from {RemoteIp}", HttpContext.Connection.RemoteIpAddress);
+        
         var code = _commandQueue.PollNextCommand();
+        
+        // Add ngrok bypass header in response (helps with some ngrok configurations)
+        Response.Headers.Append("ngrok-skip-browser-warning", "true");
         
         return new PollResponse
         {

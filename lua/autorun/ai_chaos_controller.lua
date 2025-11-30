@@ -74,7 +74,10 @@ if SERVER then
             method = "POST",
             url = SERVER_URL,
             body = util.TableToJSON(body),
-            headers = { ["Content-Type"] = "application/json" },
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
             
             -- ON SUCCESS
             success = function(code, body, headers)

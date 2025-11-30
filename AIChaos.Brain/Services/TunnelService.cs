@@ -450,6 +450,11 @@ public partial class TunnelService : IDisposable
     
     private async Task UpdateLuaFileAsync(string url)
     {
+        var pollUrl = $"{url}/poll";
+        
+        // Write to tunnel_url.txt first (this is the primary output for other tools)
+        await WriteTunnelUrlFileAsync(pollUrl);
+        
         // Try multiple possible paths to find the Lua file
         var possiblePaths = new[]
         {
@@ -477,14 +482,13 @@ public partial class TunnelService : IDisposable
         if (luaPath == null)
         {
             _logger.LogWarning("Lua file not found in any expected location. GMod addon should be in ../lua/ relative to AIChaos.Brain");
-            _logger.LogWarning("Tunnel URL for GMod: {Url}/poll - Please update your Lua file manually or copy it to the correct location", url);
+            _logger.LogWarning("Tunnel URL for GMod: {Url} - Please update your Lua file manually or copy it to the correct location", pollUrl);
             return;
         }
         
         try
         {
             var content = await File.ReadAllTextAsync(luaPath);
-            var pollUrl = $"{url}/poll";
             var newLine = $"                local SERVER_URL = \"{pollUrl}\" -- Auto-configured by launcher";
             
             content = ServerUrlRegex().Replace(content, newLine);
@@ -496,6 +500,56 @@ public partial class TunnelService : IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update Lua file");
+        }
+    }
+    
+    private async Task WriteTunnelUrlFileAsync(string pollUrl)
+    {
+        // Write to tunnel_url.txt in multiple locations for compatibility
+        var possibleDirs = new[]
+        {
+            // Root of repository (where the old Python scripts would write it)
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", ".."),
+            Path.Combine(AppContext.BaseDirectory, "..", ".."),
+            Path.Combine(AppContext.BaseDirectory, ".."),
+            // Current working directory
+            Directory.GetCurrentDirectory(),
+            Path.Combine(Directory.GetCurrentDirectory(), ".."),
+        };
+        
+        foreach (var dir in possibleDirs)
+        {
+            try
+            {
+                var fullDir = Path.GetFullPath(dir);
+                var tunnelUrlPath = Path.Combine(fullDir, "tunnel_url.txt");
+                
+                // Only write to directories that exist and where the lua folder exists (indicates repo root)
+                var luaDir = Path.Combine(fullDir, "lua");
+                if (Directory.Exists(fullDir) && Directory.Exists(luaDir))
+                {
+                    await File.WriteAllTextAsync(tunnelUrlPath, pollUrl);
+                    _logger.LogInformation("Written tunnel URL to: {Path}", tunnelUrlPath);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("Could not write tunnel_url.txt to {Dir}: {Error}", dir, ex.Message);
+            }
+        }
+        
+        // Fallback: write to current directory
+        try
+        {
+            var fallbackPath = Path.Combine(Directory.GetCurrentDirectory(), "tunnel_url.txt");
+            await File.WriteAllTextAsync(fallbackPath, pollUrl);
+            _logger.LogInformation("Written tunnel URL to fallback location: {Path}", fallbackPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to write tunnel_url.txt: {Error}", ex.Message);
         }
     }
     
