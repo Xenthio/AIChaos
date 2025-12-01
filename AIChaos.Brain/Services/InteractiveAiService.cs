@@ -429,11 +429,15 @@ public class InteractiveAiService
     {
         // Wrap the code to capture output and return it to the report endpoint
         // We override both print() and PrintTable() to capture all output
+        // We use global flags (_AI_CAPTURED_DATA and _AI_EXECUTION_ERROR) since 
+        // RunString swallows errors and doesn't propagate them to outer pcall
         return """
             local _capturedOutput = {}
             local _originalPrint = print
             local _originalPrintTable = PrintTable
-            local _errorOccurred = nil
+            
+            -- Clear previous error state
+            _AI_EXECUTION_ERROR = nil
             
             print = function(...)
                 local args = {...}
@@ -484,16 +488,15 @@ public class InteractiveAiService
             print = _originalPrint
             PrintTable = _originalPrintTable
             
-            -- Return captured data (always set this before potentially erroring)
+            -- Return captured data
             _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")
             
             if not _success then
-                -- Store the error message for proper reporting
-                _errorOccurred = tostring(_err)
+                -- Store the error message in a global for the outer code to detect
+                -- RunString swallows errors, so we can't use error() to propagate
+                _AI_EXECUTION_ERROR = tostring(_err)
                 -- Append error to captured data for debugging
-                _AI_CAPTURED_DATA = _AI_CAPTURED_DATA .. "\n[LUA ERROR]: " .. _errorOccurred
-                -- Re-throw the error with the full message preserved
-                error(_errorOccurred)
+                _AI_CAPTURED_DATA = _AI_CAPTURED_DATA .. "\n[LUA ERROR]: " .. _AI_EXECUTION_ERROR
             end
             """;
     }
