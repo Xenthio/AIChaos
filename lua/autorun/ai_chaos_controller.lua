@@ -4,8 +4,8 @@ if SERVER then
     util.AddNetworkString("AI_RunClientCode")
 
     -- Try to read URL from data file, fallback to hardcoded URL
-    local BASE_URL = "http://localhost:5000" -- Auto-configured by launcher
-    local SERVER_URL = "http://localhost:5000/poll" -- Auto-configured by launcher
+        local BASE_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev" -- Auto-configured by launcher
+        local SERVER_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev/poll" -- Auto-configured by launcher
     local POLL_INTERVAL = 2 -- Seconds to wait between requests
     
     -- Attempt to read URL from data file (created by launcher)
