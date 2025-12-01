@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AIChaos.Brain.Models;
 
 /// <summary>
@@ -21,12 +23,14 @@ public class AppSettings
 /// </summary>
 public class AiProviderSettings
 {
+    [JsonConverter(typeof(JsonStringEnumConverter))]
     public AiProviderType Type { get; set; } = AiProviderType.OpenRouter;
 }
 
 /// <summary>
 /// Available AI provider types.
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum AiProviderType
 {
     OpenRouter,
