@@ -13,7 +13,6 @@ public class ChaosController : ControllerBase
 {
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
-    private readonly InteractiveAiService _interactiveAi;
     private readonly SettingsService _settingsService;
     private readonly TestClientService _testClientService;
     private readonly AgenticGameService _agenticService;
@@ -22,7 +21,6 @@ public class ChaosController : ControllerBase
     public ChaosController(
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
-        InteractiveAiService interactiveAi,
         SettingsService settingsService,
         TestClientService testClientService,
         AgenticGameService agenticService,
@@ -30,7 +28,6 @@ public class ChaosController : ControllerBase
     {
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
-        _interactiveAi = interactiveAi;
         _settingsService = settingsService;
         _testClientService = testClientService;
         _agenticService = agenticService;
@@ -109,10 +106,10 @@ public class ChaosController : ControllerBase
     [HttpPost("report")]
     public async Task<ActionResult<ApiResponse>> ReportResult([FromBody] ExecutionResultRequest request)
     {
-        // Check if this is an interactive session command (negative IDs)
+        // Check if this is an agentic session command (negative IDs)
         if (request.CommandId < 0)
         {
-            var handled = await _interactiveAi.ReportResultAsync(
+            var handled = await _agenticService.ReportResultAsync(
                 request.CommandId, 
                 request.Success, 
                 request.Error, 
@@ -120,11 +117,11 @@ public class ChaosController : ControllerBase
             
             if (handled)
             {
-                _logger.LogInformation("[INTERACTIVE] Reported result for command #{CommandId}", request.CommandId);
+                _logger.LogInformation("[AGENTIC] Reported result for command #{CommandId}", request.CommandId);
                 return Ok(new ApiResponse
                 {
                     Status = "success",
-                    Message = "Interactive result recorded",
+                    Message = "Agentic result recorded",
                     CommandId = request.CommandId
                 });
             }
@@ -135,8 +132,8 @@ public class ChaosController : ControllerBase
             return Ok(new ApiResponse { Status = "ignored", Message = "No command ID to report" });
         }
         
-        // Check if this is a regular command that's also part of an interactive session
-        var interactiveHandled = await _interactiveAi.ReportResultAsync(
+        // Check if this is a regular command that's also part of an agentic session
+        var agenticHandled = await _agenticService.ReportResultAsync(
             request.CommandId, 
             request.Success, 
             request.Error, 
@@ -519,6 +516,7 @@ public class ChaosController : ControllerBase
     
     /// <summary>
     /// Triggers an interactive AI session that can iterate with the game.
+    /// This is a legacy endpoint that now uses the unified AgenticGameService.
     /// </summary>
     [HttpPost("trigger/interactive")]
     public async Task<ActionResult<InteractiveSessionResponse>> TriggerInteractive([FromBody] InteractiveTriggerRequest request)
@@ -534,7 +532,16 @@ public class ChaosController : ControllerBase
         
         _logger.LogInformation("[INTERACTIVE] Starting interactive session for: {Prompt}", request.Prompt);
         
-        var session = await _interactiveAi.CreateSessionAsync(request);
+        // Convert to AgentSessionRequest and use AgenticGameService
+        var agentRequest = new AgentSessionRequest
+        {
+            Prompt = request.Prompt,
+            UserId = request.UserId,
+            MaxIterations = request.MaxIterations,
+            UseTestClient = false // Interactive mode uses main client
+        };
+        
+        var session = await _agenticService.CreateSessionAsync(agentRequest);
         
         return Ok(new InteractiveSessionResponse
         {
@@ -547,17 +554,27 @@ public class ChaosController : ControllerBase
             CurrentPhase = session.CurrentPhase.ToString(),
             IsComplete = session.IsComplete,
             FinalCode = session.FinalExecutionCode,
-            Steps = session.Steps
+            Steps = session.Steps.Select(s => new InteractionStep
+            {
+                StepNumber = s.StepNumber,
+                Phase = s.Phase,
+                Code = s.Code,
+                Success = s.Success,
+                Error = s.Error,
+                ResultData = s.ResultData,
+                AiThinking = s.AiThinking
+            }).ToList()
         });
     }
     
     /// <summary>
     /// Gets the status of an interactive session.
+    /// This is a legacy endpoint that now uses the unified AgenticGameService.
     /// </summary>
     [HttpGet("api/interactive/{sessionId}")]
     public ActionResult<InteractiveSessionResponse> GetInteractiveSession(int sessionId)
     {
-        var session = _interactiveAi.GetSession(sessionId);
+        var session = _agenticService.GetSession(sessionId);
         
         if (session == null)
         {
@@ -576,17 +593,27 @@ public class ChaosController : ControllerBase
             CurrentPhase = session.CurrentPhase.ToString(),
             IsComplete = session.IsComplete,
             FinalCode = session.FinalExecutionCode,
-            Steps = session.Steps
+            Steps = session.Steps.Select(s => new InteractionStep
+            {
+                StepNumber = s.StepNumber,
+                Phase = s.Phase,
+                Code = s.Code,
+                Success = s.Success,
+                Error = s.Error,
+                ResultData = s.ResultData,
+                AiThinking = s.AiThinking
+            }).ToList()
         });
     }
     
     /// <summary>
     /// Gets all active interactive sessions.
+    /// This is a legacy endpoint that now uses the unified AgenticGameService.
     /// </summary>
     [HttpGet("api/interactive/active")]
-    public ActionResult<object> GetActiveSessions()
+    public ActionResult<object> GetActiveInteractiveSessions()
     {
-        var sessions = _interactiveAi.GetActiveSessions();
+        var sessions = _agenticService.GetActiveSessions();
         
         return Ok(new
         {

@@ -403,6 +403,15 @@ public class AgenticGameService
     
     /// <summary>
     /// Reports execution result for an interactive session command.
+    /// Alias for ReportSessionResultAsync for backward compatibility.
+    /// </summary>
+    public async Task<bool> ReportResultAsync(int commandId, bool success, string? error, string? resultData)
+    {
+        return await ReportSessionResultAsync(commandId, success, error, resultData);
+    }
+    
+    /// <summary>
+    /// Reports execution result for an interactive session command.
     /// </summary>
     public async Task<bool> ReportSessionResultAsync(int commandId, bool success, string? error, string? resultData)
     {
@@ -730,16 +739,20 @@ public class AgenticGameService
     
     private string WrapCodeForDataCapture(string code)
     {
-        return """
+        // Ensure code is properly trimmed and has newlines to avoid syntax errors like "endend)"
+        var trimmedCode = code.Trim();
+        
+        // Use regular string concatenation since Lua uses {} which conflicts with C# interpolation
+        return @"
             local _capturedOutput = {}
             local _originalPrint = print
             local _originalPrintTable = PrintTable
             
             print = function(...)
                 local args = {...}
-                local str = ""
+                local str = """"
                 for i, v in ipairs(args) do
-                    str = str .. tostring(v) .. (i < #args and "\t" or "")
+                    str = str .. tostring(v) .. (i < #args and ""\t"" or """")
                 end
                 table.insert(_capturedOutput, str)
                 _originalPrint(...)
@@ -748,23 +761,23 @@ public class AgenticGameService
             PrintTable = function(tbl, indent, done)
                 indent = indent or 0
                 done = done or {}
-                local prefix = string.rep("  ", indent)
+                local prefix = string.rep(""  "", indent)
                 
-                if type(tbl) == "table" then
+                if type(tbl) == ""table"" then
                     if done[tbl] then
-                        table.insert(_capturedOutput, prefix .. "(circular reference)")
+                        table.insert(_capturedOutput, prefix .. ""(circular reference)"")
                         return
                     end
                     done[tbl] = true
                     
                     for k, v in pairs(tbl) do
                         local keyStr = tostring(k)
-                        if type(v) == "table" then
-                            table.insert(_capturedOutput, prefix .. keyStr .. " = {")
+                        if type(v) == ""table"" then
+                            table.insert(_capturedOutput, prefix .. keyStr .. "" = {"")
                             PrintTable(v, indent + 1, done)
-                            table.insert(_capturedOutput, prefix .. "}")
+                            table.insert(_capturedOutput, prefix .. ""}"")
                         else
-                            table.insert(_capturedOutput, prefix .. keyStr .. " = " .. tostring(v))
+                            table.insert(_capturedOutput, prefix .. keyStr .. "" = "" .. tostring(v))
                         end
                     end
                 else
@@ -775,15 +788,15 @@ public class AgenticGameService
             end
             
             local _success, _err = pcall(function()
-            """ + code + """
+                " + trimmedCode + @"
             end)
             
             print = _originalPrint
             PrintTable = _originalPrintTable
             
-            _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")
+            _AI_CAPTURED_DATA = table.concat(_capturedOutput, ""\n"")
             if not _success then error(_err) end
-            """;
+            ";
     }
     
     #endregion
