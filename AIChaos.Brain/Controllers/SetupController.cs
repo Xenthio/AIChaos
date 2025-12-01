@@ -229,11 +229,22 @@ public class SetupController : ControllerBase
         var settings = _settingsService.Settings;
         var tunnelStatus = _tunnelService.GetStatus();
         
+        // Get current model based on active provider
+        var currentModel = settings.AiProvider.Type switch
+        {
+            AiProviderType.OpenRouter => settings.OpenRouter.Model,
+            AiProviderType.Ollama => settings.Ollama.Model,
+            AiProviderType.Oobabooga => settings.Oobabooga.Model,
+            _ => settings.OpenRouter.Model
+        };
+        
         return Ok(new SetupStatus
         {
             OpenRouterConfigured = _settingsService.IsOpenRouterConfigured,
             AdminConfigured = _settingsService.IsAdminConfigured,
-            CurrentModel = settings.OpenRouter.Model,
+            CurrentModel = currentModel,
+            AiProvider = settings.AiProvider.Type.ToString(),
+            AiProviderConfigured = _settingsService.IsAiProviderConfigured,
             Twitch = new TwitchAuthState
             {
                 IsAuthenticated = _settingsService.IsTwitchConfigured,
@@ -325,6 +336,114 @@ public class SetupController : ControllerBase
         _logger.LogInformation("OpenRouter API key saved");
         
         return Ok(new { status = "success", message = "OpenRouter settings saved" });
+    }
+    
+    // ==========================================
+    // AI PROVIDER SETTINGS
+    // ==========================================
+    
+    /// <summary>
+    /// Gets the current AI provider settings.
+    /// </summary>
+    [HttpGet("ai-provider")]
+    public ActionResult GetAiProvider()
+    {
+        var settings = _settingsService.Settings;
+        
+        return Ok(new
+        {
+            provider = settings.AiProvider.Type.ToString(),
+            isConfigured = _settingsService.IsAiProviderConfigured,
+            openRouter = new
+            {
+                baseUrl = settings.OpenRouter.BaseUrl,
+                model = settings.OpenRouter.Model,
+                hasApiKey = !string.IsNullOrEmpty(settings.OpenRouter.ApiKey)
+            },
+            ollama = new
+            {
+                baseUrl = settings.Ollama.BaseUrl,
+                model = settings.Ollama.Model
+            },
+            oobabooga = new
+            {
+                baseUrl = settings.Oobabooga.BaseUrl,
+                model = settings.Oobabooga.Model
+            }
+        });
+    }
+    
+    /// <summary>
+    /// Sets the active AI provider.
+    /// </summary>
+    [HttpPost("ai-provider")]
+    public ActionResult SetAiProvider([FromBody] AiProviderRequest request)
+    {
+        if (!Enum.TryParse<AiProviderType>(request.Provider, true, out var providerType))
+        {
+            return BadRequest(new { status = "error", message = $"Invalid provider type: {request.Provider}. Valid options: OpenRouter, Ollama, Oobabooga" });
+        }
+        
+        _settingsService.UpdateAiProvider(providerType);
+        _logger.LogInformation("AI provider changed to: {Provider}", providerType);
+        
+        return Ok(new { status = "success", message = $"AI provider set to {providerType}", provider = providerType.ToString() });
+    }
+    
+    /// <summary>
+    /// Gets the current Ollama settings.
+    /// </summary>
+    [HttpGet("ollama")]
+    public ActionResult GetOllama()
+    {
+        var settings = _settingsService.Settings.Ollama;
+        
+        return Ok(new
+        {
+            baseUrl = settings.BaseUrl,
+            model = settings.Model,
+            isConfigured = _settingsService.IsOllamaConfigured
+        });
+    }
+    
+    /// <summary>
+    /// Saves Ollama settings.
+    /// </summary>
+    [HttpPost("ollama")]
+    public ActionResult SaveOllama([FromBody] OllamaSettings settings)
+    {
+        _settingsService.UpdateOllama(settings.BaseUrl, settings.Model);
+        _logger.LogInformation("Ollama settings saved");
+        
+        return Ok(new { status = "success", message = "Ollama settings saved" });
+    }
+    
+    /// <summary>
+    /// Gets the current Oobabooga settings.
+    /// </summary>
+    [HttpGet("oobabooga")]
+    public ActionResult GetOobabooga()
+    {
+        var settings = _settingsService.Settings.Oobabooga;
+        
+        return Ok(new
+        {
+            baseUrl = settings.BaseUrl,
+            model = settings.Model,
+            isConfigured = _settingsService.IsOobaboogaConfigured
+        });
+    }
+    
+    /// <summary>
+    /// Saves Oobabooga settings.
+    /// </summary>
+    [HttpPost("oobabooga")]
+    public ActionResult SaveOobabooga([FromBody] OobaboogaSettings settings)
+    {
+        _settingsService.UpdateOobabooga(settings.BaseUrl, settings.Model);
+        _logger.LogInformation("Oobabooga settings saved");
+        
+        return Ok(new { status = "success", message = "Oobabooga settings saved" });
     }
     
     // ==========================================
@@ -639,4 +758,9 @@ public class SetPasswordRequest
 public class PrivateDiscordModeRequest
 {
     public bool Enabled { get; set; } = false;
+}
+
+public class AiProviderRequest
+{
+    public string Provider { get; set; } = "OpenRouter";
 }

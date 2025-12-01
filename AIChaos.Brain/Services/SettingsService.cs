@@ -171,6 +171,33 @@ public class SettingsService
     public bool IsOpenRouterConfigured => !string.IsNullOrEmpty(_settings.OpenRouter.ApiKey);
     
     /// <summary>
+    /// Checks if Ollama is configured.
+    /// </summary>
+    public bool IsOllamaConfigured => !string.IsNullOrEmpty(_settings.Ollama.BaseUrl);
+    
+    /// <summary>
+    /// Checks if Oobabooga is configured.
+    /// </summary>
+    public bool IsOobaboogaConfigured => !string.IsNullOrEmpty(_settings.Oobabooga.BaseUrl);
+    
+    /// <summary>
+    /// Checks if the current AI provider is configured.
+    /// </summary>
+    public bool IsAiProviderConfigured
+    {
+        get
+        {
+            return _settings.AiProvider.Type switch
+            {
+                AiProviderType.OpenRouter => IsOpenRouterConfigured,
+                AiProviderType.Ollama => IsOllamaConfigured,
+                AiProviderType.Oobabooga => IsOobaboogaConfigured,
+                _ => false
+            };
+        }
+    }
+    
+    /// <summary>
     /// Checks if Twitch is configured.
     /// </summary>
     public bool IsTwitchConfigured => 
@@ -188,6 +215,50 @@ public class SettingsService
     /// Checks if admin password is configured.
     /// </summary>
     public bool IsAdminConfigured => _settings.Admin.IsConfigured;
+    
+    /// <summary>
+    /// Updates the AI provider type.
+    /// </summary>
+    public void UpdateAiProvider(AiProviderType providerType)
+    {
+        lock (_lock)
+        {
+            _settings.AiProvider.Type = providerType;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates Ollama settings.
+    /// </summary>
+    public void UpdateOllama(string baseUrl, string? model = null)
+    {
+        lock (_lock)
+        {
+            _settings.Ollama.BaseUrl = baseUrl;
+            if (!string.IsNullOrEmpty(model))
+            {
+                _settings.Ollama.Model = model;
+            }
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates Oobabooga settings.
+    /// </summary>
+    public void UpdateOobabooga(string baseUrl, string? model = null)
+    {
+        lock (_lock)
+        {
+            _settings.Oobabooga.BaseUrl = baseUrl;
+            if (!string.IsNullOrEmpty(model))
+            {
+                _settings.Oobabooga.Model = model;
+            }
+            SaveSettings();
+        }
+    }
     
     /// <summary>
     /// Updates safety settings.
