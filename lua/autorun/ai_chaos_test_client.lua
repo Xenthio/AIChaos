@@ -95,11 +95,20 @@ if SERVER then
             
             -- If result is nil or empty string, execution was successful
             -- If result is a non-empty string, it contains the error message
+            -- Note: RunString can return false (boolean) in some error cases
             local success = (result == nil or result == "")
             local errorMsg = nil
             
             if not success then
-                errorMsg = tostring(result)
+                if result == false then
+                    errorMsg = "Code execution failed (compilation or runtime error)"
+                elseif result == true then
+                    errorMsg = "Unexpected boolean return from RunString"
+                elseif type(result) == "string" then
+                    errorMsg = result
+                else
+                    errorMsg = "Unknown error: " .. tostring(result)
+                end
                 print("[AI Chaos Test] ✗ Code Error: " .. errorMsg)
             else
                 print("[AI Chaos Test] ✓ Code executed successfully!")

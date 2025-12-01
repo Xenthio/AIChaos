@@ -108,13 +108,23 @@ if SERVER then
         
         -- If result is nil or empty string, execution was successful
         -- If result is a non-empty string, it contains the error message
+        -- Note: RunString can return false (boolean) in some error cases
         local success = (result == nil or result == "")
         
         if success then
             --PrintMessage(HUD_PRINTTALK, "[AI] Event triggered!")
             ReportResult(commandId, true, nil, capturedData)
         else
-            local errorMsg = tostring(result)
+            local errorMsg
+            if result == false then
+                errorMsg = "Code execution failed (compilation or runtime error)"
+            elseif result == true then
+                errorMsg = "Unexpected boolean return from RunString"
+            elseif type(result) == "string" then
+                errorMsg = result
+            else
+                errorMsg = "Unknown error: " .. tostring(result)
+            end
             PrintMessage(HUD_PRINTTALK, "[AI] Code Error: " .. errorMsg)
             print("[AI Error]", errorMsg)
             ReportResult(commandId, false, errorMsg, capturedData)
