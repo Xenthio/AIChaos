@@ -37,8 +37,9 @@
             
             <div id="status" style="margin-top: 15px;"></div>
             
-            <div id="interactiveStatus" class="hidden" style="margin-top: 15px; padding: 15px; background: rgba(0,255,0,0.1); border-radius: 8px;">
-                <h4 style="margin: 0 0 10px 0;">🔄 Interactive Session</h4>
+            <div id="interactiveStatus" class="hidden" style="margin-top: 15px; padding: 15px; background: rgba(0,255,0,0.1); border-radius: 8px; position: relative;">
+                <button id="dismissInteractive" onclick="dismissInteractiveStatus()" style="position: absolute; top: 10px; right: 10px; background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">✕ Dismiss</button>
+                <h4 style="margin: 0 0 10px 0;">🔄 Interactive Session <span id="sessionStatus"></span></h4>
                 <div id="interactivePhase">Phase: <span class="phase-badge">Starting...</span></div>
                 <div id="interactiveIteration">Iteration: <span>0/5</span></div>
                 <div id="interactiveSteps" style="margin-top: 10px;"></div>
@@ -167,6 +168,18 @@
             document.querySelector('#interactivePhase .phase-badge').textContent = data.currentPhase || 'Unknown';
             document.querySelector('#interactiveIteration span').textContent = `${data.iteration || 0}/${currentMaxIterations}`;
             
+            // Update session status indicator
+            const sessionStatusEl = document.getElementById('sessionStatus');
+            if (data.isComplete) {
+                if (data.status === 'complete') {
+                    sessionStatusEl.innerHTML = '<span style="color: var(--success); font-size: 12px;">✓ Complete</span>';
+                } else {
+                    sessionStatusEl.innerHTML = '<span style="color: var(--error); font-size: 12px;">✗ Failed</span>';
+                }
+            } else {
+                sessionStatusEl.innerHTML = '<span style="color: var(--warning); font-size: 12px;">⏳ In Progress</span>';
+            }
+            
             const stepsContainer = document.getElementById('interactiveSteps');
             if (data.steps && data.steps.length > 0) {
                 stepsContainer.innerHTML = data.steps.map(step => `
@@ -212,10 +225,11 @@
             currentInteractiveSessionId = null;
             resetSendButton();
             
-            // Hide the interactive status after a delay
-            setTimeout(() => {
-                document.getElementById('interactiveStatus').classList.add('hidden');
-            }, 5000);
+            // Keep the session visible - user can dismiss it manually or it will be replaced by the next session
+        }
+        
+        function dismissInteractiveStatus() {
+            document.getElementById('interactiveStatus').classList.add('hidden');
         }
         
         promptInput.addEventListener('keydown', (e) => {
