@@ -1,40 +1,54 @@
 -- ai_chaos_controller.lua
 
 if SERVER then
-    util.AddNetworkString("AI_RunClientCode")
+    -- Create the test client ConVar first (shared with ai_chaos_test_client.lua)
+    if not ConVarExists("ai_chaos_test_client") then
+        CreateConVar("ai_chaos_test_client", "0", FCVAR_ARCHIVE, "Set to 1 to enable test client mode")
+    end
+    
+    -- Wait a frame for command line arguments to be processed
+    timer.Simple(0, function()
+        -- Check if this is a test client - if so, skip main controller initialization
+        local isTestClient = GetConVar("ai_chaos_test_client")
+        if isTestClient and isTestClient:GetInt() == 1 then
+            print("[AI Chaos] Test client detected - main controller disabled (use ai_chaos_test_client.lua instead)")
+            return
+        end
+        
+        util.AddNetworkString("AI_RunClientCode")
 
-    -- Try to read URL from data file, fallback to hardcoded URL
+        -- Try to read URL from data file, fallback to hardcoded URL
         local BASE_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev" -- Auto-configured by launcher
         local SERVER_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev/poll" -- Auto-configured by launcher
-    local POLL_INTERVAL = 2 -- Seconds to wait between requests
-    
-    -- Attempt to read URL from data file (created by launcher)
-    -- Supports both ngrok_url.txt and tunnel_url.txt
-    local urlFiles = {"addons/AIChaos/tunnel_url.txt", "addons/AIChaos/ngrok_url.txt"}
-    local foundUrl = false
-    
-    for _, urlFile in ipairs(urlFiles) do
-        if file.Exists(urlFile, "GAME") then
-            local content = file.Read(urlFile, "GAME")
-            if content and content ~= "" then
-                -- Trim whitespace - content should be the base URL (without /poll)
-                content = string.Trim(content)
-                BASE_URL = content
-                SERVER_URL = content .. "/poll"
-                print("[AI Chaos] Loaded URL from config: " .. SERVER_URL)
-                foundUrl = true
-                break
+        local POLL_INTERVAL = 2 -- Seconds to wait between requests
+        
+        -- Attempt to read URL from data file (created by launcher)
+        -- Supports both ngrok_url.txt and tunnel_url.txt
+        local urlFiles = {"addons/AIChaos/tunnel_url.txt", "addons/AIChaos/ngrok_url.txt"}
+        local foundUrl = false
+        
+        for _, urlFile in ipairs(urlFiles) do
+            if file.Exists(urlFile, "GAME") then
+                local content = file.Read(urlFile, "GAME")
+                if content and content ~= "" then
+                    -- Trim whitespace - content should be the base URL (without /poll)
+                    content = string.Trim(content)
+                    BASE_URL = content
+                    SERVER_URL = content .. "/poll"
+                    print("[AI Chaos] Loaded URL from config: " .. SERVER_URL)
+                    foundUrl = true
+                    break
+                end
             end
         end
-    end
-    
-    if not foundUrl then
-        print("[AI Chaos] Using default URL: " .. SERVER_URL)
-        print("[AI Chaos] Run a launcher or start a tunnel from the Setup page to connect!")
-    end
+        
+        if not foundUrl then
+            print("[AI Chaos] Using default URL: " .. SERVER_URL)
+            print("[AI Chaos] Run a launcher or start a tunnel from the Setup page to connect!")
+        end
 
-    print("[AI Chaos] Server Initialized!")
-    print("[AI Chaos] Polling endpoint: " .. SERVER_URL)
+        print("[AI Chaos] Server Initialized!")
+        print("[AI Chaos] Polling endpoint: " .. SERVER_URL)
 
     -- 1. Helper Function: Send code to client
     function RunOnClient(codeString)
@@ -153,6 +167,8 @@ if SERVER then
     -- Start the loop
     print("[AI Chaos] Starting Polling Loop...")
     PollServer()
+    
+    end) -- End of timer.Simple callback
 
 else -- CLIENT SIDE CODE
     
