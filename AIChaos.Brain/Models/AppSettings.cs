@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AIChaos.Brain.Models;
 
 /// <summary>
@@ -5,7 +7,10 @@ namespace AIChaos.Brain.Models;
 /// </summary>
 public class AppSettings
 {
+    public AiProviderSettings AiProvider { get; set; } = new();
     public OpenRouterSettings OpenRouter { get; set; } = new();
+    public OllamaSettings Ollama { get; set; } = new();
+    public OobaboogaSettings Oobabooga { get; set; } = new();
     public TwitchSettings Twitch { get; set; } = new();
     public YouTubeSettings YouTube { get; set; } = new();
     public SafetySettings Safety { get; set; } = new();
@@ -13,11 +18,49 @@ public class AppSettings
     public TunnelSettings Tunnel { get; set; } = new();
 }
 
+/// <summary>
+/// Settings for the active AI provider.
+/// </summary>
+public class AiProviderSettings
+{
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public AiProviderType Type { get; set; } = AiProviderType.OpenRouter;
+}
+
+/// <summary>
+/// Available AI provider types.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AiProviderType
+{
+    OpenRouter,
+    Ollama,
+    Oobabooga
+}
+
 public class OpenRouterSettings
 {
     public string ApiKey { get; set; } = "";
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
     public string Model { get; set; } = "anthropic/claude-sonnet-4.5";
+}
+
+/// <summary>
+/// Settings for Ollama local AI.
+/// </summary>
+public class OllamaSettings
+{
+    public string BaseUrl { get; set; } = "http://localhost:11434";
+    public string Model { get; set; } = "llama3.1";
+}
+
+/// <summary>
+/// Settings for Oobabooga text-generation-webui.
+/// </summary>
+public class OobaboogaSettings
+{
+    public string BaseUrl { get; set; } = "http://localhost:5000";
+    public string Model { get; set; } = "";
 }
 
 public class TwitchSettings

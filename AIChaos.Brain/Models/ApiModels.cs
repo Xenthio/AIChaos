@@ -151,6 +151,8 @@ public class SetupStatus
     public bool OpenRouterConfigured { get; set; }
     public bool AdminConfigured { get; set; }
     public string? CurrentModel { get; set; }
+    public string AiProvider { get; set; } = "OpenRouter";
+    public bool AiProviderConfigured { get; set; }
     public TwitchAuthState Twitch { get; set; } = new();
     public YouTubeAuthState YouTube { get; set; } = new();
     public TunnelState Tunnel { get; set; } = new();
