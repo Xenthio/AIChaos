@@ -31,6 +31,14 @@ public class CommandQueueService
     /// </summary>
     public CommandEntry AddCommand(string userPrompt, string executionCode, string undoCode, string source = "web", string author = "anonymous", string? imageContext = null, string? userId = null, string? aiResponse = null)
     {
+        return AddCommand(userPrompt, executionCode, undoCode, source, author, imageContext, userId, aiResponse, queueForExecution: true);
+    }
+    
+    /// <summary>
+    /// Adds a command to history, optionally queueing it for execution.
+    /// </summary>
+    public CommandEntry AddCommand(string userPrompt, string executionCode, string undoCode, string source, string author, string? imageContext, string? userId, string? aiResponse, bool queueForExecution)
+    {
         lock (_lock)
         {
             // Create history entry
@@ -49,8 +57,11 @@ public class CommandQueueService
                 Status = CommandStatus.Queued
             };
             
-            // Add to execution queue with ID
-            _queue.Add((entry.Id, executionCode));
+            // Add to execution queue with ID (only if requested)
+            if (queueForExecution)
+            {
+                _queue.Add((entry.Id, executionCode));
+            }
             
             _history.Add(entry);
             

@@ -707,21 +707,34 @@ public class SetupController : ControllerBase
             return BadRequest(new { status = "error", message = $"GMod executable not found at: {settings.GmodPath}" });
         }
         
+        // Validate map name to prevent command injection
+        // Map names should only contain alphanumeric characters, underscores, and hyphens
+        var mapName = settings.TestMap;
+        if (string.IsNullOrEmpty(mapName))
+        {
+            mapName = "gm_flatgrass";
+        }
+        
+        if (!System.Text.RegularExpressions.Regex.IsMatch(mapName, @"^[a-zA-Z0-9_\-]+$"))
+        {
+            return BadRequest(new { status = "error", message = "Invalid map name. Map names can only contain letters, numbers, underscores, and hyphens." });
+        }
+        
         try
         {
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = settings.GmodPath,
-                Arguments = $"-multirun -windowed -w 640 -h 480 +map {settings.TestMap} +ai_chaos_test_client 1",
+                Arguments = $"-multirun -windowed -w 640 -h 480 +map {mapName} +ai_chaos_test_client 1",
                 UseShellExecute = true
             };
             
             System.Diagnostics.Process.Start(startInfo);
-            _logger.LogInformation("Launched test client with map: {Map}", settings.TestMap);
+            _logger.LogInformation("Launched test client with map: {Map}", mapName);
             
             return Ok(new { 
                 status = "success", 
-                message = $"Test client launched with map {settings.TestMap}",
+                message = $"Test client launched with map {mapName}",
                 note = "The test client will connect automatically when the game loads."
             });
         }

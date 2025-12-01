@@ -273,7 +273,10 @@ public class ChaosController : ControllerBase
             }
         }
         
-        // Add to queue and history
+        // Determine if we should queue for immediate execution or route through test client
+        var isTestClientModeEnabled = _testClientService.IsEnabled;
+        
+        // Add to history (queue for execution only if test client mode is disabled)
         var entry = _commandQueue.AddCommand(
             request.Prompt,
             executionCode,
@@ -281,10 +284,12 @@ public class ChaosController : ControllerBase
             request.Source ?? "web",
             request.Author ?? "anonymous",
             null,
-            request.UserId);
+            request.UserId,
+            null,
+            queueForExecution: !isTestClientModeEnabled);
         
         // If test client mode is enabled, queue for testing instead of direct execution
-        if (_testClientService.IsEnabled)
+        if (isTestClientModeEnabled)
         {
             _testClientService.QueueForTesting(entry.Id, executionCode);
             _logger.LogInformation("[TEST CLIENT] Command #{CommandId} queued for testing first", entry.Id);
@@ -292,7 +297,7 @@ public class ChaosController : ControllerBase
         
         return Ok(new TriggerResponse
         {
-            Status = _testClientService.IsEnabled ? "testing" : "queued",
+            Status = isTestClientModeEnabled ? "testing" : "queued",
             CodePreview = executionCode,
             HasUndo = true,
             CommandId = entry.Id,
