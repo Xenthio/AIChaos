@@ -15,6 +15,7 @@ public class ChaosController : ControllerBase
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly InteractiveAiService _interactiveAi;
     private readonly SettingsService _settingsService;
+    private readonly ImageModerationService _moderationService;
     private readonly ILogger<ChaosController> _logger;
     
     public ChaosController(
@@ -22,12 +23,14 @@ public class ChaosController : ControllerBase
         AiCodeGeneratorService codeGenerator,
         InteractiveAiService interactiveAi,
         SettingsService settingsService,
+        ImageModerationService moderationService,
         ILogger<ChaosController> logger)
     {
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
         _interactiveAi = interactiveAi;
         _settingsService = settingsService;
+        _moderationService = moderationService;
         _logger = logger;
     }
     
@@ -146,6 +149,31 @@ public class ChaosController : ControllerBase
         }
         
         var isPrivateDiscordMode = _settingsService.Settings.Safety.PrivateDiscordMode;
+        
+        // Check for images in the prompt - queue for moderation if found (skip if Private Discord Mode)
+        if (!isPrivateDiscordMode && _moderationService.NeedsModeration(request.Prompt))
+        {
+            var imageUrls = _moderationService.ExtractImageUrls(request.Prompt);
+            foreach (var url in imageUrls)
+            {
+                _moderationService.AddPendingImage(
+                    url,
+                    request.Prompt,
+                    request.Source ?? "web",
+                    request.Author ?? "anonymous",
+                    request.UserId);
+            }
+            
+            _logger.LogInformation("[MODERATION] Prompt with {Count} image(s) queued for review: {Prompt}", 
+                imageUrls.Count, request.Prompt);
+            
+            return Ok(new TriggerResponse
+            {
+                Status = "pending_moderation",
+                Message = $"Your prompt contains {imageUrls.Count} image(s) that require moderator approval before processing.",
+                WasBlocked = false
+            });
+        }
         
         // Check for changelevel attempts (skip if Private Discord Mode is enabled)
         if (!isPrivateDiscordMode)

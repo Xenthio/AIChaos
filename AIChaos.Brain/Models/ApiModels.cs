@@ -292,3 +292,48 @@ public class ChatMessage
     public string Role { get; set; } = "";
     public string Content { get; set; } = "";
 }
+
+/// <summary>
+/// Represents an image pending moderation review.
+/// </summary>
+public class PendingImageEntry
+{
+    public int Id { get; set; }
+    public string ImageUrl { get; set; } = "";
+    public string UserPrompt { get; set; } = "";
+    public string Source { get; set; } = "web";
+    public string Author { get; set; } = "anonymous";
+    public string? UserId { get; set; }
+    public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
+    public ImageModerationStatus Status { get; set; } = ImageModerationStatus.Pending;
+    public DateTime? ReviewedAt { get; set; }
+}
+
+/// <summary>
+/// Status of an image in the moderation queue.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ImageModerationStatus
+{
+    Pending,
+    Approved,
+    Denied
+}
+
+/// <summary>
+/// Response for pending images list.
+/// </summary>
+public class PendingImagesResponse
+{
+    public List<PendingImageEntry> Images { get; set; } = new();
+    public int TotalPending { get; set; }
+}
+
+/// <summary>
+/// Request to review an image (approve/deny).
+/// </summary>
+public class ImageReviewRequest
+{
+    public int ImageId { get; set; }
+    public bool Approved { get; set; }
+}

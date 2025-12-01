@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chaos - Image Moderation</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .image-card {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: block;
+        }
+        .image-url {
+            word-break: break-all;
+            color: var(--info);
+            font-size: 12px;
+        }
+        .image-prompt {
+            color: var(--text);
+            margin: 10px 0;
+        }
+        .image-meta {
+            display: flex;
+            gap: 15px;
+            color: var(--text-dim);
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .pending-badge {
+            background: var(--warning);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .approved-badge {
+            background: var(--success);
+            color: #000;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .denied-badge {
+            background: var(--error);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .action-buttons button {
+            flex: 1;
+            padding: 12px;
+            font-size: 14px;
+        }
+        .pending-count {
+            background: var(--warning);
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .no-images {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-dim);
+        }
+        .mod-password-display {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid var(--success);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .mod-password-display code {
+            font-size: 24px;
+            letter-spacing: 3px;
+            color: var(--success);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 AI CHAOS CONTROL</h1>
+            <p>Image Moderation Panel</p>
+        </div>
+        
+        <div class="nav">
+            <a href="/" class="nav-link">⚡ Control Panel</a>
+            <a href="/setup" class="nav-link">🔧 Setup</a>
+            <a href="/history" class="nav-link">📜 History</a>
+            <a href="/moderation" class="nav-link active">🖼️ Moderation</a>
+        </div>
+        
+        <!-- Login Screen -->
+        <div id="loginScreen" class="login-container">
+            <div class="card">
+                <h2>🔒 Moderator Access Required</h2>
+                <div id="loginAlert"></div>
+                
+                <div id="loginForm">
+                    <p style="color: var(--text-dim); text-align: center; margin-bottom: 15px;">
+                        Enter the moderation password displayed in the server console.
+                    </p>
+                    <div class="form-group">
+                        <label>Moderation Password</label>
+                        <input type="text" id="loginPassword" placeholder="Enter 6-character code" maxlength="6" style="text-transform: uppercase; letter-spacing: 2px; text-align: center; font-size: 18px;" onkeydown="if(event.key==='Enter')login()">
+                    </div>
+                    <button onclick="login()">🔓 Login</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Moderation Content (hidden until logged in) -->
+        <div id="moderationContent" class="hidden">
+            <div id="alerts"></div>
+            
+            <div class="card">
+                <h2>
+                    🖼️ Pending Images 
+                    <span id="pendingCount" class="pending-count">0</span>
+                </h2>
+                <p style="color: var(--text-dim); margin-bottom: 15px;">
+                    Review images submitted with prompts. Approve to process, deny to reject.
+                </p>
+                
+                <div class="btn-group" style="margin-bottom: 20px;">
+                    <button onclick="loadPendingImages()" class="btn-secondary">🔄 Refresh</button>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" checked>
+                        <span style="color: var(--text-dim);">Auto-refresh (5s)</span>
+                    </label>
+                </div>
+                
+                <div id="pendingImagesList">
+                    <div class="no-images">Loading...</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>📜 Recent Reviews</h2>
+                <div id="reviewedImagesList">
+                    <div class="no-images">No reviewed images yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isLoggedIn = false;
+        let autoRefreshInterval = null;
+        let moderationPassword = '';
+        
+        // Helper to get auth headers
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-Moderation-Password': moderationPassword
+            };
+        }
+        
+        async function login() {
+            const password = document.getElementById('loginPassword').value.toUpperCase();
+            
+            try {
+                const response = await fetch('/api/setup/moderation/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    moderationPassword = password;
+                    showModerationContent();
+                } else {
+                    showLoginAlert(data.message || 'Invalid password', 'error');
+                }
+            } catch (err) {
+                showLoginAlert('Network error', 'error');
+            }
+        }
+        
+        function showLoginAlert(message, type) {
+            const container = document.getElementById('loginAlert');
+            container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        }
+        
+        function showModerationContent() {
+            isLoggedIn = true;
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('moderationContent').classList.remove('hidden');
+            loadPendingImages();
+            loadAllImages();
+            startAutoRefresh();
+        }
+        
+        function showAlert(message, type) {
+            const container = document.getElementById('alerts');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            container.prepend(alert);
+            setTimeout(() => alert.remove(), 5000);
+        }
+        
+        function toggleAutoRefresh() {
+            if (document.getElementById('autoRefresh').checked) {
+                startAutoRefresh();
+            } else {
+                stopAutoRefresh();
+            }
+        }
+        
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(() => {
+                loadPendingImages();
+                loadAllImages();
+            }, 5000);
+        }
+        
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        }
+        
+        async function loadPendingImages() {
+            try {
+                const response = await fetch('/api/moderation/pending', {
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+                
+                if (response.status === 401) {
+                    showAlert('Session expired. Please refresh and login again.', 'error');
+                    return;
+                }
+                
+                document.getElementById('pendingCount').textContent = data.totalPending;
+                renderPendingImages(data.images);
+            } catch (err) {
+                console.error('Failed to load pending images:', err);
+            }
+        }
+        
+        async function loadAllImages() {
+            try {
+                const response = await fetch('/api/moderation/all', {
+                    headers: getAuthHeaders()
+                });
+                const data = await response.json();
+                
+                if (response.status === 401) return;
+                
+                const reviewed = data.images.filter(i => i.status !== 'Pending');
+                renderReviewedImages(reviewed.slice(-10).reverse());
+            } catch (err) {
+                console.error('Failed to load all images:', err);
+            }
+        }
+        
+        function renderPendingImages(images) {
+            const container = document.getElementById('pendingImagesList');
+            
+            if (images.length === 0) {
+                container.innerHTML = '<div class="no-images">✅ No images pending moderation</div>';
+                return;
+            }
+            
+            container.innerHTML = images.map(img => `
+                <div class="image-card" id="image-${img.id}">
+                    <div class="image-meta">
+                        <span><strong>#${img.id}</strong></span>
+                        <span>📤 ${img.source}</span>
+                        <span>👤 ${escapeHtml(img.author)}</span>
+                        <span>🕐 ${new Date(img.submittedAt).toLocaleTimeString()}</span>
+                        <span class="pending-badge">PENDING</span>
+                    </div>
+                    <div class="image-prompt">
+                        <strong>Prompt:</strong> ${escapeHtml(img.userPrompt)}
+                    </div>
+                    <a href="${escapeHtml(img.imageUrl)}" target="_blank" class="image-url">${escapeHtml(img.imageUrl)}</a>
+                    <img src="${escapeHtml(img.imageUrl)}" alt="Pending image" class="image-preview" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div style="display: none; color: var(--warning); padding: 20px; text-align: center;">
+                        ⚠️ Could not load image preview. Click the URL above to view.
+                    </div>
+                    <div class="action-buttons">
+                        <button onclick="approveImage(${img.id})" class="btn-success">✅ APPROVE</button>
+                        <button onclick="denyImage(${img.id})" class="btn-danger">❌ DENY</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function renderReviewedImages(images) {
+            const container = document.getElementById('reviewedImagesList');
+            
+            if (images.length === 0) {
+                container.innerHTML = '<div class="no-images">No reviewed images yet.</div>';
+                return;
+            }
+            
+            container.innerHTML = images.map(img => {
+                const statusBadge = img.status === 'Approved' 
+                    ? '<span class="approved-badge">APPROVED</span>'
+                    : '<span class="denied-badge">DENIED</span>';
+                
+                return `
+                <div class="image-card" style="opacity: 0.7;">
+                    <div class="image-meta">
+                        <span><strong>#${img.id}</strong></span>
+                        <span>📤 ${img.source}</span>
+                        <span>👤 ${escapeHtml(img.author)}</span>
+                        <span>🕐 ${new Date(img.reviewedAt).toLocaleTimeString()}</span>
+                        ${statusBadge}
+                    </div>
+                    <div class="image-prompt">
+                        <strong>Prompt:</strong> ${escapeHtml(img.userPrompt)}
+                    </div>
+                    <a href="${escapeHtml(img.imageUrl)}" target="_blank" class="image-url">${escapeHtml(img.imageUrl)}</a>
+                </div>
+            `}).join('');
+        }
+        
+        async function approveImage(imageId) {
+            try {
+                const response = await fetch('/api/moderation/approve', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ imageId, approved: true })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showAlert(`Image #${imageId} approved! Command queued.`, 'success');
+                    loadPendingImages();
+                    loadAllImages();
+                } else {
+                    showAlert(data.message || 'Failed to approve image', 'error');
+                }
+            } catch (err) {
+                showAlert('Network error', 'error');
+            }
+        }
+        
+        async function denyImage(imageId) {
+            try {
+                const response = await fetch('/api/moderation/deny', {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ imageId, approved: false })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showAlert(`Image #${imageId} denied.`, 'warning');
+                    loadPendingImages();
+                    loadAllImages();
+                } else {
+                    showAlert(data.message || 'Failed to deny image', 'error');
+                }
+            } catch (err) {
+                showAlert('Network error', 'error');
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
