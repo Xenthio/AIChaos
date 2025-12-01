@@ -62,6 +62,8 @@ public class AiCodeGeneratorService
            Format: EXECUTION_CODE
            ---UNDO---
            UNDO_CODE
+        
+        9. **Syntax:** Pay close attention to Lua syntax. Ensure all blocks (`if`, `for`, `function`) are correctly closed with `end`. Mismatched blocks will cause the script to fail.
 
         --- EXAMPLES ---
 
@@ -135,6 +137,8 @@ public class AiCodeGeneratorService
            Format: EXECUTION_CODE
            ---UNDO---
            UNDO_CODE
+
+        4. **Syntax:** Pay close attention to Lua syntax. Ensure all blocks (`if`, `for`, `function`) are correctly closed with `end`. Mismatched blocks will cause the script to fail.
 
         --- EXAMPLES ---
 
