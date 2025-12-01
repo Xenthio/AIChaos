@@ -452,8 +452,9 @@ public partial class TunnelService : IDisposable
     {
         var pollUrl = $"{url}/poll";
         
-        // Write to tunnel_url.txt first (this is the primary output for other tools)
-        await WriteTunnelUrlFileAsync(pollUrl);
+        // Write to tunnel_url.txt - write the BASE URL (without /poll) because
+        // the Lua script appends /poll itself when reading from this file
+        await WriteTunnelUrlFileAsync(url);
         
         // Try multiple possible paths to find the Lua file
         var possiblePaths = new[]
@@ -489,9 +490,14 @@ public partial class TunnelService : IDisposable
         try
         {
             var content = await File.ReadAllTextAsync(luaPath);
-            var newLine = $"                local SERVER_URL = \"{pollUrl}\" -- Auto-configured by launcher";
             
-            content = ServerUrlRegex().Replace(content, newLine);
+            // Update BASE_URL (without /poll)
+            var baseUrlLine = $"    local BASE_URL = \"{url}\" -- Auto-configured by launcher";
+            content = BaseUrlRegex().Replace(content, baseUrlLine);
+            
+            // Update SERVER_URL (with /poll)
+            var serverUrlLine = $"    local SERVER_URL = \"{pollUrl}\" -- Auto-configured by launcher";
+            content = ServerUrlRegex().Replace(content, serverUrlLine);
             
             await File.WriteAllTextAsync(luaPath, content);
             _logger.LogInformation("Updated Lua file with URL: {Url}", pollUrl);
@@ -503,9 +509,10 @@ public partial class TunnelService : IDisposable
         }
     }
     
-    private async Task WriteTunnelUrlFileAsync(string pollUrl)
+    private async Task WriteTunnelUrlFileAsync(string baseUrl)
     {
         // Write to tunnel_url.txt in multiple locations for compatibility
+        // Note: We write the BASE URL (without /poll) - the Lua script appends /poll when reading
         var possibleDirs = new[]
         {
             // Root of repository (where the old Python scripts would write it)
@@ -529,7 +536,7 @@ public partial class TunnelService : IDisposable
                 var luaDir = Path.Combine(fullDir, "lua");
                 if (Directory.Exists(fullDir) && Directory.Exists(luaDir))
                 {
-                    await File.WriteAllTextAsync(tunnelUrlPath, pollUrl);
+                    await File.WriteAllTextAsync(tunnelUrlPath, baseUrl);
                     _logger.LogInformation("Written tunnel URL to: {Path}", tunnelUrlPath);
                     return;
                 }
@@ -544,7 +551,7 @@ public partial class TunnelService : IDisposable
         try
         {
             var fallbackPath = Path.Combine(Directory.GetCurrentDirectory(), "tunnel_url.txt");
-            await File.WriteAllTextAsync(fallbackPath, pollUrl);
+            await File.WriteAllTextAsync(fallbackPath, baseUrl);
             _logger.LogInformation("Written tunnel URL to fallback location: {Path}", fallbackPath);
         }
         catch (Exception ex)
@@ -591,6 +598,9 @@ public partial class TunnelService : IDisposable
     
     [GeneratedRegex(@"bore\.pub:(\d+)")]
     private static partial Regex BorePortRegex();
+    
+    [GeneratedRegex(@"local BASE_URL = "".*?"".*")]
+    private static partial Regex BaseUrlRegex();
     
     [GeneratedRegex(@"local SERVER_URL = "".*?"".*")]
     private static partial Regex ServerUrlRegex();

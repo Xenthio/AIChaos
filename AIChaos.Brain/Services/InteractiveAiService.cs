@@ -400,9 +400,12 @@ public class InteractiveAiService
     private string WrapCodeForDataCapture(string code)
     {
         // Wrap the code to capture output and return it to the report endpoint
+        // We override both print() and PrintTable() to capture all output
         return """
             local _capturedOutput = {}
             local _originalPrint = print
+            local _originalPrintTable = PrintTable
+            
             print = function(...)
                 local args = {...}
                 local str = ""
@@ -413,11 +416,44 @@ public class InteractiveAiService
                 _originalPrint(...)
             end
             
+            PrintTable = function(tbl, indent, done)
+                indent = indent or 0
+                done = done or {}
+                local prefix = string.rep("  ", indent)
+                
+                if type(tbl) == "table" then
+                    if done[tbl] then
+                        table.insert(_capturedOutput, prefix .. "(circular reference)")
+                        return
+                    end
+                    done[tbl] = true
+                    
+                    for k, v in pairs(tbl) do
+                        local keyStr = tostring(k)
+                        if type(v) == "table" then
+                            table.insert(_capturedOutput, prefix .. keyStr .. " = {")
+                            PrintTable(v, indent + 1, done)
+                            table.insert(_capturedOutput, prefix .. "}")
+                        else
+                            table.insert(_capturedOutput, prefix .. keyStr .. " = " .. tostring(v))
+                        end
+                    end
+                else
+                    table.insert(_capturedOutput, prefix .. tostring(tbl))
+                end
+                
+                -- Also call original for console output
+                if indent == 0 then
+                    _originalPrintTable(tbl)
+                end
+            end
+            
             local _success, _err = pcall(function()
             """ + code + """
             end)
             
             print = _originalPrint
+            PrintTable = _originalPrintTable
             
             -- Return captured data
             _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")

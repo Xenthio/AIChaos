@@ -4,8 +4,8 @@ if SERVER then
     util.AddNetworkString("AI_RunClientCode")
 
     -- Try to read URL from data file, fallback to hardcoded URL
-    local SERVER_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev/poll" -- Auto-configured by launcher
-    local BASE_URL = "https://voluntarily-paterfamiliar-jeanie.ngrok-free.dev" -- Base URL for reporting
+    local BASE_URL = "http://localhost:5000" -- Auto-configured by launcher
+    local SERVER_URL = "http://localhost:5000/poll" -- Auto-configured by launcher
     local POLL_INTERVAL = 2 -- Seconds to wait between requests
     
     -- Attempt to read URL from data file (created by launcher)
@@ -17,7 +17,7 @@ if SERVER then
         if file.Exists(urlFile, "GAME") then
             local content = file.Read(urlFile, "GAME")
             if content and content ~= "" then
-                -- Trim whitespace and add /poll endpoint
+                -- Trim whitespace - content should be the base URL (without /poll)
                 content = string.Trim(content)
                 BASE_URL = content
                 SERVER_URL = content .. "/poll"
@@ -29,11 +29,8 @@ if SERVER then
     end
     
     if not foundUrl then
-        print("[AI Chaos] Using hardcoded URL: " .. SERVER_URL)
-        print("[AI Chaos] Run a launcher script to auto-configure!")
-        print("[AI Chaos] Available launchers:")
-        print("[AI Chaos]   - start_with_localtunnel.py (No account needed!)")
-        print("[AI Chaos]   - start_with_ngrok.py")
+        print("[AI Chaos] Using default URL: " .. SERVER_URL)
+        print("[AI Chaos] Run a launcher or start a tunnel from the Setup page to connect!")
     end
 
     print("[AI Chaos] Server Initialized!")
