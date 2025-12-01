@@ -18,6 +18,11 @@ public class InteractiveAiService
     private readonly object _lock = new();
     private int _nextSessionId = 1;
     
+    // Truncation limits for AI context
+    private const int MaxThinkingLength = 200;
+    private const int MaxCodeLength = 500;
+    private const int MaxResultDataLength = 500;
+    
     private const string InteractiveSystemPrompt = """
         You are an expert Lua scripter for Garry's Mod (GLua) with the ability to interact with the game iteratively.
         You will receive a request from a livestream chat and can execute preparation code to gather information before generating your final code.
@@ -301,8 +306,8 @@ public class InteractiveAiService
                 // Include the AI's reasoning
                 if (!string.IsNullOrEmpty(step.AiThinking))
                 {
-                    var truncatedThinking = step.AiThinking.Length > 200 
-                        ? step.AiThinking.Substring(0, 200) + "..." 
+                    var truncatedThinking = step.AiThinking.Length > MaxThinkingLength 
+                        ? step.AiThinking.Substring(0, MaxThinkingLength) + "..." 
                         : step.AiThinking;
                     userContent.AppendLine($"💭 {truncatedThinking}");
                 }
@@ -310,8 +315,8 @@ public class InteractiveAiService
                 // Include the actual code that was executed
                 if (!string.IsNullOrEmpty(step.Code))
                 {
-                    var truncatedCode = step.Code.Length > 500 
-                        ? step.Code.Substring(0, 500) + "..." 
+                    var truncatedCode = step.Code.Length > MaxCodeLength 
+                        ? step.Code.Substring(0, MaxCodeLength) + "..." 
                         : step.Code;
                     userContent.AppendLine($"Code executed:\n```lua\n{truncatedCode}\n```");
                 }
@@ -322,8 +327,8 @@ public class InteractiveAiService
                 // Include captured output data
                 if (!string.IsNullOrEmpty(step.ResultData) && step.ResultData.Length > 0)
                 {
-                    var truncatedData = step.ResultData.Length > 500 
-                        ? step.ResultData.Substring(0, 500) + "..." 
+                    var truncatedData = step.ResultData.Length > MaxResultDataLength 
+                        ? step.ResultData.Substring(0, MaxResultDataLength) + "..." 
                         : step.ResultData;
                     userContent.AppendLine($"Output:\n{truncatedData}");
                 }
