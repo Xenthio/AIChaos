@@ -431,6 +431,9 @@ public class InteractiveAiService
         // We override both print() and PrintTable() to capture all output
         // We use global flags (_AI_CAPTURED_DATA and _AI_EXECUTION_ERROR) since 
         // RunString swallows errors and doesn't propagate them to outer pcall
+        // 
+        // We use RunString with handleError=false to get error messages returned
+        // instead of being swallowed internally
         return """
             local _capturedOutput = {}
             local _originalPrint = print
@@ -481,9 +484,13 @@ public class InteractiveAiService
                 end
             end
             
-            local _success, _err = pcall(function()
+            -- Store the user code as a string to handle syntax errors properly
+            local _userCode = [===[
             """ + code + """
-            end)
+            ]===]
+            
+            -- Run the code with handleError=false to get error messages returned
+            local _err = RunString(_userCode, "AI_Generated_Code", false)
             
             print = _originalPrint
             PrintTable = _originalPrintTable
@@ -491,9 +498,9 @@ public class InteractiveAiService
             -- Return captured data
             _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")
             
-            if not _success then
+            -- Check if RunString returned an error message
+            if _err and _err ~= "" then
                 -- Store the error message in a global for the outer code to detect
-                -- RunString swallows errors, so we can't use error() to propagate
                 _AI_EXECUTION_ERROR = tostring(_err)
                 -- Append error to captured data for debugging
                 _AI_CAPTURED_DATA = _AI_CAPTURED_DATA .. "\n[LUA ERROR]: " .. _AI_EXECUTION_ERROR
