@@ -57,6 +57,12 @@ app.MapGet("/history", async context =>
     await context.Response.SendFileAsync(Path.Combine(app.Environment.WebRootPath, "history.html"));
 });
 
+app.MapGet("/moderation", async context =>
+{
+    context.Response.ContentType = "text/html";
+    await context.Response.SendFileAsync(Path.Combine(app.Environment.WebRootPath, "moderation.html"));
+});
+
 app.MapControllers();
 
 Console.WriteLine("========================================");
@@ -65,6 +71,7 @@ Console.WriteLine("========================================");
 Console.WriteLine($"  Control Panel: http://localhost:5000/");
 Console.WriteLine("  Setup: http://localhost:5000/setup");
 Console.WriteLine("  History: http://localhost:5000/history");
+Console.WriteLine("  Moderation: http://localhost:5000/moderation");
 Console.WriteLine("========================================");
 
 app.Run("http://0.0.0.0:5000");

@@ -98,6 +98,24 @@ public class SetupController : ControllerBase
     }
     
     // ==========================================
+    // MODERATION AUTHENTICATION
+    // ==========================================
+    
+    /// <summary>
+    /// Validate moderation password.
+    /// </summary>
+    [HttpPost("moderation/login")]
+    public ActionResult ModerationLogin([FromBody] ModerationLoginRequest request)
+    {
+        if (_settingsService.ValidateModerationPassword(request.Password))
+        {
+            return Ok(new { status = "success", message = "Login successful" });
+        }
+        
+        return Unauthorized(new { status = "error", message = "Invalid moderation password" });
+    }
+    
+    // ==========================================
     // PRIVATE DISCORD MODE
     // ==========================================
     
@@ -639,4 +657,9 @@ public class SetPasswordRequest
 public class PrivateDiscordModeRequest
 {
     public bool Enabled { get; set; } = false;
+}
+
+public class ModerationLoginRequest
+{
+    public string Password { get; set; } = "";
 }

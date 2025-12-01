@@ -13,12 +13,38 @@ public class SettingsService
     private readonly ILogger<SettingsService> _logger;
     private AppSettings _settings;
     private readonly object _lock = new();
+    private string _moderationPassword;
     
     public SettingsService(ILogger<SettingsService> logger)
     {
         _logger = logger;
         _settingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
         _settings = LoadSettings();
+        _moderationPassword = GenerateModPassword();
+        _logger.LogInformation("===========================================");
+        _logger.LogInformation("  MODERATION PASSWORD: {Password}", _moderationPassword);
+        _logger.LogInformation("  (This password changes each session)", _moderationPassword);
+        _logger.LogInformation("===========================================");
+    }
+    
+    /// <summary>
+    /// The current session's moderation password.
+    /// </summary>
+    public string ModerationPassword => _moderationPassword;
+    
+    /// <summary>
+    /// Generates a small random password for moderation access.
+    /// </summary>
+    private static string GenerateModPassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var random = new Random();
+        var password = new char[6];
+        for (int i = 0; i < password.Length; i++)
+        {
+            password[i] = chars[random.Next(chars.Length)];
+        }
+        return new string(password);
     }
     
     public AppSettings Settings
@@ -188,6 +214,15 @@ public class SettingsService
     /// Checks if admin password is configured.
     /// </summary>
     public bool IsAdminConfigured => _settings.Admin.IsConfigured;
+    
+    /// <summary>
+    /// Validates the moderation password.
+    /// </summary>
+    public bool ValidateModerationPassword(string password)
+    {
+        // Case-insensitive comparison for easier typing
+        return string.Equals(_moderationPassword, password, StringComparison.OrdinalIgnoreCase);
+    }
     
     /// <summary>
     /// Updates safety settings.
