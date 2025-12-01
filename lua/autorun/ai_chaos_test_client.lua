@@ -90,7 +90,7 @@ if SERVER then
             print("[AI Chaos Test] Testing generated code...")
             print("[AI Chaos Test] Executing code:\n" .. code)
             
-            local chunkName = "AI_Chaos_Test_" .. tostring(commandId)
+            local chunkName = "AI_Chaos_Test_" .. tostring(commandId or 0)
             
             -- Step 1: Try to compile the code first (catches syntax errors)
             -- CompileString returns error string if compilation fails, or a function if successful
