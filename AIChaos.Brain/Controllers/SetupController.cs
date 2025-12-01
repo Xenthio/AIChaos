@@ -275,9 +275,10 @@ public class SetupController : ControllerBase
         var models = new[]
         {
             new { id = "anthropic/claude-sonnet-4.5", name = "Claude Sonnet 4.5 (Recommended)", provider = "Anthropic" },
+            new { id = "anthropic/claude-haiku-4.5", name = "Claude Haiku 4.5", provider = "Anthropic" },
             new { id = "anthropic/claude-3.5-sonnet", name = "Claude 3.5 Sonnet", provider = "Anthropic" },
             new { id = "anthropic/claude-3-opus", name = "Claude 3 Opus", provider = "Anthropic" },
-            new { id = "openai/gpt-4o", name = "GPT-4o", provider = "OpenAI" },
+            new { id = "openai/gpt-5.1-codex-mini", name = "GPT-5.1 Codex Mini", provider = "OpenAI" },
             new { id = "openai/gpt-4-turbo", name = "GPT-4 Turbo", provider = "OpenAI" },
             new { id = "openai/gpt-4", name = "GPT-4", provider = "OpenAI" },
             new { id = "google/gemini-pro-1.5", name = "Gemini Pro 1.5", provider = "Google" },

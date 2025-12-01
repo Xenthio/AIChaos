@@ -42,7 +42,7 @@ public class AgenticGameService
         You will receive a request from a livestream chat and can execute preparation code to gather information before generating your final code.
         
         **INTERACTION PHASES:**
-        1. **PREPARE** - Run code to gather information (search models, check entities, get player state)
+        1. **PREPARE** - Run code to gather information (search models/textures/other assets, check entities, get player state)
         2. **GENERATE** - Generate the main execution code based on gathered info
         3. **FIX** - If execution fails, analyze errors and fix the code
         
