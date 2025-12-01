@@ -18,6 +18,10 @@ public class AiCodeGeneratorService
     /// Shared ground rules for GLua code generation that can be used by other services.
     /// These rules define the server/client architecture, safety rules, and best practices.
     /// </summary>
+    // TODO: Future enhancement - add a mechanism for the agent to request data from the client realm
+    // Currently, client-only functions like ScrW(), ScrH(), LocalPlayer() return nil on the server.
+    // A future RunOnClientAndCapture() could allow the agent to get client-side data for decision-making.
+    
     public static readonly string GroundRules = """
         GROUND RULES:
         1. **Server vs Client Architecture:**
@@ -25,6 +29,7 @@ public class AiCodeGeneratorService
            - For Physics, Health, Entities, Spawning, and Gravity: Write standard code.
            - For **UI, HUD, Screen Effects, or Client Sounds**: You CANNOT write them directly. You MUST wrap that specific code inside `RunOnClient([[ ... ]])`.
            - *Note:* `LocalPlayer()` is only valid inside the `RunOnClient` wrapper. On the server layer, use `player.GetAll()` or `Entity(1)`.
+           - **IMPORTANT:** Client-only functions like `ScrW()`, `ScrH()`, `LocalPlayer()`, `gui.*`, `input.*`, etc. will return nil/error if called on the server. Always use them inside `RunOnClient([[ ... ]])`.
 
         2. **Temporary Effects:** If the effect is disruptive (blindness, gravity, speed, spawning enemies, screen overlays), you MUST wrap a reversion in a 'timer.Simple'. 
            - Light effects: Can be permanent. (spawning one or a few props/friendly npcs, changing walk speed slightly, chat messages)
