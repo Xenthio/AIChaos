@@ -154,7 +154,9 @@ public class InteractiveAiService
                 // Continue to generate phase with the gathered data
                 await ProcessIterationAsync(session, resultData);
             }
-            else if (session.CurrentPhase == InteractivePhase.Generating || session.CurrentPhase == InteractivePhase.Fixing)
+            else if (session.CurrentPhase == InteractivePhase.Generating || 
+                     session.CurrentPhase == InteractivePhase.Fixing ||
+                     session.CurrentPhase == InteractivePhase.Testing)
             {
                 // Success! Mark as complete
                 CompleteSession(session, true);
