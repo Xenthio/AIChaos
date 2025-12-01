@@ -290,19 +290,42 @@ public class InteractiveAiService
             userContent.AppendLine("\nPlease fix the code based on this error.");
         }
         
-        // Add conversation history
+        // Add conversation history with the actual code that was executed
         if (session.Steps.Any())
         {
             userContent.AppendLine("\n[PREVIOUS STEPS]:");
             foreach (var step in session.Steps.TakeLast(3))
             {
-                userContent.AppendLine($"- Step {step.StepNumber} ({step.Phase}): {(step.Success == true ? "Success" : step.Success == false ? $"Failed: {step.Error}" : "Pending")}");
+                userContent.AppendLine($"\n--- Step {step.StepNumber} ({step.Phase}) ---");
+                
+                // Include the AI's reasoning
+                if (!string.IsNullOrEmpty(step.AiThinking))
+                {
+                    var truncatedThinking = step.AiThinking.Length > 200 
+                        ? step.AiThinking.Substring(0, 200) + "..." 
+                        : step.AiThinking;
+                    userContent.AppendLine($"💭 {truncatedThinking}");
+                }
+                
+                // Include the actual code that was executed
+                if (!string.IsNullOrEmpty(step.Code))
+                {
+                    var truncatedCode = step.Code.Length > 500 
+                        ? step.Code.Substring(0, 500) + "..." 
+                        : step.Code;
+                    userContent.AppendLine($"Code executed:\n```lua\n{truncatedCode}\n```");
+                }
+                
+                // Include the result
+                userContent.AppendLine($"Result: {(step.Success == true ? "✓ Success" : step.Success == false ? $"✗ Failed: {step.Error}" : "Pending")}");
+                
+                // Include captured output data
                 if (!string.IsNullOrEmpty(step.ResultData) && step.ResultData.Length > 0)
                 {
                     var truncatedData = step.ResultData.Length > 500 
                         ? step.ResultData.Substring(0, 500) + "..." 
                         : step.ResultData;
-                    userContent.AppendLine($"  Data: {truncatedData}");
+                    userContent.AppendLine($"Output:\n{truncatedData}");
                 }
             }
         }
@@ -405,6 +428,7 @@ public class InteractiveAiService
             local _capturedOutput = {}
             local _originalPrint = print
             local _originalPrintTable = PrintTable
+            local _errorOccurred = nil
             
             print = function(...)
                 local args = {...}
@@ -455,10 +479,16 @@ public class InteractiveAiService
             print = _originalPrint
             PrintTable = _originalPrintTable
             
-            -- Return captured data
+            -- Return captured data (always set this before potentially erroring)
             _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")
+            
             if not _success then
-                error(_err)
+                -- Store the error message for proper reporting
+                _errorOccurred = tostring(_err)
+                -- Append error to captured data for debugging
+                _AI_CAPTURED_DATA = _AI_CAPTURED_DATA .. "\n[LUA ERROR]: " .. _errorOccurred
+                -- Re-throw the error with the full message preserved
+                error(_errorOccurred)
             end
             """;
     }
