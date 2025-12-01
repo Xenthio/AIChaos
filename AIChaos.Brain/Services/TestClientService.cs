@@ -427,11 +427,22 @@ public class TestClientService
 /// </summary>
 public class TestPollResponse
 {
+    [System.Text.Json.Serialization.JsonPropertyName("has_code")]
     public bool HasCode { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("code")]
     public string? Code { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("command_id")]
     public int? CommandId { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("cleanup_after_test")]
     public bool CleanupAfterTest { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("attempt_number")]
     public int AttemptNumber { get; set; }
+    
+    [System.Text.Json.Serialization.JsonPropertyName("max_attempts")]
     public int MaxAttempts { get; set; }
 }
 
