@@ -79,8 +79,9 @@ if SERVER then
     local function ExecuteAICode(code, commandId)
         print("[AI Chaos] Running generated code...")
         
-        -- Clear any previous captured data
+        -- Clear any previous captured data and error state
         _AI_CAPTURED_DATA = nil
+        _AI_EXECUTION_ERROR = nil
         
         local success, err = pcall(function()
             -- Print whole code for debugging
@@ -91,14 +92,23 @@ if SERVER then
         -- Get captured data if any (used by interactive mode)
         local capturedData = _AI_CAPTURED_DATA
         _AI_CAPTURED_DATA = nil
+        
+        -- Check for error flag set by wrapped code (RunString swallows errors)
+        local wrappedError = _AI_EXECUTION_ERROR
+        _AI_EXECUTION_ERROR = nil
 
-        if success then
-            --PrintMessage(HUD_PRINTTALK, "[AI] Event triggered!")
-            ReportResult(commandId, true, nil, capturedData)
-        else
+        -- Report failure if pcall failed OR if wrapped code detected an error
+        if not success then
             PrintMessage(HUD_PRINTTALK, "[AI] Code Error: " .. tostring(err))
             print("[AI Error]", err)
             ReportResult(commandId, false, tostring(err), capturedData)
+        elseif wrappedError then
+            -- Wrapped code caught an internal error
+            PrintMessage(HUD_PRINTTALK, "[AI] Code Error: " .. tostring(wrappedError))
+            print("[AI Error]", wrappedError)
+            ReportResult(commandId, false, tostring(wrappedError), capturedData)
+        else
+            ReportResult(commandId, true, nil, capturedData)
         end
     end
 

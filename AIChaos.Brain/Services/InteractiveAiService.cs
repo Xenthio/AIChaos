@@ -18,6 +18,11 @@ public class InteractiveAiService
     private readonly object _lock = new();
     private int _nextSessionId = 1;
     
+    // Truncation limits for AI context
+    private const int MaxThinkingLength = 200;
+    private const int MaxCodeLength = 500;
+    private const int MaxResultDataLength = 500;
+    
     private const string InteractiveSystemPrompt = """
         You are an expert Lua scripter for Garry's Mod (GLua) with the ability to interact with the game iteratively.
         You will receive a request from a livestream chat and can execute preparation code to gather information before generating your final code.
@@ -290,19 +295,42 @@ public class InteractiveAiService
             userContent.AppendLine("\nPlease fix the code based on this error.");
         }
         
-        // Add conversation history
+        // Add conversation history with the actual code that was executed
         if (session.Steps.Any())
         {
             userContent.AppendLine("\n[PREVIOUS STEPS]:");
             foreach (var step in session.Steps.TakeLast(3))
             {
-                userContent.AppendLine($"- Step {step.StepNumber} ({step.Phase}): {(step.Success == true ? "Success" : step.Success == false ? $"Failed: {step.Error}" : "Pending")}");
+                userContent.AppendLine($"\n--- Step {step.StepNumber} ({step.Phase}) ---");
+                
+                // Include the AI's reasoning
+                if (!string.IsNullOrEmpty(step.AiThinking))
+                {
+                    var truncatedThinking = step.AiThinking.Length > MaxThinkingLength 
+                        ? step.AiThinking.Substring(0, MaxThinkingLength) + "..." 
+                        : step.AiThinking;
+                    userContent.AppendLine($"💭 {truncatedThinking}");
+                }
+                
+                // Include the actual code that was executed
+                if (!string.IsNullOrEmpty(step.Code))
+                {
+                    var truncatedCode = step.Code.Length > MaxCodeLength 
+                        ? step.Code.Substring(0, MaxCodeLength) + "..." 
+                        : step.Code;
+                    userContent.AppendLine($"Code executed:\n```lua\n{truncatedCode}\n```");
+                }
+                
+                // Include the result
+                userContent.AppendLine($"Result: {(step.Success == true ? "✓ Success" : step.Success == false ? $"✗ Failed: {step.Error}" : "Pending")}");
+                
+                // Include captured output data
                 if (!string.IsNullOrEmpty(step.ResultData) && step.ResultData.Length > 0)
                 {
-                    var truncatedData = step.ResultData.Length > 500 
-                        ? step.ResultData.Substring(0, 500) + "..." 
+                    var truncatedData = step.ResultData.Length > MaxResultDataLength 
+                        ? step.ResultData.Substring(0, MaxResultDataLength) + "..." 
                         : step.ResultData;
-                    userContent.AppendLine($"  Data: {truncatedData}");
+                    userContent.AppendLine($"Output:\n{truncatedData}");
                 }
             }
         }
@@ -401,10 +429,18 @@ public class InteractiveAiService
     {
         // Wrap the code to capture output and return it to the report endpoint
         // We override both print() and PrintTable() to capture all output
+        // We use global flags (_AI_CAPTURED_DATA and _AI_EXECUTION_ERROR) since 
+        // RunString swallows errors and doesn't propagate them to outer pcall
+        // 
+        // We use RunString with handleError=false to get error messages returned
+        // instead of being swallowed internally
         return """
             local _capturedOutput = {}
             local _originalPrint = print
             local _originalPrintTable = PrintTable
+            
+            -- Clear previous error state
+            _AI_EXECUTION_ERROR = nil
             
             print = function(...)
                 local args = {...}
@@ -448,17 +484,26 @@ public class InteractiveAiService
                 end
             end
             
-            local _success, _err = pcall(function()
+            -- Store the user code as a string to handle syntax errors properly
+            local _userCode = [===[
             """ + code + """
-            end)
+            ]===]
+            
+            -- Run the code with handleError=false to get error messages returned
+            local _err = RunString(_userCode, "AI_Generated_Code", false)
             
             print = _originalPrint
             PrintTable = _originalPrintTable
             
             -- Return captured data
             _AI_CAPTURED_DATA = table.concat(_capturedOutput, "\n")
-            if not _success then
-                error(_err)
+            
+            -- Check if RunString returned an error message
+            if _err and _err ~= "" then
+                -- Store the error message in a global for the outer code to detect
+                _AI_EXECUTION_ERROR = tostring(_err)
+                -- Append error to captured data for debugging
+                _AI_CAPTURED_DATA = _AI_CAPTURED_DATA .. "\n[LUA ERROR]: " .. _AI_EXECUTION_ERROR
             end
             """;
     }
