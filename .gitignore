@@ -6,6 +6,7 @@ settings.json
 # User data
 users.json
 accounts.json
+pending_credits.json
 saved_payloads/
 
 # .NET build artifacts

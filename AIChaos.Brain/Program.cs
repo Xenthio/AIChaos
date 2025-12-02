@@ -16,7 +16,6 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChao
 builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<CommandQueueService>();
 builder.Services.AddSingleton<AiCodeGeneratorService>();
-builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<AccountService>();
 builder.Services.AddSingleton<RefundService>();
 builder.Services.AddSingleton<TwitchService>();

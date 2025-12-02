@@ -46,6 +46,11 @@ public class Account
     /// Linked YouTube Channel ID (null if not linked).
     /// </summary>
     public string? LinkedYouTubeChannelId { get; set; }
+    
+    /// <summary>
+    /// Profile picture URL (from Google Sign-In).
+    /// </summary>
+    public string? PictureUrl { get; set; }
 
     /// <summary>
     /// Pending verification code for linking YouTube (null if no pending link).

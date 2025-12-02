@@ -12,11 +12,13 @@ namespace AIChaos.Brain.Services;
 public class AccountService
 {
     private readonly string _accountsPath;
+    private readonly string _pendingCreditsPath;
     private readonly ILogger<AccountService> _logger;
     private readonly ConcurrentDictionary<string, Account> _accounts = new(); // by ID
     private readonly ConcurrentDictionary<string, string> _usernameIndex = new(); // username -> ID
     private readonly ConcurrentDictionary<string, string> _youtubeIndex = new(); // YouTube Channel ID -> Account ID
     private readonly ConcurrentDictionary<string, string> _sessionIndex = new(); // Session Token -> Account ID
+    private readonly ConcurrentDictionary<string, PendingChannelCredits> _pendingCredits = new(); // YouTube Channel ID -> Pending Credits
     private readonly object _lock = new();
 
     private const int DEFAULT_RATE_LIMIT_SECONDS = 20;
@@ -27,7 +29,9 @@ public class AccountService
     {
         _logger = logger;
         _accountsPath = Path.Combine(AppContext.BaseDirectory, "accounts.json");
+        _pendingCreditsPath = Path.Combine(AppContext.BaseDirectory, "pending_credits.json");
         LoadAccounts();
+        LoadPendingCredits();
     }
 
     /// <summary>
@@ -191,10 +195,10 @@ public class AccountService
     }
 
     /// <summary>
-    /// Checks if a Super Chat message contains a verification code and links the channel.
-    /// Called by YouTubeService when processing Super Chats.
+    /// Checks if a chat message (regular or Super Chat) contains a verification code and links the channel.
+    /// Called by YouTubeService when processing any chat message.
     /// </summary>
-    public (bool Linked, string? AccountId) CheckAndLinkFromSuperChat(string youtubeChannelId, string message, string displayName)
+    public (bool Linked, string? AccountId) CheckAndLinkFromChatMessage(string youtubeChannelId, string message, string displayName)
     {
         // Check if this YouTube channel is already linked
         if (_youtubeIndex.ContainsKey(youtubeChannelId))
@@ -215,23 +219,9 @@ public class AccountService
             if (message.Contains(account.PendingVerificationCode, StringComparison.OrdinalIgnoreCase))
             {
                 // Found a match! Link the channel
-                lock (account)
-                {
-                    account.LinkedYouTubeChannelId = youtubeChannelId;
-                    account.PendingVerificationCode = null;
-                    account.VerificationCodeExpiresAt = null;
-                    
-                    // Update display name if not set
-                    if (account.DisplayName == account.Username)
-                    {
-                        account.DisplayName = displayName;
-                    }
-                }
+                LinkChannelToAccount(account, youtubeChannelId, displayName);
                 
-                _youtubeIndex[youtubeChannelId] = account.Id;
-                SaveAccounts();
-                
-                _logger.LogInformation("[ACCOUNT] Linked YouTube channel {ChannelId} to {Username}", 
+                _logger.LogInformation("[ACCOUNT] Linked YouTube channel {ChannelId} to {Username} via chat message", 
                     youtubeChannelId, account.Username);
                 
                 return (true, account.Id);
@@ -240,11 +230,102 @@ public class AccountService
         
         return (false, null);
     }
+    
+    /// <summary>
+    /// Links a channel to an account and transfers any pending credits.
+    /// </summary>
+    private void LinkChannelToAccount(Account account, string youtubeChannelId, string displayName, string? pictureUrl = null)
+    {
+        decimal transferredCredits = 0;
+        
+        lock (account)
+        {
+            account.LinkedYouTubeChannelId = youtubeChannelId;
+            account.PendingVerificationCode = null;
+            account.VerificationCodeExpiresAt = null;
+            
+            // Update display name if not set
+            if (account.DisplayName == account.Username && !string.IsNullOrEmpty(displayName))
+            {
+                account.DisplayName = displayName;
+            }
+            
+            // Set picture URL if provided
+            if (!string.IsNullOrEmpty(pictureUrl))
+            {
+                account.PictureUrl = pictureUrl;
+            }
+            
+            // Transfer any pending credits for this channel
+            if (_pendingCredits.TryRemove(youtubeChannelId, out var pending))
+            {
+                account.CreditBalance += pending.PendingBalance;
+                transferredCredits = pending.PendingBalance;
+                _logger.LogInformation("[ACCOUNT] Transferred ${Amount} pending credits to {Username}", 
+                    transferredCredits, account.Username);
+            }
+        }
+        
+        _youtubeIndex[youtubeChannelId] = account.Id;
+        SaveAccounts();
+        SavePendingCredits();
+    }
+
+    /// <summary>
+    /// Adds credits to a YouTube channel. If linked to an account, adds directly.
+    /// If not linked, stores as pending credits that will transfer when linked.
+    /// </summary>
+    public void AddCreditsToChannel(string youtubeChannelId, decimal amount, string displayName, string? message = null)
+    {
+        // Check if this channel is linked to an account
+        if (_youtubeIndex.TryGetValue(youtubeChannelId, out var accountId))
+        {
+            // Add credits directly to the account
+            AddCredits(accountId, amount);
+            return;
+        }
+        
+        // Store as pending credits
+        var pending = _pendingCredits.GetOrAdd(youtubeChannelId, _ => new PendingChannelCredits
+        {
+            ChannelId = youtubeChannelId,
+            DisplayName = displayName
+        });
+        
+        lock (pending)
+        {
+            pending.PendingBalance += amount;
+            pending.DisplayName = displayName; // Update display name
+            pending.Donations.Add(new DonationRecord
+            {
+                Timestamp = DateTime.UtcNow,
+                Amount = amount,
+                Source = "superchat",
+                Message = message
+            });
+        }
+        
+        SavePendingCredits();
+        _logger.LogInformation("[ACCOUNT] Stored ${Amount} pending credits for unlinked channel {ChannelId} ({DisplayName})", 
+            amount, youtubeChannelId, displayName);
+    }
+    
+    /// <summary>
+    /// Gets pending credits for a YouTube channel.
+    /// </summary>
+    public decimal GetPendingCreditsForChannel(string youtubeChannelId)
+    {
+        if (_pendingCredits.TryGetValue(youtubeChannelId, out var pending))
+        {
+            return pending.PendingBalance;
+        }
+        return 0;
+    }
 
     /// <summary>
     /// Directly links a YouTube channel to an account (used for OAuth linking).
     /// </summary>
-    public bool LinkYouTubeChannel(string accountId, string youtubeChannelId)
+    public bool LinkYouTubeChannel(string accountId, string youtubeChannelId, string? pictureUrl = null)
     {
         if (!_accounts.TryGetValue(accountId, out var account))
         {
@@ -257,15 +338,8 @@ public class AccountService
             return false;
         }
         
-        lock (account)
-        {
-            account.LinkedYouTubeChannelId = youtubeChannelId;
-            account.PendingVerificationCode = null;
-            account.VerificationCodeExpiresAt = null;
-        }
-        
-        _youtubeIndex[youtubeChannelId] = accountId;
-        SaveAccounts();
+        // Use the helper to link and transfer pending credits
+        LinkChannelToAccount(account, youtubeChannelId, "", pictureUrl);
         
         _logger.LogInformation("[ACCOUNT] Linked YouTube channel {ChannelId} to account {AccountId}", 
             youtubeChannelId, accountId);
@@ -459,6 +533,50 @@ public class AccountService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to save accounts");
+            }
+        }
+    }
+    
+    private void LoadPendingCredits()
+    {
+        try
+        {
+            if (File.Exists(_pendingCreditsPath))
+            {
+                var json = File.ReadAllText(_pendingCreditsPath);
+                var credits = JsonSerializer.Deserialize<List<PendingChannelCredits>>(json);
+
+                if (credits != null)
+                {
+                    foreach (var pending in credits)
+                    {
+                        _pendingCredits[pending.ChannelId] = pending;
+                    }
+                    _logger.LogInformation("Loaded {Count} pending credit records from disk", _pendingCredits.Count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load pending credits");
+        }
+    }
+    
+    private void SavePendingCredits()
+    {
+        lock (_lock)
+        {
+            try
+            {
+                var json = JsonSerializer.Serialize(_pendingCredits.Values.ToList(), new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                File.WriteAllText(_pendingCreditsPath, json);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save pending credits");
             }
         }
     }

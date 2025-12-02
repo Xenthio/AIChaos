@@ -61,7 +61,8 @@ public class AccountController : ControllerBase
                 username = account.Username,
                 displayName = account.DisplayName,
                 balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId
+                linkedYouTube = account.LinkedYouTubeChannelId,
+                picture = account.PictureUrl
             }
         });
     }
@@ -89,7 +90,8 @@ public class AccountController : ControllerBase
                 username = account.Username,
                 displayName = account.DisplayName,
                 balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId
+                linkedYouTube = account.LinkedYouTubeChannelId,
+                picture = account.PictureUrl
             }
         });
     }
@@ -120,7 +122,8 @@ public class AccountController : ControllerBase
                 username = account.Username,
                 displayName = account.DisplayName,
                 balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId
+                linkedYouTube = account.LinkedYouTubeChannelId,
+                picture = account.PictureUrl
             }
         });
     }
@@ -201,16 +204,16 @@ public class AccountController : ControllerBase
             return BadRequest(new { status = "error", message = "Google credential required" });
         }
         
-        // Verify the JWT token
-        var googleId = await VerifyGoogleToken(request.Credential, settingsService.Settings.YouTube.ClientId);
+        // Verify the JWT token and extract claims
+        var (googleId, pictureUrl) = await VerifyGoogleToken(request.Credential, settingsService.Settings.YouTube.ClientId);
         
         if (string.IsNullOrEmpty(googleId))
         {
             return BadRequest(new { status = "error", message = "Invalid or expired Google credential" });
         }
         
-        // Link the Google ID as the YouTube channel ID
-        var success = _accountService.LinkYouTubeChannel(account.Id, googleId);
+        // Link the Google ID as the YouTube channel ID, with picture URL
+        var success = _accountService.LinkYouTubeChannel(account.Id, googleId, pictureUrl);
         
         if (!success)
         {
@@ -220,18 +223,22 @@ public class AccountController : ControllerBase
         _logger.LogInformation("[ACCOUNT] Linked YouTube via Google: {GoogleId} to {Username}", 
             googleId, account.Username);
         
+        // Get updated account to return picture
+        var updatedAccount = _accountService.GetAccountBySession(sessionToken);
+        
         return Ok(new 
         { 
             status = "success",
             message = "YouTube channel linked successfully via Google Sign-In!",
-            linkedYouTube = googleId
+            linkedYouTube = googleId,
+            picture = pictureUrl
         });
     }
     
     /// <summary>
-    /// Verifies a Google ID token and returns the Google ID (sub claim) if valid.
+    /// Verifies a Google ID token and returns the Google ID (sub claim) and picture URL if valid.
     /// </summary>
-    private async Task<string?> VerifyGoogleToken(string credential, string? expectedClientId)
+    private async Task<(string? GoogleId, string? PictureUrl)> VerifyGoogleToken(string credential, string? expectedClientId)
     {
         try
         {
@@ -242,7 +249,7 @@ public class AccountController : ControllerBase
             if (parts.Length != 3)
             {
                 _logger.LogWarning("[AUTH] Invalid JWT format");
-                return null;
+                return (null, null);
             }
             
             // Decode payload
@@ -261,7 +268,7 @@ public class AccountController : ControllerBase
             if (claims == null)
             {
                 _logger.LogWarning("[AUTH] Failed to parse JWT claims");
-                return null;
+                return (null, null);
             }
             
             // Verify issuer
@@ -271,13 +278,13 @@ public class AccountController : ControllerBase
                 if (iss != "https://accounts.google.com" && iss != "accounts.google.com")
                 {
                     _logger.LogWarning("[AUTH] Invalid JWT issuer: {Issuer}", iss);
-                    return null;
+                    return (null, null);
                 }
             }
             else
             {
                 _logger.LogWarning("[AUTH] Missing JWT issuer");
-                return null;
+                return (null, null);
             }
             
             // Verify audience (client ID)
@@ -288,7 +295,7 @@ public class AccountController : ControllerBase
                 {
                     _logger.LogWarning("[AUTH] JWT audience mismatch. Expected: {Expected}, Got: {Got}", 
                         expectedClientId, aud);
-                    return null;
+                    return (null, null);
                 }
             }
             
@@ -301,24 +308,38 @@ public class AccountController : ControllerBase
                     if (expTime < DateTimeOffset.UtcNow)
                     {
                         _logger.LogWarning("[AUTH] JWT token expired");
-                        return null;
+                        return (null, null);
                     }
                 }
             }
             
             // Extract Google ID (sub claim)
+            string? googleId = null;
+            string? pictureUrl = null;
+            
             if (claims.TryGetValue("sub", out var subObj))
             {
-                return subObj?.ToString();
+                googleId = subObj?.ToString();
             }
             
-            _logger.LogWarning("[AUTH] Missing sub claim in JWT");
-            return null;
+            // Extract picture URL
+            if (claims.TryGetValue("picture", out var pictureObj))
+            {
+                pictureUrl = pictureObj?.ToString();
+            }
+            
+            if (string.IsNullOrEmpty(googleId))
+            {
+                _logger.LogWarning("[AUTH] Missing sub claim in JWT");
+                return (null, null);
+            }
+            
+            return (googleId, pictureUrl);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AUTH] Failed to verify Google token");
-            return null;
+            return (null, null);
         }
     }
 

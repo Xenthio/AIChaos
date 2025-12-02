@@ -15,7 +15,6 @@ public partial class YouTubeService : IDisposable
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
-    private readonly UserService _userService;
     private readonly AccountService _accountService;
     private readonly ILogger<YouTubeService> _logger;
 
@@ -32,14 +31,12 @@ public partial class YouTubeService : IDisposable
         SettingsService settingsService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
-        UserService userService,
         AccountService accountService,
         ILogger<YouTubeService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
-        _userService = userService;
         _accountService = accountService;
         _logger = logger;
     }
@@ -210,6 +207,13 @@ public partial class YouTubeService : IDisposable
         var username = author.DisplayName ?? "Unknown";
         var channelId = author.ChannelId ?? "";
 
+        // Check ALL messages for verification codes (allows linking via regular chat)
+        var (linked, _) = _accountService.CheckAndLinkFromChatMessage(channelId, messageText, username);
+        if (linked)
+        {
+            _logger.LogInformation("[YouTube] Channel {ChannelId} linked to account via chat message!", channelId);
+        }
+
         // Check for Super Chat
         var isSuperChat = snippet.Type == "superChatEvent" || snippet.Type == "superStickerEvent";
         decimal superChatAmount = 0;
@@ -220,7 +224,7 @@ public partial class YouTubeService : IDisposable
             messageText = snippet.SuperChatDetails.UserComment ?? messageText;
         }
 
-        // Only process Super Chats that meet the minimum amount
+        // Only process Super Chats for credits
         if (!isSuperChat || superChatAmount < settings.MinSuperChatAmount)
         {
             return;
@@ -228,35 +232,13 @@ public partial class YouTubeService : IDisposable
 
         _logger.LogInformation("[YouTube] Super Chat from {Username} ({ChannelId}): ${Amount}",
             username, channelId, superChatAmount);
-
-        // Check if this Super Chat contains a verification code for account linking
-        var (linked, existingAccountId) = _accountService.CheckAndLinkFromSuperChat(channelId, messageText, username);
         
-        if (linked)
-        {
-            _logger.LogInformation("[YouTube] Channel {ChannelId} linked to account via Super Chat!", channelId);
-        }
-        
-        // Add credits to the linked account, or fall back to legacy user system
+        // Add credits - this will go to the account if linked, or store as pending if not
         try
         {
-            // Check if channel is linked to an account
-            var account = _accountService.GetAccountByYouTubeChannel(channelId);
-            
-            if (account != null)
-            {
-                // Add credits to the account
-                _accountService.AddCredits(account.Id, superChatAmount);
-                _logger.LogInformation("[YouTube] Added ${Amount} credits to account {Username}",
-                    superChatAmount, account.Username);
-            }
-            else
-            {
-                // Fall back to legacy user system (for unlinked channels)
-                _userService.AddCredits(channelId, superChatAmount, username);
-                _logger.LogInformation("[YouTube] Added ${Amount} credits to unlinked channel {ChannelId} (legacy)",
-                    superChatAmount, channelId);
-            }
+            _accountService.AddCreditsToChannel(channelId, superChatAmount, username, messageText);
+            // Note: Legacy UserService credits are handled separately through AddCreditsToChannel
+            // when an account is not linked, to avoid double-crediting
         }
         catch (Exception ex)
         {

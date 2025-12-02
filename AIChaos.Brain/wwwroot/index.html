@@ -130,10 +130,12 @@
                 <button onclick="showLoginModal()" style="padding: 8px 16px;">🔓 Login / Register</button>
             </div>
             <div id="userSection" class="hidden user-profile">
+                <img id="userAvatar" src="" alt="" style="width: 28px; height: 28px; border-radius: 50%; display: none;">
                 <span id="userName">Guest</span>
                 <span class="credits-display">$ <span id="userCredits">0.00</span></span>
-                <button onclick="showLinkYouTubeModal()" title="Link YouTube Channel"
+                <button id="linkYouTubeBtn" onclick="showLinkYouTubeModal()" title="Link YouTube Channel"
                     style="background: none; border: none; color: var(--warning); cursor: pointer; font-size: 12px;">📺 Link YouTube</button>
+                <span id="youtubeLinkedText" class="hidden" style="color: var(--success); font-size: 12px;">✓ YouTube Linked</span>
                 <button onclick="logout()"
                     style="background: none; border: none; color: var(--text-dim); cursor: pointer;">(Logout)</button>
             </div>
@@ -212,11 +214,13 @@
                     </div>
                     
                     <div id="linkStep2" class="hidden" style="margin-top: 15px;">
-                        <p><strong>Step 2:</strong> Send a Super Chat on the stream containing this code:</p>
+                        <p><strong>Step 2:</strong> Type this code into the stream chat:</p>
                         <div style="padding: 15px; background: #000; border-radius: 8px; text-align: center; margin: 10px 0;">
                             <span id="linkCode" style="font-size: 24px; font-weight: bold; color: var(--success); letter-spacing: 3px;"></span>
                         </div>
-                        <p style="color: var(--text-dim); font-size: 12px;">The code expires in 30 minutes. Once your Super Chat with the code is detected, your account will be linked automatically!</p>
+                        <p style="color: var(--text-dim); font-size: 12px;">💬 If that doesn't work, try sending it as a Super Chat to bypass YouTube's spam filter.</p>
+                        <p style="color: var(--text-dim); font-size: 12px; margin-top: 5px;">⏱️ The code expires in 30 minutes.</p>
+                        <p style="color: var(--info); font-size: 12px; margin-top: 8px;">💰 <strong>Bonus:</strong> Any Super Chats you've sent before linking will be automatically credited to your account!</p>
                     </div>
                 </div>
                 
@@ -563,6 +567,36 @@
             document.getElementById('sendBtn').textContent = "⚡ SEND CHAOS ($0.10)";
             document.getElementById('sendBtn').disabled = false;
             document.getElementById('promptInput').placeholder = "Ex: Make everyone tiny, Spawn 10 headcrabs...";
+            
+            // Update YouTube linked state
+            updateYouTubeLinkState();
+        }
+        
+        function updateYouTubeLinkState() {
+            const linkBtn = document.getElementById('linkYouTubeBtn');
+            const linkedText = document.getElementById('youtubeLinkedText');
+            const avatar = document.getElementById('userAvatar');
+            
+            if (currentAccount && currentAccount.linkedYouTube) {
+                // YouTube is linked - hide button, show linked text
+                linkBtn.classList.add('hidden');
+                linkedText.classList.remove('hidden');
+                
+                // Show avatar if we have picture info (from Google Sign-In)
+                if (currentAccount.picture) {
+                    avatar.src = currentAccount.picture;
+                    avatar.style.display = 'block';
+                } else {
+                    // Use a stable YouTube favicon URL
+                    avatar.src = 'https://www.youtube.com/favicon.ico';
+                    avatar.style.display = 'block';
+                }
+            } else {
+                // YouTube not linked - show button, hide linked text
+                linkBtn.classList.remove('hidden');
+                linkedText.classList.add('hidden');
+                avatar.style.display = 'none';
+            }
         }
         
         async function generateLinkCode() {
