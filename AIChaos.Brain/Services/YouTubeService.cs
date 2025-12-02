@@ -15,7 +15,6 @@ public partial class YouTubeService : IDisposable
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
-    private readonly UserService _userService;
     private readonly AccountService _accountService;
     private readonly ILogger<YouTubeService> _logger;
 
@@ -32,14 +31,12 @@ public partial class YouTubeService : IDisposable
         SettingsService settingsService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
-        UserService userService,
         AccountService accountService,
         ILogger<YouTubeService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
-        _userService = userService;
         _accountService = accountService;
         _logger = logger;
     }

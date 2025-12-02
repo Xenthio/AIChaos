@@ -28,13 +28,13 @@ public enum RefundStatus
 /// </summary>
 public class RefundService
 {
-    private readonly UserService _userService;
+    private readonly AccountService _accountService;
     private readonly ILogger<RefundService> _logger;
     private readonly ConcurrentDictionary<string, RefundRequest> _requests = new();
 
-    public RefundService(UserService userService, ILogger<RefundService> logger)
+    public RefundService(AccountService accountService, ILogger<RefundService> logger)
     {
-        _userService = userService;
+        _accountService = accountService;
         _logger = logger;
     }
 
@@ -78,7 +78,7 @@ public class RefundService
         if (_requests.TryGetValue(requestId, out var request) && request.Status == RefundStatus.Pending)
         {
             request.Status = RefundStatus.Approved;
-            _userService.AddCredits(request.UserId, request.Amount, request.UserDisplayName);
+            _accountService.AddCredits(request.UserId, request.Amount);
             _logger.LogInformation("[REFUND] Approved request {Id} for {User}", requestId, request.UserDisplayName);
             return true;
         }

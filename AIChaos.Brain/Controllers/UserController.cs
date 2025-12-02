@@ -11,20 +11,20 @@ namespace AIChaos.Brain.Controllers;
 [Route("api/user")]
 public class UserController : ControllerBase
 {
-    private readonly UserService _userService;
+    private readonly AccountService _accountService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly TestClientService _testClientService;
     private readonly ILogger<UserController> _logger;
 
     public UserController(
-        UserService userService,
+        AccountService accountService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
         TestClientService testClientService,
         ILogger<UserController> logger)
     {
-        _userService = userService;
+        _accountService = accountService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
         _testClientService = testClientService;
@@ -35,15 +35,15 @@ public class UserController : ControllerBase
     /// Gets the credit balance for a user.
     /// </summary>
     [HttpGet("balance")]
-    public ActionResult GetBalance([FromHeader(Name = "X-User-Id")] string userId)
+    public ActionResult GetBalance([FromHeader(Name = "X-User-Id")] string accountId)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(accountId))
         {
-            return BadRequest(new { status = "error", message = "User ID required" });
+            return BadRequest(new { status = "error", message = "Account ID required" });
         }
 
-        var user = _userService.GetUser(userId);
-        var balance = user?.CreditBalance ?? 0m;
+        var account = _accountService.GetAccountBySession(accountId);
+        var balance = account?.CreditBalance ?? 0m;
         return Ok(new { balance });
     }
 
@@ -52,13 +52,13 @@ public class UserController : ControllerBase
     /// </summary>
     [HttpPost("submit")]
     public async Task<ActionResult> SubmitCommand(
-        [FromHeader(Name = "X-User-Id")] string userId,
+        [FromHeader(Name = "X-User-Id")] string accountId,
         [FromHeader(Name = "X-User-Name")] string? userName,
         [FromBody] UserSubmitRequest request)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(accountId))
         {
-            return BadRequest(new { status = "error", message = "User ID required" });
+            return BadRequest(new { status = "error", message = "Account ID required" });
         }
 
         if (string.IsNullOrEmpty(request.Prompt))
@@ -67,7 +67,7 @@ public class UserController : ControllerBase
         }
 
         // Check rate limit
-        var (allowed, waitSeconds) = _userService.CheckRateLimit(userId);
+        var (allowed, waitSeconds) = _accountService.CheckRateLimit(accountId);
         if (!allowed)
         {
             return Ok(new
@@ -79,9 +79,9 @@ public class UserController : ControllerBase
             });
         }
 
-        // Check if user has enough credits
-        var user = _userService.GetUser(userId);
-        var balance = user?.CreditBalance ?? 0m;
+        // Check if account has enough credits
+        var account = _accountService.GetAccountBySession(accountId);
+        var balance = account?.CreditBalance ?? 0m;
 
         if (balance < Constants.CommandCost)
         {
@@ -99,7 +99,7 @@ public class UserController : ControllerBase
             var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(request.Prompt);
 
             // Deduct credits
-            if (!_userService.DeductCredits(userId, Constants.CommandCost))
+            if (account == null || !_accountService.DeductCredits(account.Id, Constants.CommandCost))
             {
                 return Ok(new { status = "error", message = "Failed to deduct credits" });
             }
@@ -111,9 +111,9 @@ public class UserController : ControllerBase
                 executionCode,
                 undoCode,
                 "web",
-                userName ?? "User",
+                userName ?? account.DisplayName ?? "User",
                 null,
-                userId,
+                account.Id,
                 null,
                 queueForExecution: !isTestClientModeEnabled);
 
@@ -121,40 +121,38 @@ public class UserController : ControllerBase
             if (isTestClientModeEnabled)
             {
                 _testClientService.QueueForTesting(entry.Id, executionCode, request.Prompt);
-                _logger.LogInformation("[USER] Command #{CommandId} queued for testing by {UserId}", entry.Id, userId);
+                _logger.LogInformation("[USER] Command #{CommandId} queued for testing by {AccountId}", entry.Id, account.Id);
             }
             else
             {
-                _logger.LogInformation("[USER] Command #{CommandId} queued by {UserId}", entry.Id, userId);
+                _logger.LogInformation("[USER] Command #{CommandId} queued by {AccountId}", entry.Id, account.Id);
             }
 
-            var updatedUser = _userService.GetUser(userId);
-            var newBalance = updatedUser?.CreditBalance ?? 0m;
             return Ok(new
             {
                 status = "success",
                 message = "Command submitted successfully",
                 commandId = entry.Id,
-                balance = newBalance,
+                balance = account.CreditBalance,
                 cost = Constants.CommandCost
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[USER] Failed to submit command for {UserId}", userId);
+            _logger.LogError(ex, "[USER] Failed to submit command for {AccountId}", accountId);
             return StatusCode(500, new { status = "error", message = "Failed to process command" });
         }
     }
     
     /// <summary>
-    /// Simulates a Super Chat to add credits to a user's balance (admin only).
+    /// Simulates a Super Chat to add credits to an account's balance (admin only).
     /// </summary>
     [HttpPost("simulate-superchat")]
     public ActionResult SimulateSuperChat([FromBody] SimulateSuperChatRequest request)
     {
         if (string.IsNullOrEmpty(request.UserId))
         {
-            return BadRequest(new { status = "error", message = "User ID required" });
+            return BadRequest(new { status = "error", message = "Account ID required" });
         }
         
         if (request.Amount <= 0)
@@ -164,9 +162,8 @@ public class UserController : ControllerBase
         
         var displayName = request.DisplayName ?? "Simulated User";
         
-        _userService.AddCredits(request.UserId, request.Amount, displayName);
-        
-        var user = _userService.GetUser(request.UserId);
+        // Add credits to the channel (will go to account if linked, or store as pending)
+        _accountService.AddCreditsToChannel(request.UserId, request.Amount, displayName, "Simulated Super Chat");
         
         _logger.LogInformation("[ADMIN] Simulated Super Chat: ${Amount} to {User} ({Id})", 
             request.Amount, displayName, request.UserId);
@@ -174,8 +171,7 @@ public class UserController : ControllerBase
         return Ok(new 
         { 
             status = "success", 
-            message = $"Added ${request.Amount:F2} credits to {displayName}",
-            newBalance = user?.CreditBalance ?? request.Amount
+            message = $"Added ${request.Amount:F2} credits to {displayName}"
         });
     }
 }
