@@ -5,7 +5,10 @@ namespace AIChaos.Brain.Models;
 /// </summary>
 public class AppSettings
 {
+    public AiSettings Ai { get; set; } = new();
     public OpenRouterSettings OpenRouter { get; set; } = new();
+    public OllamaSettings Ollama { get; set; } = new();
+    public OobaSettings Oobabooga { get; set; } = new();
     public TwitchSettings Twitch { get; set; } = new();
     public YouTubeSettings YouTube { get; set; } = new();
     public SafetySettings Safety { get; set; } = new();
@@ -14,11 +17,80 @@ public class AppSettings
     public TestClientSettings TestClient { get; set; } = new();
 }
 
+/// <summary>
+/// AI provider configuration.
+/// </summary>
+public class AiSettings
+{
+    /// <summary>
+    /// The AI provider to use (OpenRouter, Ollama, or Oobabooga).
+    /// </summary>
+    public AiProvider Provider { get; set; } = AiProvider.OpenRouter;
+}
+
+/// <summary>
+/// Available AI providers.
+/// </summary>
+public enum AiProvider
+{
+    /// <summary>
+    /// OpenRouter API (default) - cloud-based API with multiple model access.
+    /// </summary>
+    OpenRouter,
+    
+    /// <summary>
+    /// Ollama - local AI model server.
+    /// </summary>
+    Ollama,
+    
+    /// <summary>
+    /// Oobabooga (text-generation-webui) - local AI with OpenAI-compatible API.
+    /// </summary>
+    Oobabooga
+}
+
 public class OpenRouterSettings
 {
     public string ApiKey { get; set; } = "";
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
     public string Model { get; set; } = "anthropic/claude-sonnet-4.5";
+}
+
+/// <summary>
+/// Ollama local AI server settings.
+/// </summary>
+public class OllamaSettings
+{
+    /// <summary>
+    /// Base URL for Ollama API (default: http://localhost:11434).
+    /// </summary>
+    public string BaseUrl { get; set; } = "http://localhost:11434";
+    
+    /// <summary>
+    /// Model name to use (e.g., llama3, codellama, mistral).
+    /// </summary>
+    public string Model { get; set; } = "llama3";
+}
+
+/// <summary>
+/// Oobabooga (text-generation-webui) settings with OpenAI-compatible API.
+/// </summary>
+public class OobaSettings
+{
+    /// <summary>
+    /// Base URL for Oobabooga API (default: http://localhost:5000/v1).
+    /// </summary>
+    public string BaseUrl { get; set; } = "http://localhost:5001/v1";
+    
+    /// <summary>
+    /// Optional API key if authentication is enabled.
+    /// </summary>
+    public string ApiKey { get; set; } = "";
+    
+    /// <summary>
+    /// Model name (optional - depends on loaded model in text-generation-webui).
+    /// </summary>
+    public string Model { get; set; } = "";
 }
 
 public class TwitchSettings

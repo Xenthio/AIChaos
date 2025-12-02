@@ -354,6 +354,110 @@ public class SetupController : ControllerBase
     }
     
     // ==========================================
+    // AI PROVIDER CONFIGURATION
+    // ==========================================
+    
+    /// <summary>
+    /// Gets the current AI provider configuration.
+    /// </summary>
+    [HttpGet("ai-provider")]
+    public ActionResult GetAiProvider()
+    {
+        var settings = _settingsService.Settings;
+        return Ok(new
+        {
+            provider = settings.Ai.Provider.ToString(),
+            openRouter = new
+            {
+                baseUrl = settings.OpenRouter.BaseUrl,
+                model = settings.OpenRouter.Model,
+                hasApiKey = !string.IsNullOrEmpty(settings.OpenRouter.ApiKey)
+            },
+            ollama = new
+            {
+                baseUrl = settings.Ollama.BaseUrl,
+                model = settings.Ollama.Model
+            },
+            oobabooga = new
+            {
+                baseUrl = settings.Oobabooga.BaseUrl,
+                model = settings.Oobabooga.Model,
+                hasApiKey = !string.IsNullOrEmpty(settings.Oobabooga.ApiKey)
+            }
+        });
+    }
+    
+    /// <summary>
+    /// Sets the AI provider (OpenRouter, Ollama, or Oobabooga).
+    /// </summary>
+    [HttpPost("ai-provider")]
+    public ActionResult SetAiProvider([FromBody] AiProviderRequest request)
+    {
+        if (!Enum.TryParse<AiProvider>(request.Provider, ignoreCase: true, out var provider))
+        {
+            return BadRequest(new { status = "error", message = "Invalid provider. Must be OpenRouter, Ollama, or Oobabooga." });
+        }
+        
+        _settingsService.SetAiProvider(provider);
+        _logger.LogInformation("AI provider set to: {Provider}", provider);
+        
+        return Ok(new { status = "success", message = $"AI provider set to {provider}", provider = provider.ToString() });
+    }
+    
+    /// <summary>
+    /// Updates Ollama settings.
+    /// </summary>
+    [HttpPost("ollama")]
+    public ActionResult SaveOllamaSettings([FromBody] OllamaSettings settings)
+    {
+        _settingsService.UpdateOllama(settings);
+        _logger.LogInformation("Ollama settings saved");
+        
+        return Ok(new { status = "success", message = "Ollama settings saved" });
+    }
+    
+    /// <summary>
+    /// Gets Ollama settings.
+    /// </summary>
+    [HttpGet("ollama")]
+    public ActionResult GetOllamaSettings()
+    {
+        var settings = _settingsService.Settings.Ollama;
+        return Ok(new
+        {
+            baseUrl = settings.BaseUrl,
+            model = settings.Model
+        });
+    }
+    
+    /// <summary>
+    /// Updates Oobabooga (text-generation-webui) settings.
+    /// </summary>
+    [HttpPost("oobabooga")]
+    public ActionResult SaveOobaboogaSettings([FromBody] OobaSettings settings)
+    {
+        _settingsService.UpdateOobabooga(settings);
+        _logger.LogInformation("Oobabooga settings saved");
+        
+        return Ok(new { status = "success", message = "Oobabooga settings saved" });
+    }
+    
+    /// <summary>
+    /// Gets Oobabooga settings.
+    /// </summary>
+    [HttpGet("oobabooga")]
+    public ActionResult GetOobaboogaSettings()
+    {
+        var settings = _settingsService.Settings.Oobabooga;
+        return Ok(new
+        {
+            baseUrl = settings.BaseUrl,
+            model = settings.Model,
+            hasApiKey = !string.IsNullOrEmpty(settings.ApiKey)
+        });
+    }
+    
+    // ==========================================
     // TWITCH OAUTH
     // ==========================================
     
@@ -794,4 +898,9 @@ public class TestClientSettingsRequest
     public bool? CleanupAfterTest { get; set; }
     public int? TimeoutSeconds { get; set; }
     public string? GmodPath { get; set; }
+}
+
+public class AiProviderRequest
+{
+    public string Provider { get; set; } = "OpenRouter";
 }

@@ -226,37 +226,7 @@ public class AiCodeGeneratorService
             // Use unfiltered prompt when Private Discord Mode is enabled
             var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
 
-            var requestBody = new
-            {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = activePrompt },
-                    new { role = "user", content = userContent.ToString() }
-                }
-            };
-
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-            {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
-
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
+            var code = await CallAiProviderAsync(activePrompt, userContent.ToString(), settings);
 
             // Clean up markdown if present
             code = code.Replace("```lua", "").Replace("```", "").Trim();
@@ -277,6 +247,141 @@ public class AiCodeGeneratorService
             _logger.LogError(ex, "Failed to generate code");
             return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")");
         }
+    }
+
+    /// <summary>
+    /// Calls the configured AI provider and returns the response.
+    /// </summary>
+    private async Task<string> CallAiProviderAsync(string systemPrompt, string userPrompt, AppSettings settings)
+    {
+        return settings.Ai.Provider switch
+        {
+            AiProvider.Ollama => await CallOllamaAsync(systemPrompt, userPrompt, settings.Ollama),
+            AiProvider.Oobabooga => await CallOobaboogaAsync(systemPrompt, userPrompt, settings.Oobabooga),
+            _ => await CallOpenRouterAsync(systemPrompt, userPrompt, settings.OpenRouter)
+        };
+    }
+
+    /// <summary>
+    /// Calls OpenRouter API (default provider).
+    /// </summary>
+    private async Task<string> CallOpenRouterAsync(string systemPrompt, string userPrompt, OpenRouterSettings settings)
+    {
+        var requestBody = new
+        {
+            model = settings.Model,
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
+            }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/chat/completions")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json")
+        };
+
+        request.Headers.Add("Authorization", $"Bearer {settings.ApiKey}");
+
+        var response = await _httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        return ParseOpenAiCompatibleResponse(responseContent);
+    }
+
+    /// <summary>
+    /// Calls Ollama API (local AI server).
+    /// </summary>
+    private async Task<string> CallOllamaAsync(string systemPrompt, string userPrompt, OllamaSettings settings)
+    {
+        // Ollama uses the /api/chat endpoint
+        var requestBody = new
+        {
+            model = settings.Model,
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
+            },
+            stream = false
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/api/chat")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(requestBody),
+                Encoding.UTF8,
+                "application/json")
+        };
+
+        var response = await _httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var jsonDoc = JsonDocument.Parse(responseContent);
+
+        // Ollama response format: { "message": { "content": "..." } }
+        return jsonDoc.RootElement
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString() ?? "";
+    }
+
+    /// <summary>
+    /// Calls Oobabooga (text-generation-webui) API with OpenAI-compatible format.
+    /// </summary>
+    private async Task<string> CallOobaboogaAsync(string systemPrompt, string userPrompt, OobaSettings settings)
+    {
+        var requestBody = new
+        {
+            model = string.IsNullOrEmpty(settings.Model) ? (object?)null : settings.Model,
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
+            }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/chat/completions")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(requestBody, new JsonSerializerOptions 
+                { 
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull 
+                }),
+                Encoding.UTF8,
+                "application/json")
+        };
+
+        // Add API key if configured
+        if (!string.IsNullOrEmpty(settings.ApiKey))
+        {
+            request.Headers.Add("Authorization", $"Bearer {settings.ApiKey}");
+        }
+
+        var response = await _httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        return ParseOpenAiCompatibleResponse(responseContent);
+    }
+
+    /// <summary>
+    /// Parses OpenAI-compatible chat completion response format.
+    /// </summary>
+    private static string ParseOpenAiCompatibleResponse(string responseContent)
+    {
+        var jsonDoc = JsonDocument.Parse(responseContent);
+        return jsonDoc.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString() ?? "";
     }
 
     /// <summary>
@@ -305,37 +410,9 @@ public class AiCodeGeneratorService
         try
         {
             var settings = _settingsService.Settings;
-            var requestBody = new
-            {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects." },
-                    new { role = "user", content = forceUndoPrompt }
-                }
-            };
-
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-            {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
-
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
+            var systemPrompt = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects.";
+            
+            var code = await CallAiProviderAsync(systemPrompt, forceUndoPrompt, settings);
 
             return code.Replace("```lua", "").Replace("```", "").Trim();
         }

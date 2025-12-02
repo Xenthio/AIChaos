@@ -621,45 +621,108 @@ public class AgenticGameService
         }
         
         var settings = _settingsService.Settings;
-        var requestBody = new
+        
+        // Build messages for AI call
+        var messages = new[]
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = AgenticSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
+            new { role = "system", content = AgenticSystemPrompt },
+            new { role = "user", content = userContent.ToString() }
         };
         
         var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+        string aiContent;
+        
+        // Call the appropriate AI provider
+        switch (settings.Ai.Provider)
+        {
+            case AiProvider.Ollama:
+                aiContent = await CallOllamaAsync(httpClient, settings.Ollama, messages);
+                break;
+            case AiProvider.Oobabooga:
+                aiContent = await CallOobaboogaAsync(httpClient, settings.Oobabooga, messages);
+                break;
+            default:
+                aiContent = await CallOpenRouterAsync(httpClient, settings.OpenRouter, messages);
+                break;
+        }
+        
+        return ParseAgentAiResponse(aiContent);
+    }
+    
+    private static async Task<string> CallOpenRouterAsync(HttpClient httpClient, OpenRouterSettings settings, object[] messages)
+    {
+        var requestBody = new { model = settings.Model, messages };
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/chat/completions")
         {
             Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
         };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
+        request.Headers.Add("Authorization", $"Bearer {settings.ApiKey}");
+        
+        var response = await httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        
+        var responseContent = await response.Content.ReadAsStringAsync();
+        return ParseOpenAiCompatibleResponse(responseContent);
+    }
+    
+    private static async Task<string> CallOllamaAsync(HttpClient httpClient, OllamaSettings settings, object[] messages)
+    {
+        var requestBody = new { model = settings.Model, messages, stream = false };
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/api/chat")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
+        };
         
         var response = await httpClient.SendAsync(request);
         response.EnsureSuccessStatusCode();
         
         var responseContent = await response.Content.ReadAsStringAsync();
         var jsonDoc = JsonDocument.Parse(responseContent);
+        return jsonDoc.RootElement.GetProperty("message").GetProperty("content").GetString() ?? "";
+    }
+    
+    private static async Task<string> CallOobaboogaAsync(HttpClient httpClient, OobaSettings settings, object[] messages)
+    {
+        var requestBody = new { model = string.IsNullOrEmpty(settings.Model) ? (object?)null : settings.Model, messages };
+        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.BaseUrl}/chat/completions")
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(requestBody, new JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull }),
+                Encoding.UTF8, "application/json")
+        };
+        if (!string.IsNullOrEmpty(settings.ApiKey))
+        {
+            request.Headers.Add("Authorization", $"Bearer {settings.ApiKey}");
+        }
         
-        var aiContent = jsonDoc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
+        var response = await httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
         
-        return ParseAgentAiResponse(aiContent);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        return ParseOpenAiCompatibleResponse(responseContent);
+    }
+    
+    private static string ParseOpenAiCompatibleResponse(string responseContent)
+    {
+        var jsonDoc = JsonDocument.Parse(responseContent);
+        return jsonDoc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
     }
     
     private async Task<string?> AskAiToFixCodeAsync(string currentCode, string error, string originalPrompt)
     {
         var settings = _settingsService.Settings;
         
-        if (string.IsNullOrEmpty(settings.OpenRouter.ApiKey))
+        // Check if AI is configured based on provider
+        var isConfigured = settings.Ai.Provider switch
         {
-            _logger.LogWarning("[AGENT] Cannot fix code - API key not configured");
+            AiProvider.Ollama => !string.IsNullOrEmpty(settings.Ollama.BaseUrl),
+            AiProvider.Oobabooga => !string.IsNullOrEmpty(settings.Oobabooga.BaseUrl),
+            _ => !string.IsNullOrEmpty(settings.OpenRouter.ApiKey)
+        };
+        
+        if (!isConfigured)
+        {
+            _logger.LogWarning("[AGENT] Cannot fix code - AI not configured");
             return null;
         }
         
@@ -670,35 +733,22 @@ public class AgenticGameService
         userContent.AppendLine($"\n**Error message:**\n{error}");
         userContent.AppendLine("\nPlease fix the code. Return ONLY the fixed code.");
         
-        var requestBody = new
+        var messages = new[]
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = ErrorFixSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
+            new { role = "system", content = ErrorFixSystemPrompt },
+            new { role = "user", content = userContent.ToString() }
         };
         
         var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-        
-        var response = await httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return null;
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
         
         try
         {
-            var jsonDoc = JsonDocument.Parse(responseContent);
-            if (!jsonDoc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-                return null;
-            
-            var fixedCode = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+            string fixedCode = settings.Ai.Provider switch
+            {
+                AiProvider.Ollama => await CallOllamaAsync(httpClient, settings.Ollama, messages),
+                AiProvider.Oobabooga => await CallOobaboogaAsync(httpClient, settings.Oobabooga, messages),
+                _ => await CallOpenRouterAsync(httpClient, settings.OpenRouter, messages)
+            };
             
             // Clean markdown
             fixedCode = fixedCode.Trim();
