@@ -111,6 +111,37 @@
                 <div id="superChatResult" style="margin-top: 10px;"></div>
             </div>
             
+            <!-- YouTube API Simulator -->
+            <div class="card">
+                <h2>📺 YouTube API Simulator</h2>
+                <p style="color: var(--text-dim); margin-bottom: 15px;">
+                    Simulate a raw YouTube API Super Chat callback for testing channel linking and pending credits.
+                </p>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>YouTube Channel ID</label>
+                        <input type="text" id="ytApiChannelId" placeholder="UC...">
+                        <small>The YouTube channel ID (not username)</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <input type="text" id="ytApiDisplayName" placeholder="Channel Name">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Message (Optional)</label>
+                    <input type="text" id="ytApiMessage" placeholder="Optional message or LINK-CODE">
+                </div>
+                <div class="form-group">
+                    <label>Amount (USD)</label>
+                    <input type="number" id="ytApiAmount" value="5.00" min="0.01" step="0.01" placeholder="5.00">
+                </div>
+                
+                <button onclick="simulateYouTubeApi()">📺 Simulate YouTube API Call</button>
+                <div id="ytApiResult" style="margin-top: 10px;"></div>
+            </div>
+            
             <!-- OpenRouter API -->
             <div class="card">
                 <h2>
@@ -589,6 +620,47 @@
                 
                 if (data.status === 'success') {
                     resultDiv.innerHTML = `<div class="alert alert-success">${data.message}. New balance: $${data.newBalance.toFixed(2)}</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = '<div class="alert alert-error">Network error</div>';
+            }
+        }
+        
+        async function simulateYouTubeApi() {
+            const channelId = document.getElementById('ytApiChannelId').value.trim();
+            const displayName = document.getElementById('ytApiDisplayName').value.trim();
+            const message = document.getElementById('ytApiMessage').value.trim();
+            const amount = parseFloat(document.getElementById('ytApiAmount').value);
+            const resultDiv = document.getElementById('ytApiResult');
+            
+            if (!channelId) {
+                resultDiv.innerHTML = '<div class="alert alert-error">YouTube Channel ID is required</div>';
+                return;
+            }
+            
+            if (isNaN(amount) || amount <= 0) {
+                resultDiv.innerHTML = '<div class="alert alert-error">Amount must be a positive number</div>';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/user/simulate-youtube-api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        channelId: channelId,
+                        displayName: displayName || 'Test User',
+                        message: message || undefined,
+                        amount: amount
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
                 } else {
                     resultDiv.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
                 }

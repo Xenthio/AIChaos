@@ -175,8 +175,9 @@ public class UserController : ControllerBase
         // Add credits to the channel (will go to account if linked, or store as pending)
         _accountService.AddCreditsToChannel(channelId, request.Amount, displayName, "Simulated Super Chat");
         
-        // Get the new balance
-        var newBalance = _accountService.GetBalance(account.Id);
+        // Get the updated account to retrieve new balance
+        var updatedAccount = _accountService.GetAccountByUsername(request.UserId);
+        var newBalance = updatedAccount?.CreditBalance ?? 0m;
         
         _logger.LogInformation("[ADMIN] Simulated Super Chat: ${Amount} to {User} ({Id})", 
             request.Amount, displayName, request.UserId);
@@ -187,6 +188,49 @@ public class UserController : ControllerBase
             message = $"Added ${request.Amount:F2} credits to {displayName}",
             newBalance
         });
+    }
+    
+    /// <summary>
+    /// Simulates a YouTube API Super Chat callback (admin only, for testing).
+    /// This mimics what YouTubeService receives from YouTube's API.
+    /// </summary>
+    [HttpPost("simulate-youtube-api")]
+    public ActionResult SimulateYouTubeApi([FromBody] SimulateYouTubeApiRequest request,
+        [FromServices] YouTubeService youtubeService)
+    {
+        if (string.IsNullOrEmpty(request.ChannelId))
+        {
+            return BadRequest(new { status = "error", message = "YouTube Channel ID required" });
+        }
+        
+        if (request.Amount <= 0)
+        {
+            return BadRequest(new { status = "error", message = "Amount must be positive" });
+        }
+        
+        try
+        {
+            // Directly call AccountService like YouTubeService does
+            _accountService.AddCreditsToChannel(
+                request.ChannelId, 
+                request.Amount, 
+                request.DisplayName ?? "Test User",
+                request.Message ?? "Test Super Chat");
+            
+            _logger.LogInformation("[ADMIN] Simulated YouTube API Super Chat: ${Amount} from channel {ChannelId}", 
+                request.Amount, request.ChannelId);
+            
+            return Ok(new 
+            { 
+                status = "success", 
+                message = $"Simulated ${request.Amount:F2} Super Chat from channel {request.ChannelId}"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[ADMIN] Failed to simulate YouTube API call");
+            return StatusCode(500, new { status = "error", message = "Simulation failed" });
+        }
     }
 }
 
@@ -205,5 +249,16 @@ public class SimulateSuperChatRequest
 {
     public string UserId { get; set; } = "";
     public string? DisplayName { get; set; }
+    public decimal Amount { get; set; }
+}
+
+/// <summary>
+/// Request model for simulating a YouTube API Super Chat callback.
+/// </summary>
+public class SimulateYouTubeApiRequest
+{
+    public string ChannelId { get; set; } = "";
+    public string? DisplayName { get; set; }
+    public string? Message { get; set; }
     public decimal Amount { get; set; }
 }
