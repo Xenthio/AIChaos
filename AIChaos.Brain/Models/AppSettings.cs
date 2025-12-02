@@ -78,7 +78,7 @@ public class OllamaSettings
 public class OobaSettings
 {
     /// <summary>
-    /// Base URL for Oobabooga API (default: http://localhost:5000/v1).
+    /// Base URL for Oobabooga API (default: http://localhost:5001/v1).
     /// </summary>
     public string BaseUrl { get; set; } = "http://localhost:5001/v1";
     
