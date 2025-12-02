@@ -124,6 +124,47 @@ public class SettingsService
     }
     
     /// <summary>
+    /// Gets the current AI provider.
+    /// </summary>
+    public AiProvider CurrentAiProvider => _settings.Ai.Provider;
+    
+    /// <summary>
+    /// Sets the AI provider.
+    /// </summary>
+    public void SetAiProvider(AiProvider provider)
+    {
+        lock (_lock)
+        {
+            _settings.Ai.Provider = provider;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates Ollama settings.
+    /// </summary>
+    public void UpdateOllama(OllamaSettings ollama)
+    {
+        lock (_lock)
+        {
+            _settings.Ollama = ollama;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates Oobabooga settings.
+    /// </summary>
+    public void UpdateOobabooga(OobaSettings ooba)
+    {
+        lock (_lock)
+        {
+            _settings.Oobabooga = ooba;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
     /// Updates Twitch settings.
     /// </summary>
     public void UpdateTwitch(TwitchSettings twitch)

@@ -31,8 +31,13 @@ Before starting, make sure you have:
 |------------|------|-------------|
 | **.NET 9.0 SDK** | Runs the Brain server | [Download](https://dotnet.microsoft.com/download) |
 | **Garry's Mod** | The game you're controlling | [Steam](https://store.steampowered.com/app/4000/Garrys_Mod/) |
-| **OpenRouter API Key** | Powers the AI (free tier available) | [Get one](https://openrouter.ai/keys) |
+| **AI Provider** | Powers the AI (see options below) | See Step 3 |
 | **A web browser** | For the control panel | You have one! |
+
+**AI Provider Options (choose one):**
+- **OpenRouter** (Default) - Cloud-based, pay-per-use, free tier available → [openrouter.ai](https://openrouter.ai/)
+- **Ollama** - Free local AI, runs on your machine → [ollama.ai](https://ollama.ai/)
+- **Oobabooga** - Advanced local AI with text-generation-webui → [GitHub](https://github.com/oobabooga/text-generation-webui)
 
 **Optional but recommended:**
 - **ngrok** or **bore** - To let people access your server from the internet
@@ -89,9 +94,19 @@ cd AIChaos
 
 ---
 
-## Step 3: Get Your OpenRouter API Key
+## Step 3: Choose Your AI Provider
 
-OpenRouter is the service that provides AI access. It's free to start!
+AI Chaos supports **three AI providers**. Choose the one that works best for you:
+
+| Provider | Type | Cost | Setup |
+|----------|------|------|-------|
+| **OpenRouter** (Default) | Cloud | Pay-per-use (free tier available) | Easiest - just need API key |
+| **Ollama** | Local | Free | Requires local installation |
+| **Oobabooga** | Local | Free | Requires text-generation-webui |
+
+### Option A: OpenRouter (Recommended for Beginners)
+
+OpenRouter is a cloud-based service that provides access to AI models. It's free to start!
 
 1. Go to [openrouter.ai](https://openrouter.ai/)
 2. Click **"Sign Up"** (you can use Google, GitHub, or email)
@@ -102,6 +117,31 @@ OpenRouter is the service that provides AI access. It's free to start!
 7. **Save it somewhere** - you'll need it in Step 5!
 
 > 💡 **Tip:** OpenRouter gives you free credits to start. After that, costs depend on the AI model you choose.
+
+### Option B: Ollama (Free Local AI)
+
+Ollama lets you run AI models locally on your own computer - completely free!
+
+1. Download and install Ollama from [ollama.ai](https://ollama.ai/)
+2. Open a terminal and pull a model:
+   ```bash
+   ollama pull llama3
+   ```
+   Other good options: `codellama`, `mistral`, `deepseek-coder`
+3. Ollama will start automatically on `http://localhost:11434`
+
+> 💡 **Tip:** Local models are free but require a decent GPU (8GB+ VRAM recommended).
+
+### Option C: Oobabooga (text-generation-webui)
+
+For advanced users who want full control over their local AI setup.
+
+1. Install [text-generation-webui](https://github.com/oobabooga/text-generation-webui)
+2. Start it with the API enabled:
+   ```bash
+   python server.py --api
+   ```
+3. The API will be available at `http://localhost:5001/v1`
 
 ---
 
@@ -139,8 +179,11 @@ You should see:
 1. Open your web browser
 2. Go to **http://localhost:5000/setup**
 3. **Set an admin password** (first time only) - this protects your setup page
-4. Enter your **OpenRouter API Key** from Step 3
-5. Choose an AI model (Claude Sonnet is recommended for best results)
+4. **Choose your AI Provider** (OpenRouter, Ollama, or Oobabooga)
+5. Configure the selected provider:
+   - **OpenRouter:** Enter your API key and select a model
+   - **Ollama:** Set the base URL (default: `http://localhost:11434`) and model name
+   - **Oobabooga:** Set the API endpoint (default: `http://localhost:5001/v1`)
 6. Click **Save**
 
 > 🔒 The password protects the setup and history pages from public access.
@@ -294,10 +337,22 @@ Note: LocalTunnel shows a password page on first access.
 - Make sure you're actually in a game, not the menu
 - Check the History page (http://localhost:5000/history) for errors
 
-### "Invalid API key"
-- Double-check your OpenRouter API key
-- Make sure you copied the whole key (starts with `sk-or-v1-`)
+### AI Provider Issues
+
+**OpenRouter:**
+- Double-check your API key (starts with `sk-or-v1-`)
+- Make sure you copied the whole key
 - Check if you have credits left on OpenRouter
+
+**Ollama:**
+- Make sure Ollama is running (`ollama serve`)
+- Verify the model is downloaded (`ollama list`)
+- Check the base URL is correct (default: `http://localhost:11434`)
+
+**Oobabooga:**
+- Make sure text-generation-webui is running with `--api` flag
+- Verify the API endpoint (default: `http://localhost:5001/v1`)
+- Check that a model is loaded in the UI
 
 ### Tunnel not connecting
 - Make sure ngrok/bore is installed

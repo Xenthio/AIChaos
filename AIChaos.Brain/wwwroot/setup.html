@@ -84,38 +84,98 @@
                 </div>
             </div>
             
-            <!-- OpenRouter API -->
+            <!-- AI Provider Configuration -->
             <div class="card">
                 <h2>
-                    🤖 OpenRouter API
-                    <span id="openrouterStatus" class="status-badge status-disconnected">Not Configured</span>
+                    🤖 AI Provider
+                    <span id="aiProviderStatus" class="status-badge status-disconnected">Not Configured</span>
                 </h2>
                 <p style="color: var(--text-dim); margin-bottom: 15px;">
-                    OpenRouter provides access to AI models for generating Lua code.
+                    Choose your AI provider for generating Lua code. OpenRouter (default) provides cloud-based access to multiple AI models. Ollama and Oobabooga let you run AI locally.
                 </p>
                 
-                <div class="setup-step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h4>Get an API Key</h4>
-                        <p>Visit <a href="https://openrouter.ai/keys" target="_blank" style="color: var(--info);">openrouter.ai/keys</a> to create an account and generate an API key.</p>
-                    </div>
-                </div>
-                
                 <div class="form-group">
-                    <label>API Key</label>
-                    <input type="password" id="openrouterApiKey" placeholder="sk-or-v1-...">
-                </div>
-                
-                <div class="form-group">
-                    <label>AI Model</label>
-                    <select id="openrouterModel">
-                        <option value="">Loading models...</option>
+                    <label>AI Provider</label>
+                    <select id="aiProviderSelect" onchange="onAiProviderChange()">
+                        <option value="OpenRouter">OpenRouter (Cloud - Default)</option>
+                        <option value="Ollama">Ollama (Local)</option>
+                        <option value="Oobabooga">Oobabooga / text-generation-webui (Local)</option>
                     </select>
-                    <small>Choose the AI model for generating Lua code</small>
+                    <small>Select which AI endpoint to use for code generation</small>
                 </div>
                 
-                <button onclick="saveOpenRouter()">💾 Save OpenRouter Settings</button>
+                <!-- OpenRouter Settings -->
+                <div id="openrouterSettings">
+                    <div class="alert alert-info" style="margin: 15px 0;">
+                        <strong>ℹ️ OpenRouter</strong> is a cloud-based API that provides access to multiple AI models from different providers (Anthropic, OpenAI, Google, etc.).
+                        <br><a href="https://openrouter.ai/keys" target="_blank" style="color: var(--info);">Get your API key here →</a>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="openrouterApiKey" placeholder="sk-or-v1-...">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>AI Model</label>
+                        <select id="openrouterModel">
+                            <option value="">Loading models...</option>
+                        </select>
+                        <small>Choose the AI model for generating Lua code</small>
+                    </div>
+                    
+                    <button onclick="saveOpenRouter()">💾 Save OpenRouter Settings</button>
+                </div>
+                
+                <!-- Ollama Settings -->
+                <div id="ollamaSettings" class="hidden">
+                    <div class="alert alert-info" style="margin: 15px 0;">
+                        <strong>ℹ️ Ollama</strong> is a free, local AI server. Install it from <a href="https://ollama.ai" target="_blank" style="color: var(--info);">ollama.ai</a>, then pull a model with <code>ollama pull llama3</code>.
+                        <br>No API key required - runs entirely on your machine!
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Base URL</label>
+                        <input type="text" id="ollamaBaseUrl" value="http://localhost:11434" placeholder="http://localhost:11434">
+                        <small>Ollama API endpoint (default: http://localhost:11434)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Model Name</label>
+                        <input type="text" id="ollamaModel" value="llama3" placeholder="llama3">
+                        <small>Name of the model to use (e.g., llama3, codellama, mistral, deepseek-coder)</small>
+                    </div>
+                    
+                    <button onclick="saveOllama()">💾 Save Ollama Settings</button>
+                </div>
+                
+                <!-- Oobabooga Settings -->
+                <div id="oobaboogaSettings" class="hidden">
+                    <div class="alert alert-info" style="margin: 15px 0;">
+                        <strong>ℹ️ Oobabooga</strong> (text-generation-webui) provides an OpenAI-compatible API. Start it with <code>--api</code> flag.
+                        <br><a href="https://github.com/oobabooga/text-generation-webui" target="_blank" style="color: var(--info);">Get text-generation-webui →</a>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Base URL</label>
+                        <input type="text" id="oobaboogaBaseUrl" value="http://localhost:5001/v1" placeholder="http://localhost:5001/v1">
+                        <small>OpenAI-compatible API endpoint (default: http://localhost:5001/v1)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>API Key (Optional)</label>
+                        <input type="password" id="oobaboogaApiKey" placeholder="Leave empty if not using authentication">
+                        <small>Only required if you've enabled API authentication</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Model Name (Optional)</label>
+                        <input type="text" id="oobaboogaModel" placeholder="Uses currently loaded model if empty">
+                        <small>Leave empty to use whatever model is currently loaded in the UI</small>
+                    </div>
+                    
+                    <button onclick="saveOobabooga()">💾 Save Oobabooga Settings</button>
+                </div>
             </div>
             
             <!-- Tunnel Configuration -->
@@ -472,6 +532,7 @@
             loadSetupStatus();
             loadModels();
             loadOpenRouterSettings();
+            loadAiProviderSettings();
             loadPrivateDiscordMode();
             loadTestClientSettings();
         }
@@ -853,8 +914,151 @@
                 if (response.ok) {
                     showAlert('OpenRouter settings saved!', 'success');
                     loadSetupStatus();
+                    loadAiProviderSettings();
                 } else {
                     showAlert('Failed to save settings', 'error');
+                }
+            } catch (err) {
+                showAlert('Network error', 'error');
+            }
+        }
+        
+        // AI Provider Functions
+        async function loadAiProviderSettings() {
+            try {
+                const response = await fetch('/api/setup/ai-provider');
+                const data = await response.json();
+                
+                const select = document.getElementById('aiProviderSelect');
+                select.value = data.provider;
+                
+                // Update UI to show correct provider settings
+                updateAiProviderUI(data.provider);
+                
+                // Fill in Ollama settings
+                document.getElementById('ollamaBaseUrl').value = data.ollama.baseUrl;
+                document.getElementById('ollamaModel').value = data.ollama.model;
+                
+                // Fill in Oobabooga settings
+                document.getElementById('oobaboogaBaseUrl').value = data.oobabooga.baseUrl;
+                document.getElementById('oobaboogaModel').value = data.oobabooga.model || '';
+                
+                // Update status badge
+                const status = document.getElementById('aiProviderStatus');
+                let isConfigured = false;
+                
+                switch (data.provider) {
+                    case 'OpenRouter':
+                        isConfigured = data.openRouter.hasApiKey;
+                        break;
+                    case 'Ollama':
+                        isConfigured = data.ollama.baseUrl && data.ollama.model;
+                        break;
+                    case 'Oobabooga':
+                        isConfigured = !!data.oobabooga.baseUrl;
+                        break;
+                }
+                
+                if (isConfigured) {
+                    status.textContent = `${data.provider} Active`;
+                    status.className = 'status-badge status-connected';
+                } else {
+                    status.textContent = 'Not Configured';
+                    status.className = 'status-badge status-disconnected';
+                }
+            } catch (err) {
+                console.error('Failed to load AI provider settings:', err);
+            }
+        }
+        
+        function updateAiProviderUI(provider) {
+            const openrouterSettings = document.getElementById('openrouterSettings');
+            const ollamaSettings = document.getElementById('ollamaSettings');
+            const oobaboogaSettings = document.getElementById('oobaboogaSettings');
+            
+            openrouterSettings.classList.add('hidden');
+            ollamaSettings.classList.add('hidden');
+            oobaboogaSettings.classList.add('hidden');
+            
+            switch (provider) {
+                case 'OpenRouter':
+                    openrouterSettings.classList.remove('hidden');
+                    break;
+                case 'Ollama':
+                    ollamaSettings.classList.remove('hidden');
+                    break;
+                case 'Oobabooga':
+                    oobaboogaSettings.classList.remove('hidden');
+                    break;
+            }
+        }
+        
+        async function onAiProviderChange() {
+            const provider = document.getElementById('aiProviderSelect').value;
+            
+            // First update the UI
+            updateAiProviderUI(provider);
+            
+            // Then save the provider selection
+            try {
+                const response = await fetch('/api/setup/ai-provider', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showAlert(`AI provider changed to ${provider}`, 'success');
+                    loadAiProviderSettings();
+                } else {
+                    showAlert(data.message || 'Failed to change provider', 'error');
+                }
+            } catch (err) {
+                showAlert('Network error', 'error');
+            }
+        }
+        
+        async function saveOllama() {
+            const baseUrl = document.getElementById('ollamaBaseUrl').value;
+            const model = document.getElementById('ollamaModel').value;
+            
+            try {
+                const response = await fetch('/api/setup/ollama', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ baseUrl, model })
+                });
+                
+                if (response.ok) {
+                    showAlert('Ollama settings saved!', 'success');
+                    loadAiProviderSettings();
+                } else {
+                    showAlert('Failed to save Ollama settings', 'error');
+                }
+            } catch (err) {
+                showAlert('Network error', 'error');
+            }
+        }
+        
+        async function saveOobabooga() {
+            const baseUrl = document.getElementById('oobaboogaBaseUrl').value;
+            const apiKey = document.getElementById('oobaboogaApiKey').value;
+            const model = document.getElementById('oobaboogaModel').value;
+            
+            try {
+                const response = await fetch('/api/setup/oobabooga', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ baseUrl, apiKey, model })
+                });
+                
+                if (response.ok) {
+                    showAlert('Oobabooga settings saved!', 'success');
+                    loadAiProviderSettings();
+                } else {
+                    showAlert('Failed to save Oobabooga settings', 'error');
                 }
             } catch (err) {
                 showAlert('Network error', 'error');
