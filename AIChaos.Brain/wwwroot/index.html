@@ -131,7 +131,7 @@
             </div>
             <div id="userSection" class="hidden user-profile">
                 <img id="userAvatar" src="" alt="" style="width: 28px; height: 28px; border-radius: 50%; display: none;">
-                <span id="userName">Guest</span>
+                <span id="userName" onclick="showProfileModal()" style="cursor: pointer;" title="View profile">Guest</span>
                 <span class="credits-display">$ <span id="userCredits">0.00</span></span>
                 <button id="linkYouTubeBtn" onclick="showLinkYouTubeModal()" title="Link YouTube Channel"
                     style="background: none; border: none; color: var(--warning); cursor: pointer; font-size: 12px;">📺 Link YouTube</button>
@@ -301,6 +301,36 @@
             <div style="display: flex; gap: 10px; justify-content: flex-end;">
                 <button onclick="closeRefundModal()" class="btn-secondary">Cancel</button>
                 <button onclick="submitRefund()" class="btn-primary">Submit Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <h3>👤 Account Profile</h3>
+            <div style="margin: 20px 0;">
+                <div style="margin-bottom: 15px;">
+                    <strong>Username:</strong>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin-top: 5px; font-family: monospace;">
+                        <span id="profileUsername">-</span>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <strong>Balance:</strong>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin-top: 5px;">
+                        $<span id="profileBalance">0.00</span>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <strong>YouTube Linked:</strong>
+                    <div style="background: rgba(255,255,255,0.1); padding: 10px; border-radius: 5px; margin-top: 5px;">
+                        <span id="profileYouTubeStatus">❌ Not linked</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeProfileModal()" class="btn-primary">Close</button>
             </div>
         </div>
     </div>
@@ -853,6 +883,28 @@
             } catch (err) {
                 alert("Failed to submit refund request");
             }
+        }
+
+        function showProfileModal() {
+            if (!currentAccount) return;
+            
+            document.getElementById('profileUsername').textContent = currentAccount.username || '-';
+            document.getElementById('profileBalance').textContent = (currentAccount.creditBalance || 0).toFixed(2);
+            
+            const youtubeStatus = document.getElementById('profileYouTubeStatus');
+            if (currentAccount.linkedYouTubeChannelId) {
+                youtubeStatus.innerHTML = '✅ Linked';
+                youtubeStatus.style.color = 'var(--success)';
+            } else {
+                youtubeStatus.innerHTML = '❌ Not linked';
+                youtubeStatus.style.color = 'var(--text-dim)';
+            }
+            
+            document.getElementById('profileModal').classList.add('active');
+        }
+
+        function closeProfileModal() {
+            document.getElementById('profileModal').classList.remove('active');
         }
 
         async function undoCommand(id) {
