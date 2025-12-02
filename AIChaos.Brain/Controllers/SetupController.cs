@@ -297,6 +297,8 @@ public class SetupController : ControllerBase
             new { id = "anthropic/claude-opus-4.5", name = "Claude Opus 4.5", provider = "Anthropic" },
             new { id = "anthropic/claude-3.5-sonnet", name = "Claude 3.5 Sonnet", provider = "Anthropic" },
             new { id = "openai/gpt-5.1-codex-mini", name = "GPT-5.1 Codex Mini", provider = "OpenAI" },
+            new { id = "openai/gpt-5-nano", name = "GPT-5 Nano", provider = "OpenAI" },
+            new { id = "openai/gpt-oss-120b", name = "gpt-oss-120b", provider = "OpenAI" },
             new { id = "google/gemini-3-pro-preview", name = "Gemini 3 Pro Preview", provider = "Google" },
             new { id = "google/gemini-2.5-flash", name = "Gemini Flash 2.5", provider = "Google" },
             new { id = "meta-llama/llama-3.1-70b-instruct", name = "Llama 3.1 70B", provider = "Meta" },
