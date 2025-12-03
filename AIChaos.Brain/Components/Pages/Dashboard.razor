@@ -1,15 +1,17 @@
 @page "/dashboard"
+@page "/dashboard/{SubPage?}"
 @rendermode InteractiveServer
 @inject SettingsService Settings
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
+@inject NavigationManager Navigation
 @inject IJSRuntime JS
 
 <PageTitle>AI Chaos Dashboard (Admin)</PageTitle>
 
 <Header Title="🎮 AI CHAOS DASHBOARD" Subtitle="Admin Control Panel - Direct GMod Control" />
 
-<NavMenu ShowSetup="true" ShowHistory="true" ShowModeration="true" />
+<NavMenu />
 
 @if (!isLoggedIn)
 {
@@ -30,54 +32,82 @@
 }
 else
 {
-    <div class="card">
-        <h2>Send Chaos Command</h2>
-        <div class="form-group">
-            <textarea @bind="promptInput" placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
-        </div>
-        
-        <div class="form-group" style="margin-bottom: 15px;">
-            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
-                <span>🔄 Interactive Mode</span>
-                <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors automatically)</span>
-            </label>
-        </div>
-        
-        <button @onclick="SendPrompt">⚡ SEND CHAOS</button>
-        
-        @if (!string.IsNullOrEmpty(statusMessage))
-        {
-            <div style="margin-top: 15px;">
-                <div class="alert alert-@statusType">@statusMessage</div>
-            </div>
-        }
+    <!-- Admin Subtabs -->
+    <div class="admin-tabs">
+        <button class="admin-tab @(activeSubPage == "commands" ? "active" : "")" @onclick='() => NavigateToSubPage("commands")'>
+            ⚡ Commands
+        </button>
+        <button class="admin-tab @(activeSubPage == "setup" ? "active" : "")" @onclick='() => NavigateToSubPage("setup")'>
+            🔧 Setup
+        </button>
+        <button class="admin-tab @(activeSubPage == "history" ? "active" : "")" @onclick='() => NavigateToSubPage("history")'>
+            📜 History
+        </button>
+        <button class="admin-tab @(activeSubPage == "moderation" ? "active" : "")" @onclick='() => NavigateToSubPage("moderation")'>
+            🛡️ Moderation
+        </button>
     </div>
-    
-    <div class="card">
-        <h2>📋 Recent Commands</h2>
-        <div>
-            @if (recentCommands == null || !recentCommands.Any())
-            {
-                <div class="empty-state">Commands will appear here...</div>
-            }
-            else
-            {
-                @foreach (var cmd in recentCommands)
+
+    @if (activeSubPage == "commands")
+    {
+        <!-- Commands Tab Content (original Dashboard content) -->
+        <div class="card">
+            <h2>Send Chaos Command</h2>
+            <div class="form-group">
+                <textarea @bind="promptInput" placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
+                    <span>🔄 Interactive Mode</span>
+                    <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors automatically)</span>
+                </label>
+            </div>
+            
+            <button @onclick="SendPrompt" disabled="@isSubmitting">
+                @if (isSubmitting)
                 {
-                    <div class="history-item">
-                        <div style="flex: 1;">
-                            <div class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
-                            <div class="history-prompt">@cmd.UserPrompt</div>
-                            @if (!string.IsNullOrEmpty(cmd.AiResponse))
-                            {
-                                <div class="history-response">💬 @cmd.AiResponse</div>
-                            }
-                        </div>
-                        <span class="history-source">@cmd.Source</span>
-                        <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
-                        <div class="history-actions">
-                            <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
+                    <span>⏳ SENDING...</span>
+                }
+                else
+                {
+                    <span>⚡ SEND CHAOS</span>
+                }
+            </button>
+            
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div style="margin-top: 15px;">
+                    <div class="alert alert-@statusType">@statusMessage</div>
+                </div>
+            }
+        </div>
+        
+        <div class="card">
+            <h2>📋 Recent Commands</h2>
+            <div>
+                @if (recentCommands == null || !recentCommands.Any())
+                {
+                    <div class="empty-state">Commands will appear here...</div>
+                }
+                else
+                {
+                    @foreach (var cmd in recentCommands)
+                    {
+                        <div class="history-item">
+                            <div style="flex: 1;">
+                                <div class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
+                                <div class="history-prompt">@cmd.UserPrompt</div>
+                                @if (!string.IsNullOrEmpty(cmd.AiResponse))
+                                {
+                                    <div class="history-response">💬 @cmd.AiResponse</div>
+                                }
+                            </div>
+                            <span class="history-source">@cmd.Source</span>
+                            <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                            <div class="history-actions">
+                                <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
                             <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
                         </div>
                     </div>
@@ -85,6 +115,28 @@ else
             }
         </div>
     </div>
+    }
+    else if (activeSubPage == "setup")
+    {
+        <div class="card">
+            <h2>🔧 Setup & Configuration</h2>
+            <p style="color: var(--text-dim);">Setup functionality will be embedded here. Coming soon...</p>
+        </div>
+    }
+    else if (activeSubPage == "history")
+    {
+        <div class="card">
+            <h2>📜 Command History</h2>
+            <p style="color: var(--text-dim);">History functionality will be embedded here. Coming soon...</p>
+        </div>
+    }
+    else if (activeSubPage == "moderation")
+    {
+        <div class="card">
+            <h2>🛡️ Moderation & Refunds</h2>
+            <p style="color: var(--text-dim);">Moderation functionality will be embedded here. Coming soon...</p>
+        </div>
+    }
 }
 
 <style>
@@ -143,15 +195,50 @@ else
         display: flex;
         gap: 5px;
     }
+
+    /* Admin Subtabs */
+    .admin-tabs {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+        border-bottom: 2px solid var(--bg-darker);
+    }
+
+    .admin-tab {
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        padding: 12px 20px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.2s;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+    }
+
+    .admin-tab:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .admin-tab.active {
+        color: var(--accent);
+        border-bottom-color: var(--accent);
+    }
 </style>
 
 @code {
+    [Parameter]
+    public string? SubPage { get; set; }
+    
+    private string activeSubPage = "commands";
     private bool isLoggedIn = false;
     private string loginPassword = "";
     private string loginAlert = "";
     private string loginAlertType = "error";
     private string promptInput = "";
     private bool interactiveMode = false;
+    private bool isSubmitting = false;
     private List<CommandEntry>? recentCommands;
     private string statusMessage = "";
     private string statusType = "info";
@@ -160,6 +247,9 @@ else
 
     protected override Task OnInitializedAsync()
     {
+        // Set active subpage based on route parameter
+        activeSubPage = SubPage?.ToLower() ?? "commands";
+        
         // Check if admin is configured
         try
         {
@@ -313,6 +403,12 @@ else
                 StateHasChanged();
             });
         });
+    }
+
+    private void NavigateToSubPage(string subPage)
+    {
+        activeSubPage = subPage;
+        Navigation.NavigateTo($"/dashboard/{subPage}");
     }
 
     private string GetStatusClass(CommandStatus status) => status switch

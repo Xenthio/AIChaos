@@ -7,33 +7,7 @@
     <NavLink href="/dashboard" class="nav-link">
         ⚡ Dashboard
     </NavLink>
-    @if (ShowSetup)
-    {
-        <NavLink href="/setup" class="nav-link">
-            🔧 Setup
-        </NavLink>
-    }
-    @if (ShowHistory)
-    {
-        <NavLink href="/history" class="nav-link">
-            📜 History
-        </NavLink>
-    }
-    @if (ShowModeration)
-    {
-        <NavLink href="/moderation" class="nav-link">
-            🛡️ Moderation
-        </NavLink>
-    }
 </div>
 
 @code {
-    [Parameter]
-    public bool ShowSetup { get; set; } = false;
-
-    [Parameter]
-    public bool ShowHistory { get; set; } = false;
-
-    [Parameter]
-    public bool ShowModeration { get; set; } = false;
 }
