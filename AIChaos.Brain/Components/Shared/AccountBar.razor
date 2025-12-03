@@ -348,9 +348,10 @@ else
         {
             loginError = "";
             var (success, error, account, sessionToken) = AccountService.Login(loginUsername, loginPassword);
-            if (success && account != null)
+            if (success && account != null && sessionToken != null)
             {
-                await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = account.Username, password = loginPassword }));
+                // Store only the secure session token, not credentials
+                await JS.InvokeVoidAsync("localStorage.setItem", "sessionToken", sessionToken);
                 showLoginModal = false;
                 loginUsername = "";
                 loginPassword = "";
@@ -377,9 +378,10 @@ else
             {
                 // Login after registration
                 var (loginSuccess, _, loginAccount, sessionToken) = AccountService.Login(loginUsername, loginPassword);
-                if (loginSuccess && loginAccount != null)
+                if (loginSuccess && loginAccount != null && sessionToken != null)
                 {
-                    await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = loginAccount.Username, password = loginPassword }));
+                    // Store only the secure session token, not credentials
+                    await JS.InvokeVoidAsync("localStorage.setItem", "sessionToken", sessionToken);
                     showLoginModal = false;
                     loginUsername = "";
                     loginPassword = "";
@@ -403,7 +405,18 @@ else
 
     private async Task HandleLogout()
     {
-        await JS.InvokeVoidAsync("localStorage.removeItem", "accountSession");
+        // Get current session token before clearing
+        var sessionToken = await JS.InvokeAsync<string>("localStorage.getItem", "sessionToken");
+        
+        // Remove from localStorage
+        await JS.InvokeVoidAsync("localStorage.removeItem", "sessionToken");
+        
+        // Invalidate session on server
+        if (!string.IsNullOrEmpty(sessionToken))
+        {
+            AccountService.Logout(sessionToken);
+        }
+        
         await OnAccountChanged.InvokeAsync();
     }
 

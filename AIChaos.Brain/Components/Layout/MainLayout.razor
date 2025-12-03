@@ -36,17 +36,16 @@
     {
         try
         {
-            var sessionJson = await JS.InvokeAsync<string>("localStorage.getItem", "accountSession");
-            if (!string.IsNullOrEmpty(sessionJson))
+            // Get session token from localStorage (secure approach)
+            var sessionToken = await JS.InvokeAsync<string>("localStorage.getItem", "sessionToken");
+            if (!string.IsNullOrEmpty(sessionToken))
             {
-                var session = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(sessionJson);
-                if (session != null && session.TryGetValue("username", out var username) && session.TryGetValue("password", out var password))
+                // Validate session token with AccountService
+                currentAccount = AccountService.GetAccountBySession(sessionToken);
+                if (currentAccount == null)
                 {
-                    var (success, error, account, sessionToken) = AccountService.Login(username, password);
-                    if (success && account != null)
-                    {
-                        currentAccount = account;
-                    }
+                    // Session expired or invalid, clear localStorage
+                    await JS.InvokeVoidAsync("localStorage.removeItem", "sessionToken");
                 }
             }
         }
