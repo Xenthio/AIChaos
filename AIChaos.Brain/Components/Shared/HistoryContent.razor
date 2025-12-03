@@ -1,6 +1,7 @@
 @inject SettingsService Settings
 @inject CommandQueueService CommandQueue
 @inject IJSRuntime JS
+@implements IDisposable
 
 <div class="card">
     <h2>📜 Command History</h2>
@@ -124,6 +125,7 @@
     }
 
     .status-pending { background: #888; }
+    .status-pendingmoderation { background: #ff9800; color: #000; }
     .status-queued { background: #f0ad4e; }
     .status-executed { background: #5cb85c; }
     .status-undone { background: #5bc0de; }
@@ -185,6 +187,9 @@
     {
         LoadHistory();
         LoadPreferences();
+        
+        // Subscribe to history changes for real-time updates
+        CommandQueue.HistoryChanged += OnHistoryChanged;
     }
 
     private void LoadHistory()
@@ -310,5 +315,17 @@
     public void Dispose()
     {
         refreshTimer?.Dispose();
+        
+        // Unsubscribe from events
+        CommandQueue.HistoryChanged -= OnHistoryChanged;
+    }
+
+    private async void OnHistoryChanged(object? sender, EventArgs e)
+    {
+        await InvokeAsync(() =>
+        {
+            LoadHistory();
+            StateHasChanged();
+        });
     }
 }

@@ -288,4 +288,45 @@ public class SettingsService
     /// Checks if test client mode is enabled.
     /// </summary>
     public bool IsTestClientModeEnabled => _settings.TestClient.Enabled;
+    
+    /// <summary>
+    /// Updates YouTube credentials without replacing the entire settings object.
+    /// </summary>
+    public void UpdateYouTubeCredentials(string clientId, string clientSecret, string videoId, decimal minAmount, bool allowChat)
+    {
+        lock (_lock)
+        {
+            _settings.YouTube.ClientId = clientId;
+            _settings.YouTube.ClientSecret = clientSecret;
+            _settings.YouTube.VideoId = videoId;
+            _settings.YouTube.MinSuperChatAmount = minAmount;
+            _settings.YouTube.AllowRegularChat = allowChat;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates test client-specific settings.
+    /// </summary>
+    public void UpdateTestClientSettings(string testMap, int timeoutSeconds)
+    {
+        lock (_lock)
+        {
+            _settings.TestClient.TestMap = testMap;
+            _settings.TestClient.TimeoutSeconds = timeoutSeconds;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Updates test client mode enabled state.
+    /// </summary>
+    public void UpdateTestClient(bool enabled)
+    {
+        lock (_lock)
+        {
+            _settings.TestClient.Enabled = enabled;
+            SaveSettings();
+        }
+    }
 }

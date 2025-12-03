@@ -26,6 +26,7 @@ public class CommandEntry
 public enum CommandStatus
 {
     Pending,
+    PendingModeration,  // Waiting for image moderation approval
     Queued,
     Executed,
     Undone,
@@ -314,6 +315,7 @@ public class ChatMessage
 public class PendingImageEntry
 {
     public int Id { get; set; }
+    public int? CommandId { get; set; } // Link to the command entry in history
     public string ImageUrl { get; set; } = "";
     public string UserPrompt { get; set; } = "";
     public string Source { get; set; } = "web";

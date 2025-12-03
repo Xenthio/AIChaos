@@ -14,6 +14,9 @@ public class ImageModerationService
     private readonly object _lock = new();
     private int _nextId = 1;
     
+    // Event for when pending images change
+    public event EventHandler? PendingImagesChanged;
+    
     // Common image URL patterns
     private static readonly Regex ImageUrlPattern = new(
         @"(https?://[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp)(?:\?[^\s]*)?)",
@@ -30,6 +33,11 @@ public class ImageModerationService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+    
+    private void OnPendingImagesChanged()
+    {
+        PendingImagesChanged?.Invoke(this, EventArgs.Empty);
     }
     
     /// <summary>
@@ -66,13 +74,14 @@ public class ImageModerationService
     /// <summary>
     /// Adds an image to the moderation queue.
     /// </summary>
-    public PendingImageEntry AddPendingImage(string imageUrl, string userPrompt, string source, string author, string? userId)
+    public PendingImageEntry AddPendingImage(string imageUrl, string userPrompt, string source, string author, string? userId, int? commandId = null)
     {
         lock (_lock)
         {
             var entry = new PendingImageEntry
             {
                 Id = _nextId++,
+                CommandId = commandId,
                 ImageUrl = imageUrl,
                 UserPrompt = userPrompt,
                 Source = source,
@@ -83,8 +92,9 @@ public class ImageModerationService
             };
             
             _pendingImages.Add(entry);
-            _logger.LogInformation("[MODERATION] Image queued for review: {Url}", imageUrl);
+            _logger.LogInformation("[MODERATION] Image queued for review (Command #{CommandId}): {Url}", commandId, imageUrl);
             
+            OnPendingImagesChanged();
             return entry;
         }
     }
@@ -128,6 +138,7 @@ public class ImageModerationService
             entry.ReviewedAt = DateTime.UtcNow;
             _logger.LogInformation("[MODERATION] Image #{Id} APPROVED: {Url}", imageId, entry.ImageUrl);
             
+            OnPendingImagesChanged();
             return entry;
         }
     }
@@ -146,6 +157,7 @@ public class ImageModerationService
             entry.ReviewedAt = DateTime.UtcNow;
             _logger.LogInformation("[MODERATION] Image #{Id} DENIED: {Url}", imageId, entry.ImageUrl);
             
+            OnPendingImagesChanged();
             return entry;
         }
     }

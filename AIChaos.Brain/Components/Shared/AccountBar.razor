@@ -1,7 +1,10 @@
 @rendermode InteractiveServer
 
 @inject AccountService AccountService
+@inject SettingsService SettingsService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@implements IDisposable
 
 @if (CurrentAccount == null)
 {
@@ -22,7 +25,7 @@ else
         }
         else
         {
-            <button @onclick="() => showLinkYouTubeModal = true" title="Link YouTube Channel"
+            <button @onclick="OpenLinkYouTubeModal" title="Link YouTube Channel"
                     style="background: none; border: none; color: var(--warning); cursor: pointer; font-size: 12px;">📺 Link YouTube</button>
         }
         <button @onclick="HandleLogout"
@@ -35,11 +38,11 @@ else
     <h3>🔐 Account Access</h3>
     <div class="form-group">
         <label>Username</label>
-        <input type="text" @bind="loginUsername" placeholder="Enter username">
+        <input type="text" @bind="loginUsername" placeholder="Enter username" @bind:event="oninput">
     </div>
     <div class="form-group">
         <label>Password</label>
-        <input type="password" @bind="loginPassword" placeholder="Enter password">
+        <input type="password" @bind="loginPassword" placeholder="Enter password" @bind:event="oninput">
     </div>
     @if (!string.IsNullOrEmpty(loginError))
     {
@@ -91,22 +94,57 @@ else
                 <strong>🎫 Verification Code</strong><br/>
                 <small style="color: var(--text-dim);">Generate a code to send in chat</small>
             </button>
-            <button @onclick="() => showLinkYouTubeModal = false" style="background: var(--bg-light); color: var(--text);">Cancel</button>
+            <button @onclick="CloseLinkYouTubeModal" style="background: var(--bg-light); color: var(--text);">Cancel</button>
         </div>
     }
     else if (useOAuthMethod)
     {
-        @if (!string.IsNullOrEmpty(youtubeOAuthUrl))
+        @if (isOAuthConfigured)
         {
-            <p>✅ Click the button below to link via Google:</p>
-            <button @onclick="OpenYouTubeOAuth">
-                Open Google Sign-In
-            </button>
+            <div id="google-signin-container" style="padding: 20px 0;">
+                <div id="g_id_onload"
+                     data-client_id="@googleClientId"
+                     data-context="use"
+                     data-ux_mode="popup"
+                     data-callback="handleGoogleCallback"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin" 
+                     data-type="standard"
+                     data-size="large"
+                     data-theme="outline"
+                     data-text="signin_with"
+                     data-shape="rectangular"
+                     data-logo_alignment="left">
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: var(--bg-light); border-radius: 4px; font-size: 12px;">
+                    <strong>Debug Info:</strong><br/>
+                    Client ID: @googleClientId<br/>
+                    <em>If the Google button doesn't appear above, try refreshing the page or check browser console for errors.</em>
+                </div>
+            </div>
+            <p style="margin-top: 15px; color: var(--text-dim); font-size: 14px;">
+                Click the "Sign in with Google" button above to link your YouTube channel.
+            </p>
+            @if (!string.IsNullOrEmpty(oauthError))
+            {
+                <div class="alert alert-error" style="margin-top: 10px;">@oauthError</div>
+            }
+            @if (!string.IsNullOrEmpty(oauthSuccess))
+            {
+                <div class="alert alert-success" style="margin-top: 10px;">@oauthSuccess</div>
+            }
         }
         else
         {
             <div class="alert alert-warning">
-                YouTube OAuth is not configured. Please set up OAuth credentials in the Setup page first.
+                <p><strong>YouTube OAuth Not Configured</strong></p>
+                <p>To use Google Sign-In for YouTube linking, you need to:</p>
+                <ol style="text-align: left; margin: 10px 0;">
+                    <li>Go to the <a href="/setup" target="_blank">Setup page</a></li>
+                    <li>Configure YouTube OAuth credentials (Client ID and Client Secret)</li>
+                    <li>Return here to link your channel</li>
+                </ol>
             </div>
         }
         <button @onclick="ResetLinkMethod" style="background: var(--bg-light); color: var(--text); margin-top: 10px;">Back</button>
@@ -117,6 +155,10 @@ else
         {
             <p>Generate a code to send in your YouTube chat or Super Chat:</p>
             <button @onclick="GenerateYouTubeLinkCode">Generate Link Code</button>
+            @if (!string.IsNullOrEmpty(linkError))
+            {
+                <div class="alert alert-error" style="margin-top: 10px;">@linkError</div>
+            }
         }
         else
         {
@@ -131,7 +173,7 @@ else
     }
 </Modal>
 
-    @code {
+@code {
     [Parameter]
     public Account? CurrentAccount { get; set; }
 
@@ -144,22 +186,105 @@ else
     private string loginUsername = "";
     private string loginPassword = "";
     private string loginError = "";
+    private string linkError = "";
+    private string oauthError = "";
+    private string oauthSuccess = "";
 
     private bool youtubeLinkMethodSelected = false;
     private bool useOAuthMethod = false;
     private string? youtubeLinkCode = null;
-    private string? youtubeOAuthUrl = null;
+    private bool isOAuthConfigured = false;
+    private string? googleClientId = null;
+    private DotNetObjectReference<AccountBar>? objRef;
 
-    private void SelectLinkMethod(bool useOAuth)
+    protected override void OnInitialized()
+    {
+        // Create the DotNetObjectReference during initialization
+        objRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && objRef != null)
+        {
+            // Register this component instance with JavaScript
+            await JS.InvokeVoidAsync("setAccountBarReference", objRef);
+        }
+    }
+
+    private async Task OpenLinkYouTubeModal()
+    {
+        showLinkYouTubeModal = true;
+        await Task.CompletedTask;
+    }
+
+    private void CloseLinkYouTubeModal()
+    {
+        showLinkYouTubeModal = false;
+        ResetLinkMethod();
+    }
+
+    private async Task SelectLinkMethod(bool useOAuth)
     {
         youtubeLinkMethodSelected = true;
         useOAuthMethod = useOAuth;
+        oauthError = "";
+        oauthSuccess = "";
+        linkError = "";
 
         if (useOAuth)
         {
             // Check if OAuth is configured
-            // This would need to call a settings endpoint
-            youtubeOAuthUrl = null; // Set if configured
+            var settings = SettingsService.Settings;
+            isOAuthConfigured = !string.IsNullOrEmpty(settings.YouTube.ClientId);
+            googleClientId = settings.YouTube.ClientId;
+
+            if (isOAuthConfigured)
+            {
+                // Re-register the component reference in case it was lost
+                if (objRef != null)
+                {
+                    await JS.InvokeVoidAsync("setAccountBarReference", objRef);
+                }
+                
+                // Force re-render to show Google Sign-In button
+                StateHasChanged();
+                
+                // Give Google Sign-In library time to initialize the button
+                await Task.Delay(100);
+                
+                // Try to manually initialize Google Sign-In
+                try
+                {
+                    await JS.InvokeVoidAsync("eval", $@"
+                        setTimeout(function() {{
+                            if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {{
+                                console.log('Initializing Google Sign-In with client ID: {googleClientId}');
+                                google.accounts.id.initialize({{
+                                    client_id: '{googleClientId}',
+                                    callback: handleGoogleCallback
+                                }});
+                                google.accounts.id.renderButton(
+                                    document.querySelector('.g_id_signin'),
+                                    {{ 
+                                        theme: 'outline', 
+                                        size: 'large',
+                                        text: 'signin_with'
+                                    }}
+                                );
+                                console.log('Google Sign-In button rendered');
+                            }} else {{
+                                console.error('Google Sign-In library not loaded yet');
+                            }}
+                        }}, 500);
+                    ");
+                }
+                catch (Exception ex)
+                {
+                    oauthError = $"Failed to initialize Google Sign-In: {ex.Message}";
+                    StateHasChanged();
+                }
+            }
         }
     }
 
@@ -168,6 +293,53 @@ else
         youtubeLinkMethodSelected = false;
         useOAuthMethod = false;
         youtubeLinkCode = null;
+        isOAuthConfigured = false;
+        oauthError = "";
+        oauthSuccess = "";
+        linkError = "";
+    }
+
+    [JSInvokable]
+    public async Task HandleGoogleSignInCallback(string credential)
+    {
+        try
+        {
+            oauthError = "";
+            oauthSuccess = "";
+
+            if (CurrentAccount == null)
+            {
+                oauthError = "You must be logged in to link a YouTube channel";
+                StateHasChanged();
+                return;
+            }
+
+            // Call the account service to link the YouTube channel
+            var success = AccountService.LinkYouTubeChannelViaGoogle(CurrentAccount.Id, credential, googleClientId);
+
+            if (success)
+            {
+                oauthSuccess = "✓ YouTube channel linked successfully!";
+                
+                // Refresh account data
+                await OnAccountChanged.InvokeAsync();
+                
+                // Close modal after a short delay
+                await Task.Delay(2000);
+                CloseLinkYouTubeModal();
+            }
+            else
+            {
+                oauthError = "Failed to link YouTube channel. It may already be linked to another account.";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            oauthError = $"Error: {ex.Message}";
+            StateHasChanged();
+        }
     }
 
     private async Task Login()
@@ -204,7 +376,7 @@ else
             if (success && account != null)
             {
                 // Login after registration
-                var (loginSuccess, loginError, loginAccount, sessionToken) = AccountService.Login(loginUsername, loginPassword);
+                var (loginSuccess, _, loginAccount, sessionToken) = AccountService.Login(loginUsername, loginPassword);
                 if (loginSuccess && loginAccount != null)
                 {
                     await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = loginAccount.Username, password = loginPassword }));
@@ -238,12 +410,14 @@ else
     private async Task LoginButtonClicked()
     {
         showLoginModal = true;
+        await Task.CompletedTask;
     }
 
     private async Task GenerateYouTubeLinkCode()
     {
         try
         {
+            linkError = "";
             if (CurrentAccount != null)
             {
                 youtubeLinkCode = AccountService.GenerateYouTubeLinkCode(CurrentAccount.Id);
@@ -251,15 +425,13 @@ else
         }
         catch (Exception ex)
         {
-            loginError = $"Failed to generate code: {ex.Message}";
+            linkError = $"Failed to generate code: {ex.Message}";
         }
+        await Task.CompletedTask;
     }
 
-    private async Task OpenYouTubeOAuth()
+    public void Dispose()
     {
-        if (!string.IsNullOrEmpty(youtubeOAuthUrl))
-        {
-            await JS.InvokeVoidAsync("open", youtubeOAuthUrl, "_blank");
-        }
+        objRef?.Dispose();
     }
 }

@@ -1,5 +1,9 @@
-@inject HttpClient Http
+@inject SettingsService SettingsService
+@inject TwitchService TwitchService
+@inject YouTubeService YouTubeService
+@inject TunnelService TunnelService
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <div id="alerts">
     @if (!string.IsNullOrEmpty(alertMessage))
@@ -19,12 +23,12 @@
     <p style="color: var(--text-dim); margin-bottom: 15px;">
         OpenRouter provides access to AI models for generating Lua code.
     </p>
-    
+
     <div class="form-group">
         <label>API Key</label>
         <input type="password" @bind="openRouterApiKey" placeholder="sk-or-v1-...">
     </div>
-    
+
     <div class="form-group">
         <label>AI Model</label>
         <select @bind="selectedModel">
@@ -42,7 +46,7 @@
         </select>
         <small>Choose the AI model for generating Lua code</small>
     </div>
-    
+
     <button @onclick="SaveOpenRouter">💾 Save OpenRouter Settings</button>
 </div>
 
@@ -54,11 +58,12 @@
             @(tunnelRunning ? $"{tunnelType} Running" : "Not Running")
         </span>
     </h2>
-    
+
     <div class="alert alert-warning" style="margin-bottom: 15px;">
-        <strong>⚠️ Required for GMod:</strong> GMod does not allow local HTTP connections. You must start a tunnel for GMod to communicate with the brain.
+        <strong>⚠️ Required for GMod:</strong> GMod does not allow local HTTP connections. You must start a tunnel for
+        GMod to communicate with the brain.
     </div>
-    
+
     @if (tunnelRunning && !string.IsNullOrEmpty(tunnelUrl))
     {
         <div class="tunnel-url">
@@ -71,7 +76,7 @@
             </div>
         </div>
     }
-    
+
     <div class="btn-group" style="margin-top: 15px;">
         @if (!tunnelRunning)
         {
@@ -95,14 +100,15 @@
         </span>
     </h2>
     <div class="alert alert-info" style="margin-bottom: 15px;">
-        <strong>ℹ️ About AI-Driven Test Client Mode:</strong> Run GMod with <code>-multirun</code> to have a separate test client receive and execute commands first.
+        <strong>ℹ️ About AI-Driven Test Client Mode:</strong> Run GMod with <code>-multirun</code> to have a separate
+        test client receive and execute commands first.
     </div>
-    
+
     <div class="form-group checkbox-group">
         <input type="checkbox" @bind="testClientEnabled" @bind:after="ToggleTestClientMode">
         <label style="margin: 0; font-weight: bold;">Enable AI-Driven Test Client Mode</label>
     </div>
-    
+
     @if (testClientEnabled)
     {
         <div style="margin-top: 15px;">
@@ -118,10 +124,64 @@
                     <small>How long to wait for test results</small>
                 </div>
             </div>
-            
+
             <button @onclick="SaveTestClientSettings" class="btn-secondary">💾 Save Settings</button>
         </div>
     }
+</div>
+
+<!-- YouTube Integration -->
+<div class="card">
+    <h2>
+        <span style="color: #ff0000;">📺</span> YouTube Integration
+        <span class="status-badge @(youtubeConfigured ? "status-connected" : "status-disconnected")">
+            @(youtubeConfigured ? "Connected" : "Not Connected")
+        </span>
+    </h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Connect to YouTube to receive Super Chat commands from your live stream.
+    </p>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Client ID</label>
+            <input type="text" @bind="youtubeClientId" placeholder="Your Google Client ID">
+        </div>
+        <div class="form-group">
+            <label>Client Secret</label>
+            <input type="password" @bind="youtubeClientSecret" placeholder="Your Google Client Secret">
+        </div>
+    </div>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Live Stream Video ID</label>
+            <input type="text" @bind="youtubeVideoId" placeholder="e.g., dQw4w9WgXcQ">
+            <small>The video ID from your live stream URL</small>
+        </div>
+        <div class="form-group">
+            <label>Minimum Super Chat ($)</label>
+            <input type="number" @bind="youtubeMinAmount" min="0" step="0.01">
+        </div>
+    </div>
+
+    <div class="form-group checkbox-group">
+        <input type="checkbox" @bind="youtubeAllowChat" id="youtubeAllowChat">
+        <label for="youtubeAllowChat" style="margin: 0;">Also allow regular chat commands (not just Super Chats)</label>
+    </div>
+
+    <div class="btn-group" style="margin-top: 15px;">
+        <button @onclick="SaveYouTubeCredentials" class="btn-secondary">💾 Save Credentials</button>
+        <button @onclick="AuthorizeYouTube" class="youtube-btn">🔗 Login with YouTube</button>
+        @if (!youtubeListening)
+        {
+            <button @onclick="StartYouTube" class="btn-info">▶️ Start Listening</button>
+        }
+        else
+        {
+            <button @onclick="StopYouTube" class="btn-danger">⏹️ Stop</button>
+        }
+    </div>
 </div>
 
 <style>
@@ -174,113 +234,127 @@
 @code {
     private string alertMessage = "";
     private string alertType = "info";
-    
+
     // OpenRouter
     private bool openRouterConfigured = false;
     private string openRouterApiKey = "";
     private string selectedModel = "";
     private List<Model>? models;
-    
+
     // Tunnel
     private bool tunnelRunning = false;
     private string tunnelType = "";
     private string tunnelUrl = "";
-    
+
     // Test Client
     private bool testClientEnabled = false;
     private string testClientStatusText = "Disabled";
     private string testClientMap = "gm_flatgrass";
     private int testClientTimeout = 10;
 
+    // YouTube
+    private bool youtubeConfigured = false;
+    private bool youtubeListening = false;
+    private string youtubeClientId = "";
+    private string youtubeClientSecret = "";
+    private string youtubeVideoId = "";
+    private decimal youtubeMinAmount = 1.00m;
+    private bool youtubeAllowChat = false;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadSetupStatus();
-        await LoadModels();
+        LoadModels();
     }
 
-    private async Task LoadSetupStatus()
+    private Task LoadSetupStatus()
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<SetupStatusResponse>("/api/setup/status");
-            if (response != null)
-            {
-                openRouterConfigured = response.OpenRouterConfigured;
-                tunnelRunning = response.Tunnel?.IsRunning ?? false;
-                tunnelType = response.Tunnel?.Type ?? "";
-                tunnelUrl = response.Tunnel?.Url ?? "";
-                testClientEnabled = response.TestClient?.Enabled ?? false;
-                testClientStatusText = response.TestClient?.IsConnected == true ? "Connected" : (testClientEnabled ? "Enabled (Waiting)" : "Disabled");
-            }
+            var settings = SettingsService.Settings;
+            var tunnelStatus = TunnelService.GetStatus();
+
+            openRouterConfigured = SettingsService.IsOpenRouterConfigured;
+
+            tunnelRunning = tunnelStatus.IsRunning;
+            tunnelType = tunnelStatus.Type.ToString();
+            tunnelUrl = tunnelStatus.Url ?? "";
+
+            testClientEnabled = settings.TestClient.Enabled;
+            testClientStatusText = settings.TestClient.IsConnected ? "Connected" : (testClientEnabled ? "Enabled (Waiting)" :
+            "Disabled");
+
+            youtubeConfigured = SettingsService.IsYouTubeConfigured;
+            youtubeListening = YouTubeService.IsListening;
+            youtubeVideoId = settings.YouTube.VideoId ?? "";
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Load setup status failed: {ex.Message}");
         }
+        return Task.CompletedTask;
     }
 
-    private async Task LoadModels()
+    private void LoadModels()
     {
-        try
-        {
-            var response = await Http.GetFromJsonAsync<ModelsResponse>("/api/setup/models");
-            models = response?.Models;
-            selectedModel = response?.CurrentModel ?? "";
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Load models failed: {ex.Message}");
-        }
+        // Hardcoded models list as in controller
+        models = new List<Model>
+{
+new Model { Id = "anthropic/claude-sonnet-4.5", Name = "Claude Sonnet 4.5 (Recommended)", Provider = "Anthropic" },
+new Model { Id = "anthropic/claude-haiku-4.5", Name = "Claude Haiku 4.5", Provider = "Anthropic" },
+new Model { Id = "anthropic/claude-opus-4.5", Name = "Claude Opus 4.5", Provider = "Anthropic" },
+new Model { Id = "anthropic/claude-3.5-sonnet", Name = "Claude 3.5 Sonnet", Provider = "Anthropic" },
+new Model { Id = "openai/gpt-5.1-codex-mini", Name = "GPT-5.1 Codex Mini", Provider = "OpenAI" },
+new Model { Id = "openai/gpt-5-nano", Name = "GPT-5 Nano", Provider = "OpenAI" },
+new Model { Id = "openai/gpt-oss-120b", Name = "gpt-oss-120b", Provider = "OpenAI" },
+new Model { Id = "google/gemini-3-pro-preview", Name = "Gemini 3 Pro Preview", Provider = "Google" },
+new Model { Id = "google/gemini-2.5-flash", Name = "Gemini Flash 2.5", Provider = "Google" },
+new Model { Id = "meta-llama/llama-3.1-70b-instruct", Name = "Llama 3.1 70B", Provider = "Meta" },
+new Model { Id = "mistralai/mixtral-8x22b-instruct", Name = "Mixtral 8x22B", Provider = "Mistral" },
+new Model { Id = "x-ai/grok-code-fast-1", Name = "Grok Code Fast 1", Provider = "xAI" },
+new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provider = "xAI" }
+};
+        selectedModel = SettingsService.Settings.OpenRouter.Model ?? "";
+
+        // Load OpenRouter API Key (masked)
+        openRouterApiKey = SettingsService.Settings.OpenRouter.ApiKey ?? "";
     }
 
     private async Task SaveOpenRouter()
     {
         try
         {
-            var response = await Http.PostAsJsonAsync("/api/setup/openrouter", new 
-            { 
-                apiKey = openRouterApiKey,
-                model = selectedModel
-            });
-            
-            if (response.IsSuccessStatusCode)
-            {
-                ShowAlert("OpenRouter settings saved!", "success");
-                await LoadSetupStatus();
-            }
-            else
-            {
-                ShowAlert("Failed to save settings", "error");
-            }
+            SettingsService.UpdateOpenRouter(openRouterApiKey, selectedModel);
+            ShowAlert("OpenRouter settings saved!", "success");
+            await LoadSetupStatus();
         }
         catch
         {
-            ShowAlert("Network error", "error");
+            ShowAlert("Error saving settings", "error");
         }
     }
 
     private async Task StartTunnel(string type)
     {
         ShowAlert($"Starting {type}...", "info");
-        
+
         try
         {
-            var response = await Http.PostAsync($"/api/setup/tunnel/{type}/start", null);
-            var data = await response.Content.ReadFromJsonAsync<TunnelResponse>();
-            
-            if (data?.Status == "success")
+            var (success, url, message) = await TunnelService.StartTunnelAsync(type);
+
+            if (success)
             {
-                ShowAlert($"{type} started: {data.Url}", "success");
+                ShowAlert($"{type} started: {url}", "success");
                 await LoadSetupStatus();
             }
             else
             {
-                ShowAlert(data?.Message ?? $"Failed to start {type}", "error");
+                ShowAlert(message ?? $"Failed to start {type}", "error");
             }
         }
         catch
         {
-            ShowAlert("Network error", "error");
+            ShowAlert("Error starting tunnel", "error");
         }
     }
 
@@ -288,13 +362,13 @@
     {
         try
         {
-            await Http.PostAsync("/api/setup/tunnel/stop", null);
+            TunnelService.StopTunnel();
             ShowAlert("Tunnel stopped", "info");
             await LoadSetupStatus();
         }
         catch
         {
-            ShowAlert("Network error", "error");
+            ShowAlert("Error stopping tunnel", "error");
         }
     }
 
@@ -302,60 +376,124 @@
     {
         try
         {
-            var response = await Http.PostAsJsonAsync("/api/setup/test-client/toggle", new { enabled = testClientEnabled });
-            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
-            
-            if (data?.Status == "success")
-            {
-                ShowAlert(testClientEnabled ? "Test Client Mode enabled!" : "Test Client Mode disabled", testClientEnabled ? "success" : "info");
-                await LoadSetupStatus();
-            }
-            else
-            {
-                testClientEnabled = !testClientEnabled; // Revert
-                ShowAlert(data?.Message ?? "Failed to toggle test client mode", "error");
-            }
+            SettingsService.UpdateTestClient(testClientEnabled);
+            ShowAlert(testClientEnabled ? "Test Client Mode enabled!" : "Test Client Mode disabled", testClientEnabled ? "success" :
+            "info");
+            await LoadSetupStatus();
         }
         catch
         {
             testClientEnabled = !testClientEnabled; // Revert
-            ShowAlert("Network error", "error");
+            ShowAlert("Error toggling test client mode", "error");
         }
     }
 
-    private async Task SaveTestClientSettings()
+    private void SaveTestClientSettings()
     {
         try
         {
-            var response = await Http.PostAsJsonAsync("/api/setup/test-client/settings", new 
-            { 
-                testMap = testClientMap,
-                timeoutSeconds = testClientTimeout
-            });
-            
-            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
-            
-            if (data?.Status == "success")
+            SettingsService.UpdateTestClientSettings(testClientMap, testClientTimeout);
+            ShowAlert("Test client settings saved!", "success");
+        }
+        catch
+        {
+            ShowAlert("Error saving settings", "error");
+        }
+    }
+
+    private async Task SaveYouTubeCredentials()
+    {
+        try
+        {
+            SettingsService.UpdateYouTubeCredentials(youtubeClientId, youtubeClientSecret, youtubeVideoId, youtubeMinAmount,
+            youtubeAllowChat);
+            ShowAlert("YouTube credentials saved!", "success");
+            await LoadSetupStatus();
+        }
+        catch
+        {
+            ShowAlert("Error saving YouTube credentials", "error");
+        }
+    }
+
+    private void AuthorizeYouTube()
+    {
+        try
+        {
+            var redirectUri = $"{Navigation.BaseUri}api/setup/youtube/callback";
+            var authUrl = YouTubeService.GetAuthorizationUrl(redirectUri);
+
+            if (!string.IsNullOrEmpty(authUrl))
             {
-                ShowAlert("Test client settings saved!", "success");
+                Navigation.NavigateTo(authUrl, true);
             }
             else
             {
-                ShowAlert(data?.Message ?? "Failed to save settings", "error");
+                ShowAlert("Failed to get authorization URL", "error");
             }
         }
         catch
         {
-            ShowAlert("Network error", "error");
+            ShowAlert("Error initiating authorization", "error");
+        }
+    }
+
+    private async Task StartYouTube()
+    {
+        try
+        {
+            var success = await YouTubeService.StartListeningAsync(youtubeVideoId);
+
+            if (success)
+            {
+                ShowAlert("Started listening to YouTube!", "success");
+                await LoadSetupStatus();
+            }
+            else
+            {
+                ShowAlert("Failed to start YouTube listener. Make sure the video is a live stream with an active chat.", "error");
+            }
+        }
+        catch
+        {
+            ShowAlert("Error starting YouTube listener", "error");
+        }
+    }
+
+    private async Task StopYouTube()
+    {
+        try
+        {
+            YouTubeService.StopListening();
+            ShowAlert("Stopped listening to YouTube", "info");
+            await LoadSetupStatus();
+        }
+        catch
+        {
+            ShowAlert("Error stopping YouTube listener", "error");
         }
     }
 
     private void ShowAlert(string message, string type)
     {
-        alertMessage = message;
-        alertType = type;
+        InvokeAsync(() =>
+        {
+            alertMessage = message;
+            alertType = type;
+            StateHasChanged();
+        });
+
+        _ = Task.Delay(5000).ContinueWith(async _ =>
+        {
+            await InvokeAsync(() =>
+    {
+    if (alertMessage == message) // Only clear if it hasn't changed
+    {
+        alertMessage = "";
         StateHasChanged();
-        _ = Task.Delay(5000).ContinueWith(_ => { alertMessage = ""; StateHasChanged(); });
+    }
+            });
+        });
     }
 
     private string GetTestClientStatusBadge()
@@ -364,50 +502,10 @@
         return testClientStatusText.Contains("Connected") ? "status-connected" : "status-pending";
     }
 
-    // DTOs
-    private class ApiResponse
-    {
-        public string Status { get; set; } = "";
-        public string? Message { get; set; }
-    }
-
     private class Model
     {
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public string Provider { get; set; } = "";
-    }
-
-    private class ModelsResponse
-    {
-        public List<Model>? Models { get; set; }
-        public string? CurrentModel { get; set; }
-    }
-
-    private class TunnelInfo
-    {
-        public bool IsRunning { get; set; }
-        public string? Type { get; set; }
-        public string? Url { get; set; }
-    }
-
-    private class TestClientInfo
-    {
-        public bool Enabled { get; set; }
-        public bool IsConnected { get; set; }
-    }
-
-    private class SetupStatusResponse
-    {
-        public bool OpenRouterConfigured { get; set; }
-        public TunnelInfo? Tunnel { get; set; }
-        public TestClientInfo? TestClient { get; set; }
-    }
-
-    private class TunnelResponse
-    {
-        public string Status { get; set; } = "";
-        public string? Message { get; set; }
-        public string? Url { get; set; }
     }
 }

@@ -455,9 +455,6 @@ code {
 }
 
 .global-account-bar {
-    padding: 10px 20px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
     z-index: 1000;
     border-radius: 8px;
 }
@@ -466,5 +463,10 @@ code {
     display: flex;
     align-items: center;
     gap: 10px;
+    background: var(--bg-card);
+    padding: 5px 15px;
+    margin-bottom: 30px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     font-size: 14px;
 }

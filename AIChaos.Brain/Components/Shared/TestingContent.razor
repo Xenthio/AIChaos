@@ -1,0 +1,217 @@
+@inject TestClientService TestClientService
+@inject AccountService AccountService
+@inject IJSRuntime JS
+
+<div id="alerts">
+    @if (!string.IsNullOrEmpty(alertMessage))
+    {
+        <div class="alert alert-@alertType">@alertMessage</div>
+    }
+</div>
+
+<!-- Super Chat Simulator -->
+<div class="card">
+    <h2>💰 Super Chat Simulator</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Simulate a YouTube Super Chat to add credits to a user's account for testing.
+    </p>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" @bind="superChatUserId" placeholder="e.g., testuser123">
+            <small>The user's account username (they can find this on the viewer page top-right)</small>
+        </div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" @bind="superChatDisplayName" placeholder="e.g., TestUser">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Amount (USD)</label>
+        <input type="number" @bind="superChatAmount" min="0.01" step="0.01">
+    </div>
+
+    <button @onclick="SimulateSuperChat">💵 Simulate Super Chat</button>
+    @if (!string.IsNullOrEmpty(superChatResult))
+    {
+        <div style="margin-top: 10px;">
+            <div class="alert alert-@superChatResultType">@superChatResult</div>
+        </div>
+    }
+</div>
+
+<!-- YouTube API Simulator -->
+<div class="card">
+    <h2>📺 YouTube API Simulator</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Simulate a raw YouTube API Super Chat callback for testing channel linking and pending credits.
+    </p>
+
+    <div class="form-row">
+        <div class="form-group">
+            <label>YouTube Channel ID</label>
+            <input type="text" @bind="ytApiChannelId" placeholder="UC...">
+            <small>The YouTube channel ID (not username)</small>
+        </div>
+        <div class="form-group">
+            <label>Display Name</label>
+            <input type="text" @bind="ytApiDisplayName" placeholder="Channel Name">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>Message (Optional)</label>
+        <input type="text" @bind="ytApiMessage" placeholder="Optional message or LINK-CODE">
+    </div>
+    <div class="form-group">
+        <label>Amount (USD)</label>
+        <input type="number" @bind="ytApiAmount" min="0.01" step="0.01">
+    </div>
+
+    <button @onclick="SimulateYouTubeApi">📺 Simulate YouTube API Call</button>
+    @if (!string.IsNullOrEmpty(ytApiResult))
+    {
+        <div style="margin-top: 10px;">
+            <div class="alert alert-@ytApiResultType">@ytApiResult</div>
+        </div>
+    }
+</div>
+
+<style>
+    .form-row {
+        display: flex;
+        gap: 20px;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+</style>
+
+@code {
+    private string alertMessage = "";
+    private string alertType = "info";
+
+    // Super Chat Simulator
+    private string superChatUserId = "";
+    private string superChatDisplayName = "";
+    private decimal superChatAmount = 5.00m;
+    private string superChatResult = "";
+    private string superChatResultType = "info";
+
+    // YouTube API Simulator
+    private string ytApiChannelId = "";
+    private string ytApiDisplayName = "";
+    private string ytApiMessage = "";
+    private decimal ytApiAmount = 5.00m;
+    private string ytApiResult = "";
+    private string ytApiResultType = "info";
+
+    private void SimulateSuperChat()
+    {
+        if (string.IsNullOrWhiteSpace(superChatUserId))
+        {
+            superChatResult = "User ID is required";
+            superChatResultType = "error";
+            return;
+        }
+
+        if (superChatAmount <= 0)
+        {
+            superChatResult = "Amount must be positive";
+            superChatResultType = "error";
+            return;
+        }
+
+        try
+        {
+            var displayName = string.IsNullOrWhiteSpace(superChatDisplayName) ? "Simulated User" : superChatDisplayName;
+            
+            // Get the account first
+            var account = AccountService.GetAccount(superChatUserId);
+            if (account == null)
+            {
+                superChatResult = $"Account not found: {superChatUserId}";
+                superChatResultType = "error";
+                return;
+            }
+            
+            // Add credits directly to the account
+            AccountService.AddCredits(account.Id, superChatAmount);
+            
+            // Simulate the result
+            var result = TestClientService.SimulateSuperChat(superChatUserId, displayName, superChatAmount);
+
+            if (result.Success)
+            {
+                var updatedAccount = AccountService.GetAccount(superChatUserId);
+                superChatResult = $"{result.Message}. New balance: ${updatedAccount?.CreditBalance ?? 0:F2}";
+                superChatResultType = "success";
+            }
+            else
+            {
+                superChatResult = result.Message ?? "Simulation failed";
+                superChatResultType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            superChatResult = $"Error: {ex.Message}";
+            superChatResultType = "error";
+        }
+    }
+
+    private void SimulateYouTubeApi()
+    {
+        if (string.IsNullOrWhiteSpace(ytApiChannelId))
+        {
+            ytApiResult = "YouTube Channel ID is required";
+            ytApiResultType = "error";
+            return;
+        }
+
+        if (ytApiAmount <= 0)
+        {
+            ytApiResult = "Amount must be positive";
+            ytApiResultType = "error";
+            return;
+        }
+
+        try
+        {
+            var displayName = string.IsNullOrWhiteSpace(ytApiDisplayName) ? "Test User" : ytApiDisplayName;
+            
+            // Add credits to the YouTube channel (will add to account if linked, or store as pending)
+            AccountService.AddCreditsToChannel(ytApiChannelId, ytApiAmount, displayName, ytApiMessage);
+            
+            // Simulate the result
+            var result = TestClientService.SimulateYouTubeApi(ytApiChannelId, displayName, ytApiMessage, ytApiAmount);
+
+            if (result.Success)
+            {
+                // Check if channel is linked
+                var account = AccountService.GetAccountByYouTubeChannel(ytApiChannelId);
+                if (account != null)
+                {
+                    ytApiResult = $"{result.Message}. Credits added to linked account: {account.Username} (Balance: ${account.CreditBalance:F2})";
+                }
+                else
+                {
+                    var pending = AccountService.GetPendingCreditsForChannel(ytApiChannelId);
+                    ytApiResult = $"{result.Message}. Channel not linked - stored as pending credits: ${pending:F2}";
+                }
+                ytApiResultType = "success";
+            }
+            else
+            {
+                ytApiResult = result.Message ?? "Simulation failed";
+                ytApiResultType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            ytApiResult = $"Error: {ex.Message}";
+            ytApiResultType = "error";
+        }
+    }
+}

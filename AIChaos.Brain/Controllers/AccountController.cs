@@ -38,116 +38,6 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
-    /// Creates a new account.
-    /// </summary>
-    [HttpPost("register")]
-    public ActionResult Register([FromBody] RegisterRequest request)
-    {
-        var (success, error, account) = _accountService.CreateAccount(
-            request.Username, 
-            request.Password, 
-            request.DisplayName);
-        
-        if (!success)
-        {
-            return BadRequest(new { status = "error", message = error });
-        }
-        
-        // Auto-login after registration
-        var (_, _, _, sessionToken) = _accountService.Login(request.Username, request.Password);
-        
-        return Ok(new 
-        { 
-            status = "success", 
-            message = "Account created successfully",
-            sessionToken,
-            account = new 
-            {
-                id = account!.Id,
-                username = account.Username,
-                displayName = account.DisplayName,
-                balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId,
-                picture = account.PictureUrl
-            }
-        });
-    }
-
-    /// <summary>
-    /// Logs in to an existing account.
-    /// </summary>
-    [HttpPost("login")]
-    public ActionResult Login([FromBody] LoginRequest request)
-    {
-        var (success, error, account, sessionToken) = _accountService.Login(request.Username, request.Password);
-        
-        if (!success)
-        {
-            return Unauthorized(new { status = "error", message = error });
-        }
-        
-        return Ok(new 
-        { 
-            status = "success",
-            sessionToken,
-            account = new 
-            {
-                id = account!.Id,
-                username = account.Username,
-                displayName = account.DisplayName,
-                balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId,
-                picture = account.PictureUrl
-            }
-        });
-    }
-
-    /// <summary>
-    /// Gets the current session info.
-    /// </summary>
-    [HttpGet("session")]
-    public ActionResult GetSession([FromHeader(Name = "X-Session-Token")] string? sessionToken)
-    {
-        if (string.IsNullOrEmpty(sessionToken))
-        {
-            return Unauthorized(new { status = "error", message = "Not logged in" });
-        }
-        
-        var account = _accountService.GetAccountBySession(sessionToken);
-        if (account == null)
-        {
-            return Unauthorized(new { status = "error", message = "Session expired" });
-        }
-        
-        return Ok(new 
-        { 
-            status = "success",
-            account = new 
-            {
-                id = account.Id,
-                username = account.Username,
-                displayName = account.DisplayName,
-                balance = account.CreditBalance,
-                linkedYouTube = account.LinkedYouTubeChannelId,
-                picture = account.PictureUrl
-            }
-        });
-    }
-
-    /// <summary>
-    /// Logs out the current session.
-    /// </summary>
-    [HttpPost("logout")]
-    public ActionResult Logout([FromHeader(Name = "X-Session-Token")] string? sessionToken)
-    {
-        if (!string.IsNullOrEmpty(sessionToken))
-        {
-            _accountService.Logout(sessionToken);
-        }
-        return Ok(new { status = "success", message = "Logged out" });
-    }
-
-    /// <summary>
     /// Generates a verification code to link a YouTube channel.
     /// </summary>
     [HttpPost("link-youtube/generate")]
@@ -388,99 +278,51 @@ public class AccountController : ControllerBase
             return Unauthorized(new { status = "error", message = "Session expired" });
         }
 
-        if (string.IsNullOrEmpty(request.Prompt))
-        {
-            return BadRequest(new { status = "error", message = "Prompt required" });
-        }
-
-        // Check rate limit
-        var (allowed, waitSeconds) = _accountService.CheckRateLimit(account.Id);
-        if (!allowed)
-        {
-            return Ok(new
-            {
-                status = "error",
-                message = $"Please wait {waitSeconds:F0} seconds before submitting another command.",
-                rateLimited = true,
-                waitSeconds
-            });
-        }
-
-        // Check credits
-        if (account.CreditBalance < Constants.CommandCost)
-        {
-            return Ok(new
-            {
-                status = "error",
-                message = $"Insufficient credits. You have ${account.CreditBalance:F2}, but need ${Constants.CommandCost:F2}",
-                balance = account.CreditBalance
-            });
-        }
-
         try
         {
-            var isPrivateDiscordMode = _settingsService.Settings.Safety.PrivateDiscordMode;
+            // Use AccountService to handle the full submission flow
+            var (success, message, commandId, newBalance) = await _accountService.SubmitChaosCommandAsync(
+                account.Id,
+                request.Prompt,
+                codeGenerator: async (prompt) => await _codeGenerator.GenerateCodeAsync(prompt),
+                needsModeration: _moderationService.NeedsModeration,
+                extractImageUrls: _moderationService.ExtractImageUrls,
+                addPendingImage: (url, prompt, source, author, userId, cmdId) => 
+                    _moderationService.AddPendingImage(url, prompt, source, author, userId, cmdId),
+                addCommandWithStatus: (prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue) =>
+                    _commandQueue.AddCommandWithStatus(prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue),
+                isPrivateDiscordMode: _settingsService.Settings.Safety.PrivateDiscordMode,
+                isTestClientModeEnabled: _testClientService.IsEnabled
+            );
 
-            // Check for images in the prompt - queue for moderation if found (skip if Private Discord Mode)
-            if (!isPrivateDiscordMode && _moderationService.NeedsModeration(request.Prompt))
+            if (!success)
             {
-                var imageUrls = _moderationService.ExtractImageUrls(request.Prompt);
-                foreach (var url in imageUrls)
-                {
-                    _moderationService.AddPendingImage(
-                        url,
-                        request.Prompt,
-                        "web",
-                        account.DisplayName,
-                        account.Id);
-                }
-
-                _logger.LogInformation("[MODERATION] Prompt with {Count} image(s) queued for review from {Username}",
-                    imageUrls.Count, account.Username);
-
                 return Ok(new
                 {
-                    status = "pending_moderation",
-                    message = $"Your prompt contains {imageUrls.Count} image(s) that require moderator approval before processing."
+                    status = "error",
+                    message,
+                    balance = newBalance
                 });
             }
 
-            // Generate code
-            var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(request.Prompt);
-
-            // Deduct credits
-            if (!_accountService.DeductCredits(account.Id, Constants.CommandCost))
+            // If test client mode is enabled and command was queued, queue for testing
+            if (commandId.HasValue && _testClientService.IsEnabled)
             {
-                return Ok(new { status = "error", message = "Failed to deduct credits" });
+                var command = _commandQueue.GetCommand(commandId.Value);
+                if (command != null && !string.IsNullOrEmpty(command.ExecutionCode))
+                {
+                    _testClientService.QueueForTesting(command.Id, command.ExecutionCode, command.UserPrompt);
+                }
             }
 
-            // Add to command queue
-            var isTestClientModeEnabled = _testClientService.IsEnabled;
-            var entry = _commandQueue.AddCommand(
-                request.Prompt,
-                executionCode,
-                undoCode,
-                "web",
-                account.DisplayName,
-                null,
-                account.Id,
-                null,
-                queueForExecution: !isTestClientModeEnabled);
-
-            if (isTestClientModeEnabled)
-            {
-                _testClientService.QueueForTesting(entry.Id, executionCode, request.Prompt);
-            }
-
-            // Get updated balance
-            var updatedAccount = _accountService.GetAccountBySession(sessionToken);
+            var statusValue = message.Contains("moderation") ? "pending_moderation" : "success";
             
             return Ok(new
             {
-                status = "success",
-                message = "Command submitted successfully",
-                commandId = entry.Id,
-                balance = updatedAccount?.CreditBalance ?? 0,
+                status = statusValue,
+                message,
+                commandId,
+                balance = newBalance,
                 cost = Constants.CommandCost
             });
         }

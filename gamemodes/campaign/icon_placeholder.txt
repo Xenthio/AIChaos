@@ -1,0 +1,3 @@
+// Placeholder for gamemode icon
+// Place a 256x256 PNG image here named "icon24.png" for the gamemode icon
+// You can use the Lambda logo or any Half-Life 2 related image

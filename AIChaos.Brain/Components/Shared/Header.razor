@@ -2,8 +2,21 @@
 @inject NavigationManager Navigation
 
 <div class="header">
-    <h1>@Title</h1>
-    @if (!string.IsNullOrEmpty(Subtitle))
+    <h1>
+        @if (TitleContent != null)
+        {
+            @TitleContent
+        }
+        else
+        {
+            @Title
+        }
+    </h1>
+    @if (SubtitleContent != null)
+    {
+        <p>@SubtitleContent</p>
+    }
+    else if (!string.IsNullOrEmpty(Subtitle))
     {
         <p>@Subtitle</p>
     }
@@ -15,7 +28,13 @@
     public string Title { get; set; } = "🎮 AI CHAOS";
 
     [Parameter]
+    public RenderFragment? TitleContent { get; set; }
+
+    [Parameter]
     public string? Subtitle { get; set; }
+
+    [Parameter]
+    public RenderFragment? SubtitleContent { get; set; }
 
     [Parameter]
     public RenderFragment? ChildContent { get; set; }

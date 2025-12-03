@@ -17,6 +17,7 @@ public class ModerationController : ControllerBase
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly SettingsService _settingsService;
     private readonly RefundService _refundService;
+    private readonly TestClientService _testClientService;
     private readonly ILogger<ModerationController> _logger;
     
     // Reasons that trigger a real refund request (others show fake "Submitted" success)
@@ -32,6 +33,7 @@ public class ModerationController : ControllerBase
         AiCodeGeneratorService codeGenerator,
         SettingsService settingsService,
         RefundService refundService,
+        TestClientService testClientService,
         ILogger<ModerationController> logger)
     {
         _moderationService = moderationService;
@@ -39,6 +41,7 @@ public class ModerationController : ControllerBase
         _codeGenerator = codeGenerator;
         _settingsService = settingsService;
         _refundService = refundService;
+        _testClientService = testClientService;
         _logger = logger;
     }
     
@@ -121,7 +124,10 @@ public class ModerationController : ControllerBase
             entry.UserPrompt,
             imageContext: $"Image URL: {entry.ImageUrl}");
         
-        // Add to command queue
+        // Check if test client mode is enabled
+        var isTestClientModeEnabled = _settingsService.Settings.TestClient.Enabled;
+        
+        // Add to command queue (respect test client mode)
         var command = _commandQueue.AddCommand(
             entry.UserPrompt,
             executionCode,
@@ -129,7 +135,20 @@ public class ModerationController : ControllerBase
             entry.Source,
             entry.Author,
             entry.ImageUrl,
-            entry.UserId);
+            entry.UserId,
+            null,
+            queueForExecution: !isTestClientModeEnabled);
+        
+        // If test client mode is enabled, queue for testing
+        if (isTestClientModeEnabled)
+        {
+            _testClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
+            _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for testing", command.Id);
+        }
+        else
+        {
+            _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for execution", command.Id);
+        }
         
         return Ok(new ApiResponse
         {

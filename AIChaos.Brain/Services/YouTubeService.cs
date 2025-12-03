@@ -40,6 +40,31 @@ public partial class YouTubeService : IDisposable
         _accountService = accountService;
         _logger = logger;
     }
+    
+    /// <summary>
+    /// Gets the YouTube OAuth authorization URL.
+    /// </summary>
+    public string? GetAuthorizationUrl(string redirectUri)
+    {
+        var settings = _settingsService.Settings.YouTube;
+        
+        if (string.IsNullOrEmpty(settings.ClientId))
+        {
+            _logger.LogWarning("YouTube Client ID not configured");
+            return null;
+        }
+        
+        var scopes = "https://www.googleapis.com/auth/youtube.readonly";
+        var authUrl = $"https://accounts.google.com/o/oauth2/v2/auth" +
+            $"?client_id={settings.ClientId}" +
+            $"&redirect_uri={System.Web.HttpUtility.UrlEncode(redirectUri)}" +
+            $"&response_type=code" +
+            $"&scope={System.Web.HttpUtility.UrlEncode(scopes)}" +
+            $"&access_type=offline" +
+            $"&prompt=consent";
+        
+        return authUrl;
+    }
 
     /// <summary>
     /// Initializes the YouTube service with stored credentials.

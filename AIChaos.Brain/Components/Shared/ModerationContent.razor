@@ -1,7 +1,15 @@
+@page "/moderation"
+@using AIChaos.Brain.Models
+@using AIChaos.Brain.Services
+@implements IDisposable
+
 @inject ImageModerationService ModerationService
 @inject RefundService RefundService
+@inject CommandQueueService CommandQueue
+@inject AiCodeGeneratorService CodeGenerator
+@inject TestClientService TestClientService
+@inject AccountService AccountService
 @inject IJSRuntime JS
-@using AIChaos.Brain.Models
 
 @if (!string.IsNullOrEmpty(alertMessage))
 {
@@ -43,9 +51,9 @@
                             <span>👤 @img.Author</span>
                         </div>
                         <div class="image-prompt"><strong>Prompt:</strong> @img.UserPrompt</div>
-                        <img src="@img.ImageUrl" class="image-preview" alt="Pending image">
+                        <img src="@img.ImageUrl" class="image-preview" alt=@($"Pending image (If you can't see it, embedding might be blocked, please open it in a new tab)")>
                         <div class="action-buttons">
-                            <button @onclick="() => ApproveImage(img.Id)" class="btn-success">✅ APPROVE</button>
+                            <button @onclick="async () => await ApproveImage(img.Id)" class="btn-success">✅ APPROVE</button>
                             <button @onclick="() => DenyImage(img.Id)" class="btn-danger">❌ DENY</button>
                         </div>
                     </div>
@@ -181,6 +189,28 @@
     {
         LoadPendingImages();
         LoadPendingRefunds();
+        
+        // Subscribe to events for real-time updates
+        ModerationService.PendingImagesChanged += OnPendingImagesChanged;
+        CommandQueue.HistoryChanged += OnHistoryChanged;
+    }
+
+    private async void OnPendingImagesChanged(object? sender, EventArgs e)
+    {
+        await InvokeAsync(() =>
+        {
+            LoadPendingImages();
+            StateHasChanged();
+        });
+    }
+
+    private async void OnHistoryChanged(object? sender, EventArgs e)
+    {
+        // Reload in case we need to update command statuses
+        await InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
     }
 
     private void LoadPendingImages()
@@ -231,25 +261,84 @@
         }
     }
 
-    private void ApproveImage(int imageId)
+    private async Task ApproveImage(int imageId)
     {
         try
         {
-            var result = ModerationService.ApproveImage(imageId);
-            if (result != null)
+            // Null checks for injected services
+            if (CodeGenerator == null)
             {
-                ShowAlert("Image approved!", "success");
-                LoadPendingImages();
+                ShowAlert("Error: Code generator service not available", "error");
+                return;
             }
-            else
+            
+            if (CommandQueue == null)
             {
-                ShowAlert("Failed to approve image", "error");
+                ShowAlert("Error: Command queue service not available", "error");
+                return;
             }
+            
+            if (TestClientService == null)
+            {
+                ShowAlert("Error: Test client service not available", "error");
+                return;
+            }
+            
+            var entry = ModerationService.ApproveImage(imageId);
+            if (entry == null)
+            {
+                ShowAlert("Failed to approve image - image not found", "error");
+                return;
+            }
+            
+            // Generate code with image context
+            var (executionCode, undoCode) = await CodeGenerator.GenerateCodeAsync(
+                entry.UserPrompt,
+                imageContext: $"Image URL: {entry.ImageUrl}");
+            
+            // Check if we have a linked command to update
+            if (entry.CommandId.HasValue)
+            {
+                // Update the existing placeholder command
+                var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                if (command != null)
+                {
+                    command.ExecutionCode = executionCode;
+                    command.UndoCode = undoCode;
+                    command.ImageContext = entry.ImageUrl;
+                    command.Status = CommandStatus.Queued;
+                    command.AiResponse = null; // Clear the pending message
+                    
+                    // Check if test client mode is enabled
+                    var isTestClientModeEnabled = TestClientService.IsEnabled;
+                    
+                    // Queue for execution
+                    if (isTestClientModeEnabled)
+                    {
+                        TestClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
+                        Console.WriteLine($"[MODERATION] Approved image command #{command.Id} queued for testing");
+                    }
+                    else
+                    {
+                        CommandQueue.QueueInteractiveCode(command.Id, executionCode);
+                        Console.WriteLine($"[MODERATION] Approved image command #{command.Id} queued for execution");
+                    }
+                    
+                    ShowAlert($"Image approved! Command #{command.Id} is now queued for execution.", "success");
+                    LoadPendingImages();
+                    return;
+                }
+            }
+            
+            // Fallback: No linked command (old behavior for backward compatibility)
+            ShowAlert("Image approved but no linked command found - this shouldn't happen for new submissions", "warning");
+            LoadPendingImages();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Approve image failed: {ex.Message}");
-            ShowAlert("Error approving image", "error");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            ShowAlert($"Error approving image: {ex.Message}", "error");
         }
     }
 
@@ -257,10 +346,30 @@
     {
         try
         {
-            var result = ModerationService.DenyImage(imageId);
-            if (result != null)
+            var entry = ModerationService.DenyImage(imageId);
+            if (entry != null)
             {
-                ShowAlert("Image denied", "success");
+                // Refund credits if there's a linked command
+                if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
+                {
+                    AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                    
+                    // Update the command status to Failed
+                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                    if (command != null)
+                    {
+                        command.Status = CommandStatus.Failed;
+                        command.ErrorMessage = "Image denied by moderator";
+                        command.AiResponse = "❌ Your image was denied by a moderator. Credits have been refunded.";
+                    }
+                    
+                    ShowAlert($"Image denied and ${Constants.CommandCost:F2} refunded", "success");
+                }
+                else
+                {
+                    ShowAlert("Image denied", "success");
+                }
+                
                 LoadPendingImages();
             }
             else
@@ -338,5 +447,9 @@
     public void Dispose()
     {
         refreshTimer?.Dispose();
+        
+        // Unsubscribe from events
+        ModerationService.PendingImagesChanged -= OnPendingImagesChanged;
+        CommandQueue.HistoryChanged -= OnHistoryChanged;
     }
 }

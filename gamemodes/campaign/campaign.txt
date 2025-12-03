@@ -1,0 +1,24 @@
+"campaign"
+{
+	"base"		"base"
+	"title"		"Campaign"
+	"maps"		"^d1_"
+	"category"	"roleplay"
+	"menusystem"	"1"
+	"workshopid"	""
+	"author_name"	"AIChaos"
+	"author_email"	""
+	"author_url"	""
+	"version"	"1.0"
+	"settings"
+	{
+		1
+		{
+			"name"		"campaign_difficulty"
+			"text"		"Difficulty"
+			"help"		"Set the game difficulty"
+			"type"		"Numeric"
+			"default"	"1"
+		}
+	}
+}

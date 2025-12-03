@@ -403,6 +403,50 @@ public class TestClientService
         }
     }
     
+    /// <summary>
+    /// Simulates a Super Chat for testing purposes.
+    /// Adds credits directly to a user account by username.
+    /// </summary>
+    public ServiceResult SimulateSuperChat(string username, string displayName, decimal amount)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            return ServiceResult.Fail("Username is required");
+        }
+        
+        if (amount <= 0)
+        {
+            return ServiceResult.Fail("Amount must be positive");
+        }
+        
+        _logger.LogInformation("[TESTING] Simulating Super Chat: ${Amount} for user {Username}", amount, username);
+        
+        // This will be handled by AccountService
+        return ServiceResult.Ok($"Simulated ${amount:F2} Super Chat for {username}");
+    }
+    
+    /// <summary>
+    /// Simulates a YouTube API Super Chat callback for testing channel linking and pending credits.
+    /// </summary>
+    public ServiceResult SimulateYouTubeApi(string channelId, string displayName, string? message, decimal amount)
+    {
+        if (string.IsNullOrWhiteSpace(channelId))
+        {
+            return ServiceResult.Fail("YouTube Channel ID is required");
+        }
+        
+        if (amount <= 0)
+        {
+            return ServiceResult.Fail("Amount must be positive");
+        }
+        
+        _logger.LogInformation("[TESTING] Simulating YouTube API Super Chat: ${Amount} from channel {ChannelId} ({DisplayName})", 
+            amount, channelId, displayName);
+        
+        // This will be handled by AccountService via AddCreditsToChannel
+        return ServiceResult.Ok($"Simulated YouTube API Super Chat: ${amount:F2} from {displayName} ({channelId})");
+    }
+    
     private class PendingTest
     {
         public int CommandId { get; set; }

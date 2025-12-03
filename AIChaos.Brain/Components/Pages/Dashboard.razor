@@ -7,19 +7,20 @@
 @inject AccountService AccountService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@using AIChaos.Brain.Components.Layout
 
 <PageTitle>AI Chaos Dashboard</PageTitle>
 
-<Header Title="🎮 AI CHAOS DASHBOARD" Subtitle="@GetSubtitle()" />
-
-<NavMenu />
+<SectionContent SectionId="PageSections.Title">🎮 AI CHAOS DASHBOARD</SectionContent>
+<SectionContent SectionId="PageSections.Subtitle">@GetSubtitle()</SectionContent>
 
 @if (currentAccount == null)
 {
     <div class="login-container">
         <div class="card">
             <h2>🔒 Login Required</h2>
-            <p style="color: var(--text-dim); margin-bottom: 20px;">Dashboard access requires an account. The first account created is automatically an admin.</p>
+            <p style="color: var(--text-dim); margin-bottom: 20px;">Dashboard access requires an account. The first account
+                created is automatically an admin.</p>
             @if (!string.IsNullOrEmpty(loginAlert))
             {
                 <div class="alert alert-@loginAlertType">@loginAlert</div>
@@ -42,22 +43,29 @@ else
 {
     <!-- Admin/Moderator Subtabs -->
     <div class="admin-tabs">
-        <button class="admin-tab @(activeSubPage == "commands" ? "active" : "")" @onclick='() => NavigateToSubPage("commands")'>
+        <button class="admin-tab @(activeSubPage == "commands" ? "active" : "")"
+        @onclick='() => NavigateToSubPage("commands")'>
             ⚡ Commands
         </button>
         <button class="admin-tab @(activeSubPage == "setup" ? "active" : "")" @onclick='() => NavigateToSubPage("setup")'>
             🔧 Setup
         </button>
-        <button class="admin-tab @(activeSubPage == "history" ? "active" : "")" @onclick='() => NavigateToSubPage("history")'>
+        <button class="admin-tab @(activeSubPage == "history" ? "active" : "")"
+        @onclick='() => NavigateToSubPage("history")'>
             📜 History
         </button>
-        <button class="admin-tab @(activeSubPage == "moderation" ? "active" : "")" @onclick='() => NavigateToSubPage("moderation")'>
+        <button class="admin-tab @(activeSubPage == "moderation" ? "active" : "")"
+        @onclick='() => NavigateToSubPage("moderation")'>
             🛡️ Moderation
         </button>
         @if (currentAccount.Role == UserRole.Admin)
         {
             <button class="admin-tab @(activeSubPage == "users" ? "active" : "")" @onclick='() => NavigateToSubPage("users")'>
                 👥 Users
+            </button>
+            <button class="admin-tab @(activeSubPage == "testing" ? "active" : "")"
+            @onclick='() => NavigateToSubPage("testing")'>
+                🧪 Testing
             </button>
         }
     </div>
@@ -68,17 +76,19 @@ else
         <div class="card">
             <h2>Send Chaos Command</h2>
             <div class="form-group">
-                <textarea @bind="promptInput" placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
+                <textarea @bind="promptInput"
+                    placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
             </div>
-            
+
             <div class="form-group" style="margin-bottom: 15px;">
                 <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                     <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
                     <span>🔄 Interactive Mode</span>
-                    <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors automatically)</span>
+                    <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors
+                        automatically)</span>
                 </label>
             </div>
-            
+
             <button @onclick="SendPrompt" disabled="@isSubmitting">
                 @if (isSubmitting)
                 {
@@ -89,7 +99,7 @@ else
                     <span>⚡ SEND CHAOS</span>
                 }
             </button>
-            
+
             @if (!string.IsNullOrEmpty(statusMessage))
             {
                 <div style="margin-top: 15px;">
@@ -97,7 +107,7 @@ else
                 </div>
             }
         </div>
-        
+
         <div class="card">
             <h2>📋 Recent Commands</h2>
             <div>
@@ -122,13 +132,13 @@ else
                             <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
                             <div class="history-actions">
                                 <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
-                            <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
+                                <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
+                            </div>
                         </div>
-                    </div>
+                    }
                 }
-            }
+            </div>
         </div>
-    </div>
     }
     else if (activeSubPage == "setup")
     {
@@ -145,6 +155,10 @@ else
     else if (activeSubPage == "users")
     {
         <UserManagementContent />
+    }
+    else if (activeSubPage == "testing")
+    {
+        <TestingContent />
     }
 }
 
@@ -194,11 +208,25 @@ else
         font-size: 11px;
     }
 
-    .status-pending { background: #888; }
-    .status-queued { background: #f0ad4e; }
-    .status-executed { background: #5cb85c; }
-    .status-undone { background: #5bc0de; }
-    .status-failed { background: #d9534f; }
+    .status-pending {
+        background: #888;
+    }
+
+    .status-queued {
+        background: #f0ad4e;
+    }
+
+    .status-executed {
+        background: #5cb85c;
+    }
+
+    .status-undone {
+        background: #5bc0de;
+    }
+
+    .status-failed {
+        background: #d9534f;
+    }
 
     .history-actions {
         display: flex;
@@ -239,9 +267,11 @@ else
 @code {
     [Parameter]
     public string? SubPage { get; set; }
-    
+
     private string activeSubPage = "commands";
-    private Account? currentAccount;
+    [CascadingParameter]
+    private Account? currentAccount { get; set; }
+
     private string loginAlert = "";
     private string loginAlertType = "error";
     private string promptInput = "";
@@ -251,12 +281,11 @@ else
     private string statusMessage = "";
     private string statusType = "info";
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnParametersSetAsync()
     {
-        if (firstRender)
+        if (currentAccount != null && currentAccount.Role >= UserRole.Moderator)
         {
-            await LoadSession();
-            StateHasChanged();
+            LoadRecentCommands();
         }
     }
 
@@ -267,26 +296,8 @@ else
         return Task.CompletedTask;
     }
 
-    private async Task LoadSession()
-    {
-        try
-        {
-            var sessionToken = await JS.InvokeAsync<string?>("localStorage.getItem", "sessionToken");
-            if (!string.IsNullOrEmpty(sessionToken))
-            {
-                currentAccount = AccountService.GetAccountBySession(sessionToken);
-                if (currentAccount != null && currentAccount.Role >= UserRole.Moderator)
-                {
-                    LoadRecentCommands();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Session load failed: {ex.Message}");
-        }
-    }
-    
+
+
     private string GetSubtitle()
     {
         if (currentAccount == null)
@@ -302,24 +313,24 @@ else
     {
         if (string.IsNullOrWhiteSpace(promptInput))
             return;
-        
+
         try
         {
             // Generate code using AI
             var (executionCode, undoCode) = await CodeGenerator.GenerateCodeAsync(promptInput);
-            
+
             // Add command to queue
             var command = CommandQueue.AddCommand(
-                userPrompt: promptInput,
-                executionCode: executionCode,
-                undoCode: undoCode,
-                source: "dashboard",
-                author: currentAccount?.DisplayName ?? "Admin",
-                imageContext: null,
-                userId: currentAccount?.Id ?? "admin",
-                aiResponse: null
+            userPrompt: promptInput,
+            executionCode: executionCode,
+            undoCode: undoCode,
+            source: "dashboard",
+            author: currentAccount?.DisplayName ?? "Admin",
+            imageContext: null,
+            userId: currentAccount?.Id ?? "admin",
+            aiResponse: null
             );
-            
+
             ShowStatus($"✓ {promptInput}", "success");
             promptInput = "";
             LoadRecentCommands();
@@ -352,14 +363,14 @@ else
             if (command != null)
             {
                 CommandQueue.AddCommand(
-                    userPrompt: command.UserPrompt,
-                    executionCode: command.ExecutionCode,
-                    undoCode: command.UndoCode,
-                    source: "dashboard",
-                    author: currentAccount?.DisplayName ?? "Admin",
-                    imageContext: command.ImageContext,
-                    userId: currentAccount?.Id ?? "admin",
-                    aiResponse: null
+                userPrompt: command.UserPrompt,
+                executionCode: command.ExecutionCode,
+                undoCode: command.UndoCode,
+                source: "dashboard",
+                author: currentAccount?.DisplayName ?? "Admin",
+                imageContext: command.ImageContext,
+                userId: currentAccount?.Id ?? "admin",
+                aiResponse: null
                 );
                 ShowStatus("✓ Command repeated!", "success");
                 LoadRecentCommands();
@@ -374,7 +385,7 @@ else
             ShowStatus("✗ Error repeating command", "error");
             Console.WriteLine($"Repeat failed: {ex.Message}");
         }
-        
+
         return Task.CompletedTask;
     }
 
@@ -391,7 +402,7 @@ else
             ShowStatus("✗ Error undoing command", "error");
             Console.WriteLine($"Undo failed: {ex.Message}");
         }
-        
+
         return Task.CompletedTask;
     }
 
@@ -400,12 +411,12 @@ else
         statusMessage = message;
         statusType = type;
         StateHasChanged();
-        _ = Task.Delay(3000).ContinueWith(async _ => 
-        { 
+        _ = Task.Delay(3000).ContinueWith(async _ =>
+        {
             await InvokeAsync(() =>
-            {
-                statusMessage = ""; 
-                StateHasChanged();
+    {
+    statusMessage = "";
+    StateHasChanged();
             });
         });
     }
@@ -424,7 +435,7 @@ else
         CommandStatus.Undone => "undone",
         _ => "pending"
     };
-    
+
     private string GetStatusText(CommandStatus status) => status.ToString();
 }
 

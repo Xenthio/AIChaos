@@ -269,6 +269,25 @@ public partial class TunnelService : IDisposable
     }
     
     /// <summary>
+    /// Stops the current tunnel (alias for Stop).
+    /// </summary>
+    public void StopTunnel() => Stop();
+    
+    /// <summary>
+    /// Starts a tunnel based on the type name.
+    /// </summary>
+    public async Task<(bool Success, string? Url, string? Message)> StartTunnelAsync(string type)
+    {
+        return type.ToLowerInvariant() switch
+        {
+            "ngrok" => await StartNgrokAsync(),
+            "localtunnel" => await StartLocalTunnelAsync(),
+            "bore" => await StartBoreAsync(),
+            _ => (false, null, $"Unknown tunnel type: {type}")
+        };
+    }
+    
+    /// <summary>
     /// Gets the current tunnel status.
     /// </summary>
     public TunnelStatus GetStatus()

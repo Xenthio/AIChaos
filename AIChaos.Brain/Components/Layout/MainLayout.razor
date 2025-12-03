@@ -2,9 +2,18 @@
 @inject AccountService AccountService
 @inject IJSRuntime JS
 
-<div class="global-account-bar">
-    <AccountBar CurrentAccount="@currentAccount" OnAccountChanged="@LoadAccount" />
-</div>
+<Header>
+    <TitleContent>
+        <SectionOutlet SectionId="PageSections.Title" />
+    </TitleContent>
+    <SubtitleContent>
+        <SectionOutlet SectionId="PageSections.Subtitle" />
+    </SubtitleContent>
+</Header>
+
+<AccountBar CurrentAccount="@currentAccount" OnAccountChanged="@LoadAccount" />
+
+<NavMenu />
 
 <div class="container">
     <CascadingValue Value="@currentAccount">
@@ -45,7 +54,7 @@
         {
             currentAccount = null;
         }
-        
+
         await InvokeAsync(StateHasChanged);
     }
 }

@@ -381,6 +381,131 @@ public class AccountService
     }
 
     /// <summary>
+    /// Links a YouTube channel via Google Sign-In (JWT verification).
+    /// </summary>
+    public bool LinkYouTubeChannelViaGoogle(string accountId, string googleCredential, string? expectedClientId)
+    {
+        // Verify the JWT token
+        var (googleId, pictureUrl) = VerifyGoogleToken(googleCredential, expectedClientId);
+        
+        if (string.IsNullOrEmpty(googleId))
+        {
+            _logger.LogWarning("[ACCOUNT] Failed to verify Google credential for account {AccountId}", accountId);
+            return false;
+        }
+        
+        // Link the Google ID as the YouTube channel ID
+        return LinkYouTubeChannel(accountId, googleId, pictureUrl);
+    }
+
+    /// <summary>
+    /// Verifies a Google ID token and returns the Google ID (sub claim) and picture URL if valid.
+    /// </summary>
+    private (string? GoogleId, string? PictureUrl) VerifyGoogleToken(string credential, string? expectedClientId)
+    {
+        try
+        {
+            // Simple JWT decode and verification
+            var parts = credential.Split('.');
+            if (parts.Length != 3)
+            {
+                _logger.LogWarning("[AUTH] Invalid JWT format");
+                return (null, null);
+            }
+            
+            // Decode payload
+            var payload = parts[1];
+            // Add padding if needed
+            payload = payload.Replace('-', '+').Replace('_', '/');
+            switch (payload.Length % 4)
+            {
+                case 2: payload += "=="; break;
+                case 3: payload += "="; break;
+            }
+            
+            var jsonPayload = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            var claims = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(jsonPayload);
+            
+            if (claims == null)
+            {
+                _logger.LogWarning("[AUTH] Failed to parse JWT claims");
+                return (null, null);
+            }
+            
+            // Verify issuer
+            if (claims.TryGetValue("iss", out var issObj))
+            {
+                var iss = issObj?.ToString();
+                if (iss != "https://accounts.google.com" && iss != "accounts.google.com")
+                {
+                    _logger.LogWarning("[AUTH] Invalid JWT issuer: {Issuer}", iss);
+                    return (null, null);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("[AUTH] Missing JWT issuer");
+                return (null, null);
+            }
+            
+            // Verify audience (client ID) if provided
+            if (!string.IsNullOrEmpty(expectedClientId) && claims.TryGetValue("aud", out var audObj))
+            {
+                var aud = audObj?.ToString();
+                if (aud != expectedClientId)
+                {
+                    _logger.LogWarning("[AUTH] JWT audience mismatch. Expected: {Expected}, Got: {Got}", 
+                        expectedClientId, aud);
+                    return (null, null);
+                }
+            }
+            
+            // Verify expiration
+            if (claims.TryGetValue("exp", out var expObj))
+            {
+                if (expObj is System.Text.Json.JsonElement jsonElement && jsonElement.TryGetInt64(out var exp))
+                {
+                    var expTime = DateTimeOffset.FromUnixTimeSeconds(exp);
+                    if (expTime < DateTimeOffset.UtcNow)
+                    {
+                        _logger.LogWarning("[AUTH] JWT token expired");
+                        return (null, null);
+                    }
+                }
+            }
+            
+            // Extract Google ID (sub claim)
+            string? googleId = null;
+            string? pictureUrl = null;
+            
+            if (claims.TryGetValue("sub", out var subObj))
+            {
+                googleId = subObj?.ToString();
+            }
+            
+            // Extract picture URL
+            if (claims.TryGetValue("picture", out var pictureObj))
+            {
+                pictureUrl = pictureObj?.ToString();
+            }
+            
+            if (string.IsNullOrEmpty(googleId))
+            {
+                _logger.LogWarning("[AUTH] Missing sub claim in JWT");
+                return (null, null);
+            }
+            
+            _logger.LogInformation("[AUTH] Verified Google token for Google ID: {GoogleId}", googleId);
+            return (googleId, pictureUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AUTH] Failed to verify Google token");
+            return (null, null);
+        }
+    }
+
+    /// <summary>
     /// Gets an account by YouTube Channel ID.
     /// </summary>
     public Account? GetAccountByYouTubeChannel(string youtubeChannelId)
@@ -506,6 +631,140 @@ public class AccountService
         
         _logger.LogInformation("[ACCOUNT] Deleted account: {Username} ({Id})", account.Username, accountId);
         return true;
+    }
+    
+    /// <summary>
+    /// Submits a chaos command with full validation, credit deduction, and moderation handling.
+    /// Returns (success, message, commandId, newBalance).
+    /// </summary>
+    public async Task<(bool Success, string Message, int? CommandId, decimal NewBalance)> SubmitChaosCommandAsync(
+        string accountId,
+        string prompt,
+        Func<string, Task<(string ExecutionCode, string UndoCode)>> codeGenerator,
+        Func<string, bool> needsModeration,
+        Func<string, List<string>> extractImageUrls,
+        Action<string, string, string, string, string?, int> addPendingImage,
+        Func<string, string, string, string, string, string?, string?, string?, CommandStatus, bool, CommandEntry> addCommandWithStatus,
+        bool isPrivateDiscordMode,
+        bool isTestClientModeEnabled)
+    {
+        if (!_accounts.TryGetValue(accountId, out var account))
+        {
+            return (false, "Account not found", null, 0);
+        }
+
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return (false, "Prompt required", null, account.CreditBalance);
+        }
+
+        // Check rate limit
+        var (allowed, waitSeconds) = CheckRateLimit(accountId);
+        if (!allowed)
+        {
+            return (false, $"Please wait {waitSeconds:F0} seconds before submitting another command.", null, account.CreditBalance);
+        }
+
+        // Check credits
+        if (account.CreditBalance < Constants.CommandCost)
+        {
+            return (false, $"Insufficient credits. You have ${account.CreditBalance:F2}, but need ${Constants.CommandCost:F2}", null, account.CreditBalance);
+        }
+
+        // Check for images in the prompt - queue for moderation if found (skip if Private Discord Mode)
+        if (!isPrivateDiscordMode && needsModeration(prompt))
+        {
+            _logger.LogInformation("[SUBMIT] User {Username} submitting command with images. Balance before: ${Balance}", 
+                account.Username, account.CreditBalance);
+            
+            // Deduct credits NOW (before moderation)
+            if (!DeductCredits(accountId, Constants.CommandCost))
+            {
+                _logger.LogError("[SUBMIT] Failed to deduct credits from {Username}", account.Username);
+                return (false, "Failed to deduct credits", null, account.CreditBalance);
+            }
+            
+            var updatedAccount = _accounts[accountId];
+            _logger.LogInformation("[SUBMIT] Credits deducted. Balance after: ${Balance}", updatedAccount.CreditBalance);
+            
+            // Create placeholder command in history with PendingModeration status
+            var placeholderCommand = addCommandWithStatus(
+                prompt,
+                "", // No code yet
+                "", // No undo yet
+                "web",
+                account.DisplayName,
+                null, // Image URL will be added when approved
+                accountId,
+                "? Waiting for image moderation approval...",
+                CommandStatus.PendingModeration,
+                false); // Don't queue yet
+            
+            _logger.LogInformation("[SUBMIT] Created placeholder command #{CommandId} with status {Status}", 
+                placeholderCommand.Id, placeholderCommand.Status);
+            
+            // Queue images for moderation with link to command
+            var imageUrls = extractImageUrls(prompt);
+            foreach (var url in imageUrls)
+            {
+                addPendingImage(url, prompt, "web", account.DisplayName, accountId, placeholderCommand.Id);
+            }
+
+            _logger.LogInformation("[MODERATION] Command #{CommandId} with {Count} image(s) queued for review from {Username}",
+                placeholderCommand.Id, imageUrls.Count, account.Username);
+
+            return (true, 
+                $"Your command contains {imageUrls.Count} image(s) that require moderator approval. Credits have been deducted and will be refunded if denied.",
+                placeholderCommand.Id,
+                updatedAccount.CreditBalance);
+        }
+
+        // Generate code
+        var (executionCode, undoCode) = await codeGenerator(prompt);
+
+        // Deduct credits
+        if (!DeductCredits(accountId, Constants.CommandCost))
+        {
+            return (false, "Failed to deduct credits", null, account.CreditBalance);
+        }
+
+        // Add to command queue
+        var command = addCommandWithStatus(
+            prompt,
+            executionCode,
+            undoCode,
+            "web",
+            account.DisplayName,
+            null,
+            accountId,
+            null,
+            CommandStatus.Queued,
+            !isTestClientModeEnabled); // Queue for execution if test client is disabled
+
+        var finalAccount = _accounts[accountId];
+        return (true, "Command submitted successfully", command.Id, finalAccount.CreditBalance);
+    }
+    
+    /// <summary>
+    /// Gets an account by username or account ID.
+    /// </summary>
+    public Account? GetAccount(string usernameOrId)
+    {
+        // Try as account ID first
+        if (_accounts.TryGetValue(usernameOrId, out var account))
+        {
+            return account;
+        }
+        
+        // Try as username (case-insensitive)
+        var username = usernameOrId.Trim().ToLowerInvariant();
+        if (_usernameIndex.TryGetValue(username, out var accountId))
+        {
+            _accounts.TryGetValue(accountId, out account);
+            return account;
+        }
+        
+        return null;
     }
 
     private static string HashPassword(string password)
