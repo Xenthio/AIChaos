@@ -1,6 +1,7 @@
 using AIChaos.Brain.Models;
 using AIChaos.Brain.Services;
 using AIChaos.Brain.Components;
+using Microsoft.AspNetCore.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +9,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
+
+// Configure HttpClient with base address for Blazor components
+// Note: In Blazor Server, components run on the server and make HTTP calls to the same server
+// We set a base address so relative URLs like "/api/account/login" work
 builder.Services.AddHttpClient();
+builder.Services.AddTransient(sp =>
+{
+    // Get the HttpClient from the factory and configure it
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var httpClient = httpClientFactory.CreateClient();
+    
+    // Set base address to localhost - this works because Blazor Server runs on the same machine
+    // In production, this should match your deployment configuration
+    httpClient.BaseAddress = new Uri("http://localhost:5000/");
+    
+    return httpClient;
+});
 
 // Add Blazor Server services
 builder.Services.AddRazorComponents()
