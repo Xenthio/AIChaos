@@ -180,12 +180,39 @@
     </div>
 </Modal>
 
-@* YouTube Link Modal - simplified for now *@
+@* YouTube Link Modal *@
 <Modal @bind-IsOpen="showLinkYouTubeModal">
     <h3>📺 Link Your YouTube Channel</h3>
     <p style="color: var(--text-dim);">To receive credits from Super Chats, you need to link your YouTube channel.</p>
-    <p style="color: var(--info); margin-top: 10px;">Feature coming soon in Blazor version!</p>
-    <button @onclick="() => showLinkYouTubeModal = false" style="margin-top: 15px; background: transparent; border: 1px solid var(--border); color:white;">Close</button>
+    
+    @if (!string.IsNullOrEmpty(linkYouTubeError))
+    {
+        <div class="alert alert-error" style="margin-top: 15px;">@linkYouTubeError</div>
+    }
+    
+    @if (!string.IsNullOrEmpty(linkYouTubeSuccess))
+    {
+        <div class="alert alert-success" style="margin-top: 15px;">@linkYouTubeSuccess</div>
+    }
+    
+    @if (string.IsNullOrEmpty(linkCode))
+    {
+        <button @onclick="GenerateLinkCode" style="margin-top: 15px;">🔗 Generate Link Code</button>
+    }
+    else
+    {
+        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 5px; margin-top: 15px;">
+            <p style="color: var(--text-dim); margin-bottom: 10px;">Send this code in a YouTube chat to link your channel:</p>
+            <div style="background: var(--bg-dark); padding: 12px; border-radius: 4px; font-family: monospace; font-size: 20px; text-align: center; color: var(--primary); border: 2px dashed var(--primary);">
+                @linkCode
+            </div>
+            <p style="color: var(--text-dim); font-size: 12px; margin-top: 10px;">⏱️ Code expires in 30 minutes</p>
+            <p style="color: var(--text-dim); font-size: 12px;">💬 If that doesn't work, try sending it as a Super Chat to bypass YouTube's spam filter.</p>
+        </div>
+    }
+    
+    <button @onclick="CloseYouTubeLinkModal" 
+            style="margin-top: 15px; background: transparent; border: 1px solid var(--border); color:white;">Close</button>
 </Modal>
 
 <style>
@@ -286,6 +313,11 @@
     private string registerDisplayName = "";
     private string registerPassword = "";
     private string registerError = "";
+    
+    // YouTube linking
+    private string linkCode = "";
+    private string linkYouTubeError = "";
+    private string linkYouTubeSuccess = "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -551,6 +583,41 @@
     }
 
     private string GetPlaceholder() => currentAccount == null ? "Login to send commands..." : "Ex: Make everyone tiny, Spawn 10 headcrabs...";
+    
+    private void GenerateLinkCode()
+    {
+        try
+        {
+            if (currentAccount == null)
+            {
+                linkYouTubeError = "You must be logged in to link YouTube";
+                return;
+            }
+            
+            if (!string.IsNullOrEmpty(currentAccount.LinkedYouTubeChannelId))
+            {
+                linkYouTubeError = "YouTube channel already linked";
+                return;
+            }
+            
+            linkCode = AccountService.GenerateYouTubeLinkCode(currentAccount.Id);
+            linkYouTubeError = "";
+            linkYouTubeSuccess = "";
+        }
+        catch (Exception ex)
+        {
+            linkYouTubeError = "Error generating link code";
+            Console.WriteLine($"Generate link code failed: {ex.Message}");
+        }
+    }
+    
+    private void CloseYouTubeLinkModal()
+    {
+        showLinkYouTubeModal = false;
+        linkCode = "";
+        linkYouTubeError = "";
+        linkYouTubeSuccess = "";
+    }
     
     private string GetStatusClass(CommandStatus status) => status switch
     {
