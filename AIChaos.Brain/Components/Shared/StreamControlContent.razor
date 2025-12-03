@@ -7,6 +7,7 @@
 @inject CommandQueueService CommandQueue
 @inject SettingsService SettingsService
 @inject YouTubeService YouTubeService
+@inject NavigationManager Navigation
 @inject HttpClient Http
 @inject IJSRuntime JS
 
@@ -50,9 +51,14 @@
                    style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
             <small style="color: var(--text-dim);">The video ID from your YouTube live stream URL</small>
         </div>
-        <button @onclick="SaveVideoId" class="btn-primary" style="width: 100%;">
-            💾 Save Video ID
-        </button>
+        <div style="display: flex; gap: 10px;">
+            <button @onclick="SaveVideoId" class="btn-primary" style="flex: 1;">
+                💾 Save Video ID
+            </button>
+            <button @onclick="LoginWithYouTube" class="btn-secondary" style="flex: 1;">
+                🔗 Login with YouTube
+            </button>
+        </div>
         @if (!string.IsNullOrEmpty(videoMessage))
         {
             <div class="alert alert-@videoMessageType" style="margin-top: 10px;">@videoMessage</div>
@@ -466,6 +472,32 @@
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    private void LoginWithYouTube()
+    {
+        try
+        {
+            var redirectUri = $"{Navigation.BaseUri}api/setup/youtube/callback";
+            var authUrl = YouTubeService.GetAuthorizationUrl(redirectUri);
+
+            if (!string.IsNullOrEmpty(authUrl))
+            {
+                Navigation.NavigateTo(authUrl, true);
+            }
+            else
+            {
+                videoMessage = "Failed to get authorization URL - check YouTube setup";
+                videoMessageType = "error";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            videoMessage = $"Error: {ex.Message}";
+            videoMessageType = "error";
+            StateHasChanged();
+        }
     }
 
     private async Task LoadPendingImages()
