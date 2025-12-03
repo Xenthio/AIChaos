@@ -1,0 +1,358 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>AI Chaos Dashboard (Admin)</PageTitle>
+
+<Header Title="🎮 AI CHAOS DASHBOARD" Subtitle="Admin Control Panel - Direct GMod Control" />
+
+<NavMenu ShowSetup="true" ShowHistory="true" ShowModeration="true" />
+
+@if (!isLoggedIn)
+{
+    <div class="login-container">
+        <div class="card">
+            <h2>🔒 Admin Access Required</h2>
+            @if (!string.IsNullOrEmpty(loginAlert))
+            {
+                <div class="alert alert-@loginAlertType">@loginAlert</div>
+            }
+            <div class="form-group">
+                <label>Admin Password</label>
+                <input type="password" @bind="loginPassword" placeholder="Enter admin password" @onkeydown="HandleLoginKeypress">
+            </div>
+            <button @onclick="Login">🔓 Login</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <h2>Send Chaos Command</h2>
+        <div class="form-group">
+            <textarea @bind="promptInput" placeholder="Ex: Make everyone tiny, Spawn 10 headcrabs, Turn the screen upside down..."></textarea>
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
+                <span>🔄 Interactive Mode</span>
+                <span style="color: var(--text-dim); font-size: 12px;">(AI can search models, test code, and fix errors automatically)</span>
+            </label>
+        </div>
+        
+        <button @onclick="SendPrompt">⚡ SEND CHAOS</button>
+        
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div style="margin-top: 15px;">
+                <div class="alert alert-@statusType">@statusMessage</div>
+            </div>
+        }
+    </div>
+    
+    <div class="card">
+        <h2>📋 Recent Commands</h2>
+        <div>
+            @if (recentCommands == null || !recentCommands.Any())
+            {
+                <div class="empty-state">Commands will appear here...</div>
+            }
+            else
+            {
+                @foreach (var cmd in recentCommands)
+                {
+                    <div class="history-item">
+                        <div style="flex: 1;">
+                            <div class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
+                            <div class="history-prompt">@cmd.UserPrompt</div>
+                            @if (!string.IsNullOrEmpty(cmd.AiResponse))
+                            {
+                                <div class="history-response">💬 @cmd.AiResponse</div>
+                            }
+                        </div>
+                        <span class="history-source">@cmd.Source</span>
+                        <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                        <div class="history-actions">
+                            <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
+                            <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .login-container {
+        max-width: 500px;
+        margin: 50px auto;
+    }
+
+    .history-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        gap: 10px;
+    }
+
+    .history-time {
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+
+    .history-prompt {
+        color: var(--text);
+        margin: 5px 0;
+    }
+
+    .history-response {
+        color: var(--info);
+        font-size: 12px;
+        margin-top: 5px;
+    }
+
+    .history-source {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .history-status {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+    }
+
+    .status-pending { background: #888; }
+    .status-queued { background: #f0ad4e; }
+    .status-executed { background: #5cb85c; }
+    .status-undone { background: #5bc0de; }
+    .status-failed { background: #d9534f; }
+
+    .history-actions {
+        display: flex;
+        gap: 5px;
+    }
+</style>
+
+@code {
+    private bool isLoggedIn = false;
+    private string loginPassword = "";
+    private string loginAlert = "";
+    private string loginAlertType = "error";
+    private string promptInput = "";
+    private bool interactiveMode = false;
+    private List<Command>? recentCommands;
+    private string statusMessage = "";
+    private string statusType = "info";
+
+    private const string userId = "admin_dashboard";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if admin is configured
+        try
+        {
+            var response = await Http.GetFromJsonAsync<AdminStatusResponse>("/api/setup/admin/status");
+            if (response != null && !response.IsConfigured)
+            {
+                loginAlert = "Admin password not set. Please configure it in Setup first.";
+                loginAlertType = "warning";
+            }
+        }
+        catch (Exception ex)
+        {
+            loginAlert = "Failed to check admin status";
+            Console.WriteLine($"Admin status check failed: {ex.Message}");
+        }
+    }
+
+    private async Task Login()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/admin/login", new { password = loginPassword });
+            var data = await response.Content.ReadFromJsonAsync<AdminLoginResponse>();
+            
+            if (data?.Status == "success")
+            {
+                isLoggedIn = true;
+                await LoadRecentCommands();
+            }
+            else
+            {
+                loginAlert = data?.Message ?? "Invalid password";
+                loginAlertType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            loginAlert = "Network error";
+            loginAlertType = "error";
+            Console.WriteLine($"Login failed: {ex.Message}");
+        }
+    }
+
+    private async Task SendPrompt()
+    {
+        if (string.IsNullOrWhiteSpace(promptInput))
+            return;
+        
+        try
+        {
+            var endpoint = interactiveMode ? "/trigger/interactive" : "/trigger";
+            var response = await Http.PostAsJsonAsync(endpoint, new 
+            { 
+                prompt = promptInput,
+                userId = userId,
+                maxIterations = 5
+            });
+            
+            var data = await response.Content.ReadFromJsonAsync<TriggerResponse>();
+            
+            if (data?.Status == "queued" || data?.Status == "in_progress")
+            {
+                ShowStatus($"✓ {promptInput}", "success");
+                if (!string.IsNullOrEmpty(data.AiResponse))
+                {
+                    ShowStatus($"💬 AI: {data.AiResponse}", "info");
+                }
+                promptInput = "";
+                await LoadRecentCommands();
+            }
+            else if (data?.Status == "ignored")
+            {
+                ShowStatus($"✗ BLOCKED: {data.Message}", "error");
+            }
+            else
+            {
+                ShowStatus($"✗ ERROR: {data?.Message ?? "Unknown error"}", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"✗ NETWORK ERROR: {ex.Message}", "error");
+            Console.WriteLine($"Send prompt failed: {ex.Message}");
+        }
+    }
+
+    private async Task LoadRecentCommands()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<HistoryResponse>($"/api/history/user/{Uri.EscapeDataString(userId)}");
+            recentCommands = response?.History?.TakeLast(10).Reverse().ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load commands failed: {ex.Message}");
+        }
+    }
+
+    private async Task RepeatCommand(int commandId)
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/repeat", new { commandId });
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            ShowStatus(data?.Status == "success" ? "✓ Command repeated!" : $"✗ {data?.Message}", data?.Status == "success" ? "success" : "error");
+            await LoadRecentCommands();
+        }
+        catch
+        {
+            ShowStatus("✗ Network error", "error");
+        }
+    }
+
+    private async Task UndoCommand(int commandId)
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/undo", new { commandId });
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            ShowStatus(data?.Status == "success" ? "✓ Command undone!" : $"✗ {data?.Message}", data?.Status == "success" ? "success" : "error");
+            await LoadRecentCommands();
+        }
+        catch
+        {
+            ShowStatus("✗ Network error", "error");
+        }
+    }
+
+    private void ShowStatus(string message, string type)
+    {
+        statusMessage = message;
+        statusType = type;
+        StateHasChanged();
+        _ = Task.Delay(3000).ContinueWith(_ => { statusMessage = ""; StateHasChanged(); });
+    }
+
+    private string GetStatusClass(int status) => status switch
+    {
+        2 => "executed",
+        4 => "failed",
+        1 => "queued",
+        _ => "pending"
+    };
+    
+    private string GetStatusText(int status)
+    {
+        var names = new[] { "Pending", "Queued", "Executed", "Undone", "Failed" };
+        return status >= 0 && status < names.Length ? names[status] : "Unknown";
+    }
+
+    private async Task HandleLoginKeypress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await Login();
+    }
+
+    // DTOs
+    private class AdminStatusResponse
+    {
+        public bool IsConfigured { get; set; }
+    }
+
+    private class AdminLoginResponse
+    {
+        public string Status { get; set; } = "";
+        public string? Message { get; set; }
+    }
+
+    private class Command
+    {
+        public int Id { get; set; }
+        public DateTime Timestamp { get; set; }
+        public string UserPrompt { get; set; } = "";
+        public string? AiResponse { get; set; }
+        public string Source { get; set; } = "";
+        public int Status { get; set; }
+    }
+
+    private class TriggerResponse
+    {
+        public string Status { get; set; } = "";
+        public string? Message { get; set; }
+        public string? AiResponse { get; set; }
+        public string? SessionId { get; set; }
+    }
+
+    private class HistoryResponse
+    {
+        public List<Command>? History { get; set; }
+    }
+
+    private class ApiResponse
+    {
+        public string Status { get; set; } = "";
+        public string? Message { get; set; }
+    }
+}

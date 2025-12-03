@@ -1,0 +1,568 @@
+@page "/setup"
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>AI Chaos - Setup</PageTitle>
+
+<Header Title="🎮 AI CHAOS CONTROL" Subtitle="Control GMod through AI-powered chat commands" />
+
+<NavMenu ShowSetup="true" ShowHistory="true" />
+
+@if (!isLoggedIn)
+{
+    <div class="login-container">
+        <div class="card">
+            <h2>🔒 Admin Access Required</h2>
+            @if (!string.IsNullOrEmpty(loginAlert))
+            {
+                <div class="alert alert-@loginAlertType">@loginAlert</div>
+            }
+            
+            @if (showSetPasswordForm)
+            {
+                <p style="color: var(--text-dim);">Set your admin password to continue:</p>
+                <div class="form-group">
+                    <label>New Password</label>
+                    <input type="password" @bind="newPassword" placeholder="Enter password (min 4 chars)">
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" @bind="confirmPassword" placeholder="Confirm password">
+                </div>
+                <button @onclick="SetPassword">Set Password</button>
+            }
+            else
+            {
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" @bind="loginPassword" placeholder="Enter admin password" @onkeydown="HandleLoginKeypress">
+                </div>
+                <button @onclick="Login">🔓 Login</button>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div id="alerts">
+        @if (!string.IsNullOrEmpty(alertMessage))
+        {
+            <div class="alert alert-@alertType">@alertMessage</div>
+        }
+    </div>
+    
+    <!-- OpenRouter API -->
+    <div class="card">
+        <h2>
+            🤖 OpenRouter API
+            <span class="status-badge @(openRouterConfigured ? "status-connected" : "status-disconnected")">
+                @(openRouterConfigured ? "Configured" : "Not Configured")
+            </span>
+        </h2>
+        <p style="color: var(--text-dim); margin-bottom: 15px;">
+            OpenRouter provides access to AI models for generating Lua code.
+        </p>
+        
+        <div class="form-group">
+            <label>API Key</label>
+            <input type="password" @bind="openRouterApiKey" placeholder="sk-or-v1-...">
+        </div>
+        
+        <div class="form-group">
+            <label>AI Model</label>
+            <select @bind="selectedModel">
+                @if (models == null || !models.Any())
+                {
+                    <option value="">Loading models...</option>
+                }
+                else
+                {
+                    @foreach (var model in models)
+                    {
+                        <option value="@model.Id">@model.Name (@model.Provider)</option>
+                    }
+                }
+            </select>
+            <small>Choose the AI model for generating Lua code</small>
+        </div>
+        
+        <button @onclick="SaveOpenRouter">💾 Save OpenRouter Settings</button>
+    </div>
+    
+    <!-- Tunnel Configuration -->
+    <div class="card">
+        <h2>
+            🌐 Tunnel Configuration
+            <span class="status-badge @(tunnelRunning ? "status-connected" : "status-disconnected")">
+                @(tunnelRunning ? $"{tunnelType} Running" : "Not Running")
+            </span>
+        </h2>
+        
+        <div class="alert alert-warning" style="margin-bottom: 15px;">
+            <strong>⚠️ Required for GMod:</strong> GMod does not allow local HTTP connections. You must start a tunnel for GMod to communicate with the brain.
+        </div>
+        
+        @if (tunnelRunning && !string.IsNullOrEmpty(tunnelUrl))
+        {
+            <div class="tunnel-url">
+                <strong>Public URL:</strong> <a href="@tunnelUrl" target="_blank">@tunnelUrl</a>
+                <div style="margin-top: 5px; color: var(--text-dim); font-size: 12px;">
+                    Poll URL (for GMod): <code>@tunnelUrl/poll</code>
+                </div>
+                <div style="margin-top: 5px; color: var(--success); font-size: 12px;">
+                    ✅ Lua file updated automatically - copy lua/ folder to your GMod addons
+                </div>
+            </div>
+        }
+        
+        <div class="btn-group" style="margin-top: 15px;">
+            @if (!tunnelRunning)
+            {
+                <button @onclick='() => StartTunnel("bore")' class="btn-success">🚀 Start Bore</button>
+                <button @onclick='() => StartTunnel("localtunnel")'>🚀 Start LocalTunnel</button>
+                <button @onclick='() => StartTunnel("ngrok")' class="btn-secondary">🚀 Start ngrok</button>
+            }
+            else
+            {
+                <button @onclick="StopTunnel" class="btn-danger">⏹️ Stop Tunnel</button>
+            }
+        </div>
+    </div>
+    
+    <!-- Test Client Mode -->
+    <div class="card">
+        <h2>
+            🧪 AI-Driven Test Client Mode
+            <span class="status-badge @GetTestClientStatusBadge()">
+                @testClientStatusText
+            </span>
+        </h2>
+        <div class="alert alert-info" style="margin-bottom: 15px;">
+            <strong>ℹ️ About AI-Driven Test Client Mode:</strong> Run GMod with <code>-multirun</code> to have a separate test client receive and execute commands first.
+        </div>
+        
+        <div class="form-group checkbox-group">
+            <input type="checkbox" @bind="testClientEnabled" @bind:after="ToggleTestClientMode">
+            <label style="margin: 0; font-weight: bold;">Enable AI-Driven Test Client Mode</label>
+        </div>
+        
+        @if (testClientEnabled)
+        {
+            <div style="margin-top: 15px;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Test Map</label>
+                        <input type="text" @bind="testClientMap" placeholder="gm_flatgrass">
+                        <small>Small/fast-loading map for test client</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Timeout (seconds)</label>
+                        <input type="number" @bind="testClientTimeout" min="5" max="60">
+                        <small>How long to wait for test results</small>
+                    </div>
+                </div>
+                
+                <button @onclick="SaveTestClientSettings" class="btn-secondary">💾 Save Settings</button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .login-container {
+        max-width: 500px;
+        margin: 50px auto;
+    }
+
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .status-connected {
+        background: var(--success);
+        color: #000;
+    }
+
+    .status-disconnected {
+        background: var(--error);
+        color: #fff;
+    }
+
+    .status-pending {
+        background: var(--warning);
+        color: #000;
+    }
+
+    .tunnel-url {
+        padding: 15px;
+        background: rgba(0, 255, 0, 0.1);
+        border-radius: 8px;
+        margin: 15px 0;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 20px;
+    }
+
+    .form-row .form-group {
+        flex: 1;
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+</style>
+
+@code {
+    private bool isLoggedIn = false;
+    private string loginPassword = "";
+    private string newPassword = "";
+    private string confirmPassword = "";
+    private string loginAlert = "";
+    private string loginAlertType = "error";
+    private bool showSetPasswordForm = false;
+    
+    private string alertMessage = "";
+    private string alertType = "info";
+    
+    // OpenRouter
+    private bool openRouterConfigured = false;
+    private string openRouterApiKey = "";
+    private string selectedModel = "";
+    private List<Model>? models;
+    
+    // Tunnel
+    private bool tunnelRunning = false;
+    private string tunnelType = "";
+    private string tunnelUrl = "";
+    
+    // Test Client
+    private bool testClientEnabled = false;
+    private string testClientStatusText = "Disabled";
+    private string testClientMap = "gm_flatgrass";
+    private int testClientTimeout = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAdminStatus();
+    }
+
+    private async Task CheckAdminStatus()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<AdminStatusResponse>("/api/setup/admin/status");
+            if (response != null && !response.IsConfigured)
+            {
+                showSetPasswordForm = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Admin status check failed: {ex.Message}");
+        }
+    }
+
+    private async Task SetPassword()
+    {
+        if (newPassword.Length < 4)
+        {
+            ShowLoginAlert("Password must be at least 4 characters", "error");
+            return;
+        }
+        
+        if (newPassword != confirmPassword)
+        {
+            ShowLoginAlert("Passwords do not match", "error");
+            return;
+        }
+        
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/admin/password", new { newPassword });
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            
+            if (data?.Status == "success")
+            {
+                loginPassword = newPassword;
+                await ShowSetupContent();
+            }
+            else
+            {
+                ShowLoginAlert(data?.Message ?? "Failed to set password", "error");
+            }
+        }
+        catch
+        {
+            ShowLoginAlert("Network error", "error");
+        }
+    }
+
+    private async Task Login()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/admin/login", new { password = loginPassword });
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            
+            if (data?.Status == "success")
+            {
+                await ShowSetupContent();
+            }
+            else
+            {
+                ShowLoginAlert(data?.Message ?? "Invalid password", "error");
+            }
+        }
+        catch
+        {
+            ShowLoginAlert("Network error", "error");
+        }
+    }
+
+    private async Task ShowSetupContent()
+    {
+        isLoggedIn = true;
+        await LoadSetupStatus();
+        await LoadModels();
+    }
+
+    private async Task LoadSetupStatus()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<SetupStatusResponse>("/api/setup/status");
+            if (response != null)
+            {
+                openRouterConfigured = response.OpenRouterConfigured;
+                tunnelRunning = response.Tunnel?.IsRunning ?? false;
+                tunnelType = response.Tunnel?.Type ?? "";
+                tunnelUrl = response.Tunnel?.Url ?? "";
+                testClientEnabled = response.TestClient?.Enabled ?? false;
+                testClientStatusText = response.TestClient?.IsConnected == true ? "Connected" : (testClientEnabled ? "Enabled (Waiting)" : "Disabled");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load setup status failed: {ex.Message}");
+        }
+    }
+
+    private async Task LoadModels()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<ModelsResponse>("/api/setup/models");
+            models = response?.Models;
+            selectedModel = response?.CurrentModel ?? "";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load models failed: {ex.Message}");
+        }
+    }
+
+    private async Task SaveOpenRouter()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/openrouter", new 
+            { 
+                apiKey = openRouterApiKey,
+                model = selectedModel
+            });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                ShowAlert("OpenRouter settings saved!", "success");
+                await LoadSetupStatus();
+            }
+            else
+            {
+                ShowAlert("Failed to save settings", "error");
+            }
+        }
+        catch
+        {
+            ShowAlert("Network error", "error");
+        }
+    }
+
+    private async Task StartTunnel(string type)
+    {
+        ShowAlert($"Starting {type}...", "info");
+        
+        try
+        {
+            var response = await Http.PostAsync($"/api/setup/tunnel/{type}/start", null);
+            var data = await response.Content.ReadFromJsonAsync<TunnelResponse>();
+            
+            if (data?.Status == "success")
+            {
+                ShowAlert($"{type} started: {data.Url}", "success");
+                await LoadSetupStatus();
+            }
+            else
+            {
+                ShowAlert(data?.Message ?? $"Failed to start {type}", "error");
+            }
+        }
+        catch
+        {
+            ShowAlert("Network error", "error");
+        }
+    }
+
+    private async Task StopTunnel()
+    {
+        try
+        {
+            await Http.PostAsync("/api/setup/tunnel/stop", null);
+            ShowAlert("Tunnel stopped", "info");
+            await LoadSetupStatus();
+        }
+        catch
+        {
+            ShowAlert("Network error", "error");
+        }
+    }
+
+    private async Task ToggleTestClientMode()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/test-client/toggle", new { enabled = testClientEnabled });
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            
+            if (data?.Status == "success")
+            {
+                ShowAlert(testClientEnabled ? "Test Client Mode enabled!" : "Test Client Mode disabled", testClientEnabled ? "success" : "info");
+                await LoadSetupStatus();
+            }
+            else
+            {
+                testClientEnabled = !testClientEnabled; // Revert
+                ShowAlert(data?.Message ?? "Failed to toggle test client mode", "error");
+            }
+        }
+        catch
+        {
+            testClientEnabled = !testClientEnabled; // Revert
+            ShowAlert("Network error", "error");
+        }
+    }
+
+    private async Task SaveTestClientSettings()
+    {
+        try
+        {
+            var response = await Http.PostAsJsonAsync("/api/setup/test-client/settings", new 
+            { 
+                testMap = testClientMap,
+                timeoutSeconds = testClientTimeout
+            });
+            
+            var data = await response.Content.ReadFromJsonAsync<ApiResponse>();
+            
+            if (data?.Status == "success")
+            {
+                ShowAlert("Test client settings saved!", "success");
+            }
+            else
+            {
+                ShowAlert(data?.Message ?? "Failed to save settings", "error");
+            }
+        }
+        catch
+        {
+            ShowAlert("Network error", "error");
+        }
+    }
+
+    private void ShowLoginAlert(string message, string type)
+    {
+        loginAlert = message;
+        loginAlertType = type;
+    }
+
+    private void ShowAlert(string message, string type)
+    {
+        alertMessage = message;
+        alertType = type;
+        StateHasChanged();
+        _ = Task.Delay(5000).ContinueWith(_ => { alertMessage = ""; StateHasChanged(); });
+    }
+
+    private string GetTestClientStatusBadge()
+    {
+        if (!testClientEnabled) return "status-disconnected";
+        return testClientStatusText.Contains("Connected") ? "status-connected" : "status-pending";
+    }
+
+    private async Task HandleLoginKeypress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await Login();
+    }
+
+    // DTOs
+    private class AdminStatusResponse
+    {
+        public bool IsConfigured { get; set; }
+    }
+
+    private class ApiResponse
+    {
+        public string Status { get; set; } = "";
+        public string? Message { get; set; }
+    }
+
+    private class Model
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Provider { get; set; } = "";
+    }
+
+    private class ModelsResponse
+    {
+        public List<Model>? Models { get; set; }
+        public string? CurrentModel { get; set; }
+    }
+
+    private class TunnelInfo
+    {
+        public bool IsRunning { get; set; }
+        public string? Type { get; set; }
+        public string? Url { get; set; }
+    }
+
+    private class TestClientInfo
+    {
+        public bool Enabled { get; set; }
+        public bool IsConnected { get; set; }
+    }
+
+    private class SetupStatusResponse
+    {
+        public bool OpenRouterConfigured { get; set; }
+        public TunnelInfo? Tunnel { get; set; }
+        public TestClientInfo? TestClient { get; set; }
+    }
+
+    private class TunnelResponse
+    {
+        public string Status { get; set; } = "";
+        public string? Message { get; set; }
+        public string? Url { get; set; }
+    }
+}
