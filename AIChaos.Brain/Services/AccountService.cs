@@ -240,6 +240,8 @@ public class AccountService
             return (false, _youtubeIndex[youtubeChannelId]);
         }
         
+        _logger.LogDebug("[ACCOUNT] Checking message for link code: '{Message}'", message);
+        
         // Search for a matching verification code in any account
         foreach (var account in _accounts.Values)
         {
@@ -247,14 +249,21 @@ public class AccountService
                 continue;
                 
             if (account.VerificationCodeExpiresAt.HasValue && account.VerificationCodeExpiresAt.Value < DateTime.UtcNow)
+            {
+                _logger.LogDebug("[ACCOUNT] Skipping expired code for {Username}: {Code}", 
+                    account.Username, account.PendingVerificationCode);
                 continue;
+            }
+            
+            _logger.LogDebug("[ACCOUNT] Checking against code {Code} for {Username}", 
+                account.PendingVerificationCode, account.Username);
             
             if (message.Contains(account.PendingVerificationCode, StringComparison.OrdinalIgnoreCase))
             {
                 // Found a match! Link the channel
                 LinkChannelToAccount(account, youtubeChannelId, displayName);
                 
-                _logger.LogInformation("[ACCOUNT] Linked YouTube channel {ChannelId} to {Username} via chat message", 
+                _logger.LogInformation("[ACCOUNT] ✓ Linked YouTube channel {ChannelId} to {Username} via chat message", 
                     youtubeChannelId, account.Username);
                 
                 return (true, account.Id);

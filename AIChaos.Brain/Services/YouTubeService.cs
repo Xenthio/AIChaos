@@ -232,11 +232,13 @@ public partial class YouTubeService : IDisposable
         var username = author.DisplayName ?? "Unknown";
         var channelId = author.ChannelId ?? "";
 
+        _logger.LogDebug("[YouTube] Processing message from {Username}: {Message}", username, messageText);
+
         // Check ALL messages for verification codes (allows linking via regular chat)
-        var (linked, _) = _accountService.CheckAndLinkFromChatMessage(channelId, messageText, username);
+        var (linked, accountId) = _accountService.CheckAndLinkFromChatMessage(channelId, messageText, username);
         if (linked)
         {
-            _logger.LogInformation("[YouTube] Channel {ChannelId} linked to account via chat message!", channelId);
+            _logger.LogInformation("[YouTube] ✓ Channel {ChannelId} linked to account {AccountId} via chat message!", channelId, accountId);
         }
 
         // Check for Super Chat
