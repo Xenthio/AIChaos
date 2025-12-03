@@ -131,103 +131,7 @@
         }
     }
 
-    private async Task DoLogin()
-    {
-        loginError = "";
-        
-        if (string.IsNullOrWhiteSpace(loginUsername) || string.IsNullOrWhiteSpace(loginPassword))
-        {
-            loginError = "Please enter username and password";
-            return;
-        }
-        
-        try
-        {
-            var (success, error, account, newSessionToken) = AccountService.Login(loginUsername, loginPassword);
-            
-            if (success && account != null && newSessionToken != null)
-            {
-                sessionToken = newSessionToken;
-                currentAccount = account;
-                await JS.InvokeVoidAsync("localStorage.setItem", "aichaos_session", sessionToken);
-                showLoginModal = false;
-                await LoadHistory();
-            }
-            else
-            {
-                loginError = error ?? "Login failed";
-            }
-        }
-        catch (Exception ex)
-        {
-            loginError = "Error during login";
-            Console.WriteLine($"Login failed: {ex.Message}");
-        }
-    }
 
-    private async Task DoRegister()
-    {
-        registerError = "";
-        
-        if (string.IsNullOrWhiteSpace(registerUsername) || string.IsNullOrWhiteSpace(registerPassword))
-        {
-            registerError = "Please fill in all required fields";
-            return;
-        }
-        
-        try
-        {
-            var displayName = string.IsNullOrWhiteSpace(registerDisplayName) ? null : registerDisplayName;
-            var (success, error, account) = AccountService.CreateAccount(registerUsername, registerPassword, displayName);
-            
-            if (success && account != null)
-            {
-                // Log them in after registration
-                var (loginSuccess, loginError, loginAccount, newSessionToken) = AccountService.Login(registerUsername, registerPassword);
-                
-                if (loginSuccess && loginAccount != null && newSessionToken != null)
-                {
-                    sessionToken = newSessionToken;
-                    currentAccount = loginAccount;
-                    await JS.InvokeVoidAsync("localStorage.setItem", "aichaos_session", sessionToken);
-                    showLoginModal = false;
-                    await LoadHistory();
-                    ShowStatus("Account created! Link your YouTube to receive Super Chat credits.", "success");
-                }
-                else
-                {
-                    registerError = "Account created but login failed. Please log in manually.";
-                }
-            }
-            else
-            {
-                registerError = error ?? "Registration failed";
-            }
-        }
-        catch (Exception ex)
-        {
-            registerError = "Error during registration";
-            Console.WriteLine($"Registration failed: {ex.Message}");
-        }
-    }
-
-    private async Task Logout()
-    {
-        if (!string.IsNullOrEmpty(sessionToken))
-        {
-            try
-            {
-                AccountService.Logout(sessionToken);
-            }
-            catch { }
-        }
-        
-        currentAccount = null;
-        sessionToken = null;
-        recentCommands = null;
-        await JS.InvokeVoidAsync("localStorage.removeItem", "aichaos_session");
-        StateHasChanged();
-    }
 
     private async Task SubmitCommand()
     {
@@ -370,60 +274,7 @@
     }
 
     private string GetPlaceholder() => currentAccount == null ? "Login to send commands..." : "Ex: Make everyone tiny, Spawn 10 headcrabs...";
-    
-    private void GenerateLinkCode()
-    {
-        try
-        {
-            if (currentAccount == null)
-            {
-                linkYouTubeError = "You must be logged in to link YouTube";
-                return;
-            }
-            
-            if (!string.IsNullOrEmpty(currentAccount.LinkedYouTubeChannelId))
-            {
-                linkYouTubeError = "YouTube channel already linked";
-                return;
-            }
-            
-            linkCode = AccountService.GenerateYouTubeLinkCode(currentAccount.Id);
-            linkYouTubeError = "";
-            linkYouTubeSuccess = "";
-        }
-        catch (Exception ex)
-        {
-            linkYouTubeError = "Error generating link code";
-            Console.WriteLine($"Generate link code failed: {ex.Message}");
-        }
-    }
-    
-    private void CloseYouTubeLinkModal()
-    {
-        showLinkYouTubeModal = false;
-        linkCode = "";
-        linkYouTubeError = "";
-        linkYouTubeSuccess = "";
-        youtubeLinkMethodChosen = false;
-        showOAuthMethod = false;
-        showCodeMethod = false;
-    }
-    
-    private void ShowOAuthLinkMethod()
-    {
-        youtubeLinkMethodChosen = true;
-        showOAuthMethod = true;
-        showCodeMethod = false;
-        // TODO: Check if Google OAuth is configured in settings
-        googleOAuthConfigured = false; // For now, not configured
-    }
-    
-    private void ShowCodeLinkMethod()
-    {
-        youtubeLinkMethodChosen = true;
-        showOAuthMethod = false;
-        showCodeMethod = true;
-    }
+
     
     private string GetStatusClass(CommandStatus status) => status switch
     {
@@ -435,10 +286,4 @@
     };
     
     private string GetStatusText(CommandStatus status) => status.ToString();
-
-    private async Task HandleLoginKeypress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-            await DoLogin();
-    }
 }

@@ -33,7 +33,11 @@
                 var session = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(sessionJson);
                 if (session != null && session.ContainsKey("username") && session.ContainsKey("password"))
                 {
-                    currentAccount = await AccountService.Login(session["username"], session["password"]);
+                    var (success, error, account, sessionToken) = AccountService.Login(session["username"], session["password"]);
+                    if (success && account != null)
+                    {
+                        currentAccount = account;
+                    }
                 }
             }
         }

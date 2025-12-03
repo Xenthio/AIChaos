@@ -97,7 +97,7 @@ else
         @if (!string.IsNullOrEmpty(youtubeOAuthUrl))
         {
             <p>✅ Click the button below to link via Google:</p>
-            <button @onclick="() => JS.InvokeVoidAsync(\"open\", youtubeOAuthUrl, \"_blank\")">
+            <button @onclick="() => JS.InvokeVoidAsync("open", youtubeOAuthUrl, "_blank")">
                 Open Google Sign-In
             </button>
         }
@@ -173,8 +173,8 @@ else
         try
         {
             loginError = "";
-            var account = await AccountService.Login(loginUsername, loginPassword);
-            if (account != null)
+            var (success, error, account, sessionToken) = AccountService.Login(loginUsername, loginPassword);
+            if (success && account != null)
             {
                 await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = account.Username, password = loginPassword }));
                 showLoginModal = false;
@@ -184,7 +184,7 @@ else
             }
             else
             {
-                loginError = "Invalid username or password";
+                loginError = error ?? "Invalid username or password";
             }
         }
         catch (Exception ex)
@@ -198,18 +198,27 @@ else
         try
         {
             loginError = "";
-            var account = await AccountService.Register(loginUsername, loginPassword);
-            if (account != null)
+            var (success, error, account) = AccountService.CreateAccount(loginUsername, loginPassword);
+            if (success && account != null)
             {
-                await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = account.Username, password = loginPassword }));
-                showLoginModal = false;
-                loginUsername = "";
-                loginPassword = "";
-                await OnAccountChanged.InvokeAsync();
+                // Login after registration
+                var (loginSuccess, loginError, loginAccount, sessionToken) = AccountService.Login(loginUsername, loginPassword);
+                if (loginSuccess && loginAccount != null)
+                {
+                    await JS.InvokeVoidAsync("localStorage.setItem", "accountSession", System.Text.Json.JsonSerializer.Serialize(new { username = loginAccount.Username, password = loginPassword }));
+                    showLoginModal = false;
+                    loginUsername = "";
+                    loginPassword = "";
+                    await OnAccountChanged.InvokeAsync();
+                }
+                else
+                {
+                    loginError = "Account created but login failed. Please login manually.";
+                }
             }
             else
             {
-                loginError = "Registration failed";
+                loginError = error ?? "Registration failed";
             }
         }
         catch (Exception ex)
@@ -230,7 +239,7 @@ else
         {
             if (CurrentAccount != null)
             {
-                youtubeLinkCode = await AccountService.GenerateYouTubeLinkCode(CurrentAccount.Username);
+                youtubeLinkCode = AccountService.GenerateYouTubeLinkCode(CurrentAccount.Id);
             }
         }
         catch (Exception ex)
