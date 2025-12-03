@@ -7,7 +7,6 @@
 @inject CommandQueueService CommandQueue
 @inject SettingsService SettingsService
 @inject YouTubeService YouTubeService
-@inject AccountService AccountService
 @inject NavigationManager Navigation
 @inject HttpClient Http
 @inject IJSRuntime JS
@@ -347,9 +346,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Subscribe to account linking events
-        AccountService.OnChannelLinked += HandleChannelLinked;
-        
         // Check for query parameters (success/error messages)
         var uri = new Uri(Navigation.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
@@ -366,26 +362,6 @@
         }
         
         await LoadAll();
-    }
-
-    private void HandleChannelLinked(string channelId, string username)
-    {
-        InvokeAsync(() =>
-        {
-            globalMessage = $"✓ YouTube channel successfully linked for {username}!";
-            globalMessageType = "success";
-            StateHasChanged();
-            
-            // Clear message after 10 seconds
-            Task.Delay(10000).ContinueWith(_ => InvokeAsync(() =>
-            {
-                if (globalMessage.Contains("successfully linked"))
-                {
-                    globalMessage = "";
-                    StateHasChanged();
-                }
-            }));
-        });
     }
 
     private async Task LoadAll()
@@ -685,7 +661,6 @@
 
     public void Dispose()
     {
-        AccountService.OnChannelLinked -= HandleChannelLinked;
         imageRefreshTimer?.Dispose();
         historyRefreshTimer?.Dispose();
         blastMessageCts?.Cancel();

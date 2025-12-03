@@ -159,6 +159,14 @@ else
                 <div class="alert alert-error" style="margin-top: 10px;">@linkError</div>
             }
         }
+        else if (linkSuccessful)
+        {
+            <div class="alert alert-success">
+                <p style="font-size: 18px; margin: 10px 0;">✓ YouTube channel successfully linked!</p>
+                <p>Your channel is now connected to your account.</p>
+            </div>
+            <button @onclick="CloseLinkYouTubeModal" style="margin-top: 10px;">Close</button>
+        }
         else
         {
             <div class="alert alert-success">
@@ -167,8 +175,8 @@ else
                 <p>Send this code in the YouTube chat or as a Super Chat message to link your channel.</p>
                 <p style="color: var(--text-dim); font-size: 12px;">This code expires in 30 minutes.</p>
             </div>
+            <button @onclick="ResetLinkMethod" style="background: var(--bg-light); color: var(--text); margin-top: 10px;">Back</button>
         }
-        <button @onclick="ResetLinkMethod" style="background: var(--bg-light); color: var(--text); margin-top: 10px;">Back</button>
     }
 </Modal>
 
@@ -192,6 +200,7 @@ else
     private bool youtubeLinkMethodSelected = false;
     private bool useOAuthMethod = false;
     private string? youtubeLinkCode = null;
+    private bool linkSuccessful = false;
     private bool isOAuthConfigured = false;
     private string? googleClientId = null;
     private DotNetObjectReference<AccountBar>? objRef;
@@ -200,6 +209,9 @@ else
     {
         // Create the DotNetObjectReference during initialization
         objRef = DotNetObjectReference.Create(this);
+        
+        // Subscribe to account linking events
+        AccountService.OnChannelLinked += HandleChannelLinked;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -221,6 +233,19 @@ else
     {
         showLinkYouTubeModal = false;
         ResetLinkMethod();
+    }
+    
+    private void HandleChannelLinked(string channelId, string username)
+    {
+        // Only show success if this is the current user's account
+        if (CurrentAccount != null && CurrentAccount.Username == username)
+        {
+            InvokeAsync(() =>
+            {
+                linkSuccessful = true;
+                StateHasChanged();
+            });
+        }
     }
 
     private async Task SelectLinkMethod(bool useOAuth)
@@ -292,6 +317,7 @@ else
         youtubeLinkMethodSelected = false;
         useOAuthMethod = false;
         youtubeLinkCode = null;
+        linkSuccessful = false;
         isOAuthConfigured = false;
         oauthError = "";
         oauthSuccess = "";
@@ -444,6 +470,7 @@ else
 
     public void Dispose()
     {
+        AccountService.OnChannelLinked -= HandleChannelLinked;
         objRef?.Dispose();
     }
 }
