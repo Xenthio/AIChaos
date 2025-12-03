@@ -1,17 +1,19 @@
-# AI Chaos Brain (C# Edition)
+# Chaos Brain (C# Edition)
 
-The C# version of the AI Chaos Brain - a server that receives chaos commands and generates Lua code for Garry's Mod.
+The C# server for Chaos - receives "Ideas" from viewers and generates Lua code for Garry's Mod.
 
 ## Features
 
-- 🤖 **AI Code Generation** - Uses OpenRouter API to generate Lua code from natural language requests
-- 📺 **Twitch Integration** - OAuth login and chat listener for Twitch commands
-- 🎬 **YouTube Integration** - OAuth login and Super Chat listener for YouTube Live
-- 🎮 **Web Control Panel** - Easy-to-use public interface for sending commands
-- 📜 **Command History** - Track, repeat, and undo previous commands (password protected)
-- 🔧 **Setup Wizard** - Easy configuration with model selection (password protected)
-- 🌐 **Built-in Tunnel Support** - Start ngrok or LocalTunnel directly from the UI
-- 🔒 **Password Protection** - Setup and History pages are protected by admin password
+- 🤖 **Code Generation** - Uses OpenRouter API to generate Lua code from natural language
+- 🎬 **YouTube Integration** - OAuth login and Super Chat processing for monetized Ideas
+- 💰 **Invisible Economy** - $1 per Idea with hidden balance UX
+- 🎮 **Web Control Panel** - Public submission interface for viewers
+- 📊 **Unified Dashboard** - Stream Control, Setup, History, Moderation in one place
+- 🎛️ **Slot-based Queue** - Dynamic concurrent execution (3-10 slots based on demand)
+- 📜 **Command History** - Track, repeat, undo, and save Ideas as reusable payloads
+- 🔒 **Role-Based Access** - Moderator and Admin permission levels
+- 🌐 **Built-in Tunnel Support** - Start ngrok or bore directly from the UI
+- 🔐 **Password Protection** - Dashboard access protected by admin password
 
 ## Quick Start
 
@@ -31,77 +33,130 @@ dotnet run
 The server will start on `http://localhost:5000`
 
 Open your browser to:
-- `http://localhost:5000/` - Control Panel (Public)
-- `http://localhost:5000/setup` - Setup & Configuration (Password Protected)
-- `http://localhost:5000/history` - Command History (Password Protected)
+- `http://localhost:5000/` - Public submission page (viewers use this)
+- `http://localhost:5000/dashboard` - Dashboard (password protected)
+  - **Stream Control** - All-in-one streaming hub (default tab)
+  - **Setup** - Configuration and OAuth
+  - **History** - Full command history
+  - **Moderation** - Review submissions
+  - **Commands** - Saved payloads
+  - **Users** - Account management (Admin only)
+  - **Testing** - Development mode (Admin only)
 
 ## Setup Guide
 
 ### 1. Set Admin Password
 
-On first visit to `/setup`, you'll be prompted to set an admin password. This protects the Setup and History pages from public access.
+On first visit to `/dashboard`, you'll be prompted to set an admin password. This protects the dashboard from public access.
 
 ### 2. OpenRouter API (Required)
 
 1. Go to [openrouter.ai/keys](https://openrouter.ai/keys)
 2. Create an account and generate an API key
-3. Enter the API key in the Setup page
-4. Choose your preferred AI model
+3. Enter the API key in the Setup tab
+4. Choose your preferred code generator model
 
-### 3. Tunnel Configuration (For GMod Access)
+### 3. Tunnel Configuration (For Public Access)
 
 The Setup page includes built-in tunnel management:
 
 **ngrok:**
 1. (Optional) Get an auth token from [ngrok.com](https://ngrok.com/download)
-2. Click "Start ngrok" in the Setup page
+2. Click "Start ngrok" in the Setup tab
 3. The public URL will be displayed and auto-configured in the Lua file
 
-**LocalTunnel:**
-1. Install: `npm install -g localtunnel`
-2. Click "Start LocalTunnel" in the Setup page
-3. Note: LocalTunnel requires entering your public IP as a password on first visit
+**bore:**
+1. Click "Start bore" in the Setup tab
+2. No account needed - instant public URL
 
-### 4. Twitch Integration (Optional)
+### 4. YouTube Integration (Optional but Recommended)
 
-1. Go to [dev.twitch.tv/console](https://dev.twitch.tv/console)
-2. Create a new application
-3. Set the OAuth Redirect URL to: `http://localhost:5000/api/setup/twitch/callback`
-4. Copy the Client ID and Client Secret to the Setup page
-5. Click "Login with Twitch" to authenticate
-6. Click "Start Listening" to begin receiving chat commands
+**Quick Setup from Stream Control:**
+1. Go to **Dashboard → Stream Control** tab
+2. Click **"🔗 Login with YouTube"**
+3. Authorize the app with your YouTube account
+4. Enter your live stream's **Video ID**
+5. Click **"Save Video ID"** (automatically starts listening)
 
-### 5. YouTube Integration (Optional)
-
+**Full OAuth Setup:**
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project
 3. Enable the YouTube Data API v3
 4. Create OAuth 2.0 credentials (Web Application)
 5. Set the redirect URI to: `http://localhost:5000/api/setup/youtube/callback`
-6. Copy the Client ID and Client Secret to the Setup page
-7. Click "Login with YouTube" to authenticate
-8. Enter your live stream's Video ID and click "Start Listening"
+6. Copy the Client ID and Client Secret to the Setup tab
+7. Complete OAuth flow via "Login with YouTube" button
+
+**How It Works:**
+- Viewers donate $1 via Super Chat to get credits
+- Each dollar = 1 Idea submission
+- Pending credits auto-transfer when viewer links their channel
+- Balance is "invisible" - only shown in profile modal
 
 ## GMod Setup
 
 The GMod addon in the `lua/` folder needs to connect to this brain. When you start a tunnel, the Lua file is automatically updated with the correct URL.
 
-Manually update `lua/autorun/ai_chaos_controller.lua` if needed.
+Manually update `lua/autorun/chaos_controller.lua` if needed.
+
+## StreamReady Features
+
+### Slot-Based Queue System
+
+Replaces traditional FIFO with dynamic concurrent execution:
+
+```csharp
+// QueueSlotService manages execution pacing
+- Low volume (0-5 in queue): 3 slots → "drip feed" experience
+- Medium volume (6-20): 4-6 slots
+- High volume (50+): 10 slots → "absolute chaos" mode
+```
+
+**Benefits:**
+- Prevents overwhelming the game with too many simultaneous effects
+- Scales automatically based on demand
+- 25-second slot timer independent of effect duration
+- Manual blast bypasses limits (1-10 commands instantly)
+
+### Invisible Economy ($1 per Idea)
+
+- **Public interface**: No visible prices or balances
+- **Button states**: "Send Chaos" → "Submitting..." → "You'll need to donate again"
+- **Profile modal**: Balance visible when clicking username
+- **Admin dashboard**: Full financial transparency
+- **Pending credits**: Automatic transfer when viewer links channel
+
+### Role-Based Access Control
+
+**Moderators can access:**
+- Stream Control (limited panels)
+- Commands
+- History
+- Moderation
+
+**Admins get everything:**
+- Full Stream Control (queue control, stream settings)
+- Setup & configuration
+- Users management
+- Testing mode
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Public control panel |
-| `/setup` | GET | Setup page (password protected) |
-| `/history` | GET | History page (password protected) |
-| `/poll` | POST | GMod polls for commands |
-| `/trigger` | POST | Send a chaos command |
+| `/` | GET | Public submission page |
+| `/dashboard` | GET | Unified dashboard (password protected) |
+| `/api/chaos/poll` | GET | GMod polls for commands (slot-based) |
+| `/api/chaos/trigger` | POST | Submit an Idea |
+| `/api/chaos/undo/{id}` | POST | Undo a specific command |
 | `/api/history` | GET | Get command history |
+| `/api/queue/status` | GET | Get queue and slot status |
+| `/api/queue/blast` | POST | Manual blast (bypass slots) |
+| `/api/setup/youtube/callback` | GET | YouTube OAuth callback |
 | `/api/setup/status` | GET | Get setup status |
-| `/api/setup/models` | GET | Get available AI models |
+| `/api/setup/models` | GET | Get available code generator models |
 | `/api/setup/tunnel/ngrok/start` | POST | Start ngrok tunnel |
-| `/api/setup/tunnel/localtunnel/start` | POST | Start LocalTunnel |
+| `/api/setup/tunnel/bore/start` | POST | Start bore tunnel |
 | `/api/setup/tunnel/stop` | POST | Stop current tunnel |
 
 ## Development
@@ -126,19 +181,28 @@ dotnet publish -c Release
 - Make sure the brain is running on port 5000
 - Check firewall settings
 
-### Twitch not receiving messages
-- Verify OAuth token is valid (re-authenticate if needed)
-- Make sure channel name is correct
-- Check cooldown settings
+### "Invalid API key"
+- Verify OpenRouter API key is correct
+- Check if you have credits remaining on OpenRouter
 
 ### YouTube "Invalid video ID"
 - The stream must be actively live
 - Use the video ID from the URL, not the channel ID
 - Make sure you're authenticated with the correct account
 
+### YouTube "Unauthorized" error
+- OAuth token may have expired - click "Login with YouTube" again
+- Verify OAuth credentials in Google Cloud Console
+- Check redirect URI matches: `http://localhost:5000/api/setup/youtube/callback`
+
 ### Tunnel not starting
 - ngrok: Make sure ngrok is installed and in PATH
-- LocalTunnel: Make sure Node.js and `localtunnel` are installed (`npm install -g localtunnel`)
+- bore: Make sure bore is installed (`cargo install bore-cli`)
+
+### Queue not processing
+- Check Dashboard → Stream Control for slot status
+- Verify GMod is polling (check console logs)
+- Try Manual Blast to bypass queue limits
 
 ## License
 
