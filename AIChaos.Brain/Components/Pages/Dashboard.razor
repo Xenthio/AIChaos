@@ -118,24 +118,15 @@ else
     }
     else if (activeSubPage == "setup")
     {
-        <div class="card">
-            <h2>🔧 Setup & Configuration</h2>
-            <p style="color: var(--text-dim);">Setup functionality will be embedded here. Coming soon...</p>
-        </div>
+        <SetupContent />
     }
     else if (activeSubPage == "history")
     {
-        <div class="card">
-            <h2>📜 Command History</h2>
-            <p style="color: var(--text-dim);">History functionality will be embedded here. Coming soon...</p>
-        </div>
+        <HistoryContent />
     }
     else if (activeSubPage == "moderation")
     {
-        <div class="card">
-            <h2>🛡️ Moderation & Refunds</h2>
-            <p style="color: var(--text-dim);">Moderation functionality will be embedded here. Coming soon...</p>
-        </div>
+        <ModerationContent ModerationPassword="@GetModerationPassword()" />
     }
 }
 
@@ -426,6 +417,18 @@ else
     {
         if (e.Key == "Enter")
             await Login();
+    }
+    
+    private string GetModerationPassword()
+    {
+        try
+        {
+            return Settings.ModerationPassword ?? "";
+        }
+        catch
+        {
+            return "";
+        }
     }
 }
 

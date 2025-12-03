@@ -1,0 +1,314 @@
+@inject SettingsService Settings
+@inject CommandQueueService CommandQueue
+@inject IJSRuntime JS
+
+<div class="card">
+    <h2>📜 Command History</h2>
+    
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
+        <div class="form-group checkbox-group" style="margin-bottom: 0;">
+            <input type="checkbox" @bind="includeHistoryInAi" @bind:after="UpdatePreferences">
+            <label style="margin: 0;">Feed history to AI context</label>
+        </div>
+        
+        <div class="form-group checkbox-group" style="margin-bottom: 0;">
+            <input type="checkbox" @bind="showExecutedCode">
+            <label style="margin: 0;">Show executed code</label>
+        </div>
+        
+        <div class="form-group checkbox-group" style="margin-bottom: 0;">
+            <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+            <label style="margin: 0;">Auto-refresh</label>
+        </div>
+        
+        <button @onclick="LoadHistory" class="btn-secondary">🔄 Refresh</button>
+        <button @onclick="ClearHistory" class="btn-danger">🗑️ Clear All</button>
+    </div>
+
+    <div>
+        @if (history == null || !history.Any())
+        {
+            <div class="empty-state">No commands in history yet.</div>
+        }
+        else
+        {
+            @foreach (var cmd in history)
+            {
+                <div class="history-item">
+                    <div style="flex: 1;">
+                        <div class="history-meta">
+                            <span class="history-id">#@cmd.Id</span>
+                            <span class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                            <span class="history-source">@cmd.Source</span>
+                            <span class="history-author">👤 @cmd.Author</span>
+                        </div>
+                        <div class="history-prompt">@cmd.UserPrompt</div>
+                        @if (!string.IsNullOrEmpty(cmd.AiResponse))
+                        {
+                            <div class="history-response">💬 @cmd.AiResponse</div>
+                        }
+                        @if (showExecutedCode && !string.IsNullOrEmpty(cmd.ExecutionCode))
+                        {
+                            <details class="code-details">
+                                <summary>View Code</summary>
+                                <pre><code>@cmd.ExecutionCode</code></pre>
+                            </details>
+                        }
+                    </div>
+                    <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                    <div class="history-actions">
+                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁</button>
+                        <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .history-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        margin-bottom: 10px;
+        gap: 10px;
+    }
+
+    .history-meta {
+        display: flex;
+        gap: 10px;
+        color: var(--text-dim);
+        font-size: 12px;
+        margin-bottom: 5px;
+    }
+
+    .history-id {
+        font-weight: bold;
+        color: var(--info);
+    }
+
+    .history-time {
+        color: var(--text-dim);
+    }
+
+    .history-source {
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .history-author {
+        color: var(--text-dim);
+    }
+
+    .history-prompt {
+        color: var(--text);
+        margin: 5px 0;
+    }
+
+    .history-response {
+        color: var(--info);
+        font-size: 12px;
+        margin-top: 5px;
+    }
+
+    .history-status {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    .status-pending { background: #888; }
+    .status-queued { background: #f0ad4e; }
+    .status-executed { background: #5cb85c; }
+    .status-undone { background: #5bc0de; }
+    .status-failed { background: #d9534f; }
+
+    .history-actions {
+        display: flex;
+        gap: 5px;
+    }
+
+    .code-details {
+        margin-top: 10px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 4px;
+        padding: 10px;
+    }
+
+    .code-details summary {
+        cursor: pointer;
+        color: var(--info);
+        font-size: 12px;
+    }
+
+    .code-details pre {
+        margin-top: 10px;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+    }
+
+    .code-details code {
+        font-family: 'Courier New', monospace;
+        font-size: 11px;
+        color: var(--text);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-dim);
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+</style>
+
+@code {
+    private List<CommandEntry>? history;
+    private bool includeHistoryInAi = true;
+    private bool showExecutedCode = false;
+    private bool autoRefresh = false;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override void OnInitialized()
+    {
+        LoadHistory();
+        LoadPreferences();
+    }
+
+    private void LoadHistory()
+    {
+        try
+        {
+            history = CommandQueue.GetHistory().OrderByDescending(c => c.Id).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load history failed: {ex.Message}");
+        }
+    }
+
+    private void LoadPreferences()
+    {
+        try
+        {
+            var prefs = CommandQueue.Preferences;
+            includeHistoryInAi = prefs.IncludeHistoryInAi;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load preferences failed: {ex.Message}");
+        }
+    }
+
+    private void UpdatePreferences()
+    {
+        try
+        {
+            CommandQueue.Preferences.IncludeHistoryInAi = includeHistoryInAi;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Update preferences failed: {ex.Message}");
+        }
+    }
+
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(() =>
+                {
+                    LoadHistory();
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+
+    private void RepeatCommand(int commandId)
+    {
+        try
+        {
+            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
+            if (command != null)
+            {
+                CommandQueue.AddCommand(
+                    userPrompt: command.UserPrompt,
+                    executionCode: command.ExecutionCode,
+                    undoCode: command.UndoCode,
+                    source: "history_repeat",
+                    author: "Admin",
+                    imageContext: command.ImageContext,
+                    userId: "admin_history",
+                    aiResponse: null
+                );
+                LoadHistory();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Repeat failed: {ex.Message}");
+        }
+    }
+
+    private void UndoCommand(int commandId)
+    {
+        try
+        {
+            CommandQueue.UndoCommand(commandId);
+            LoadHistory();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Undo failed: {ex.Message}");
+        }
+    }
+
+    private void ClearHistory()
+    {
+        try
+        {
+            CommandQueue.ClearHistory();
+            LoadHistory();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Clear history failed: {ex.Message}");
+        }
+    }
+
+    private string GetStatusClass(CommandStatus status) => status switch
+    {
+        CommandStatus.Executed => "executed",
+        CommandStatus.Failed => "failed",
+        CommandStatus.Queued => "queued",
+        CommandStatus.Undone => "undone",
+        _ => "pending"
+    };
+
+    private string GetStatusText(CommandStatus status) => status.ToString();
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

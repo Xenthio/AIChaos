@@ -1,0 +1,360 @@
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@if (!string.IsNullOrEmpty(alertMessage))
+{
+    <div class="alert alert-@alertType">@alertMessage</div>
+}
+
+<div class="tabs">
+    <button class="tab-btn @(activeTab == "images" ? "active" : "")" @onclick='() => activeTab = "images"'>
+        🖼️ Images <span class="pending-count">@pendingImageCount</span>
+    </button>
+    <button class="tab-btn @(activeTab == "refunds" ? "active" : "")" @onclick='() => activeTab = "refunds"'>
+        💰 Refunds <span class="pending-count">@pendingRefundCount</span>
+    </button>
+</div>
+
+@if (activeTab == "images")
+{
+    <div class="card">
+        <h2>🖼️ Pending Images</h2>
+        <div class="btn-group" style="margin-bottom: 20px;">
+            <button @onclick="LoadPendingImages" class="btn-secondary">🔄 Refresh</button>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+                <span style="color: var(--text-dim);">Auto-refresh (5s)</span>
+            </label>
+        </div>
+        <div>
+            @if (pendingImages == null || !pendingImages.Any())
+            {
+                <div class="no-images">✅ No images pending moderation</div>
+            }
+            else
+            {
+                @foreach (var img in pendingImages)
+                {
+                    <div class="image-card">
+                        <div class="image-meta">
+                            <span><strong>#@img.Id</strong></span>
+                            <span>👤 @img.Author</span>
+                        </div>
+                        <div class="image-prompt"><strong>Prompt:</strong> @img.UserPrompt</div>
+                        <img src="@img.ImageUrl" class="image-preview" alt="Pending image">
+                        <div class="action-buttons">
+                            <button @onclick="() => ApproveImage(img.Id)" class="btn-success">✅ APPROVE</button>
+                            <button @onclick="() => DenyImage(img.Id)" class="btn-danger">❌ DENY</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+else if (activeTab == "refunds")
+{
+    <div class="card">
+        <h2>💰 Refund Requests</h2>
+        <div class="btn-group" style="margin-bottom: 20px;">
+            <button @onclick="LoadRefunds" class="btn-secondary">🔄 Refresh</button>
+        </div>
+        <div>
+            @if (refundRequests == null || !refundRequests.Any())
+            {
+                <div class="no-images">✅ No pending refunds</div>
+            }
+            else
+            {
+                @foreach (var req in refundRequests)
+                {
+                    <div class="refund-card">
+                        <div class="refund-meta">
+                            <span><strong>@req.UserDisplayName</strong></span>
+                            <span>Requested: @req.RequestedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+                        <div style="margin: 10px 0;">
+                            <div><strong>Reason:</strong> <span style="color: var(--warning)">@req.Reason</span></div>
+                            <div style="color: var(--text-dim); font-size: 12px; margin-top: 5px;">Prompt: "@req.Prompt"</div>
+                        </div>
+                        <div class="action-buttons">
+                            <button @onclick="() => ApproveRefund(req.Id)" class="btn-success">💰 REFUND</button>
+                            <button @onclick="() => RejectRefund(req.Id)" class="btn-danger">❌ REJECT</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .tabs {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+
+    .tab-btn {
+        padding: 10px 20px;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: var(--text-dim);
+        cursor: pointer;
+        border-radius: 5px;
+    }
+
+    .tab-btn.active {
+        background: var(--primary);
+        color: white;
+    }
+
+    .pending-count {
+        background: var(--warning);
+        color: #000;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .image-card, .refund-card {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border);
+    }
+
+    .image-preview {
+        max-width: 100%;
+        max-height: 300px;
+        border-radius: 4px;
+        margin: 10px 0;
+        display: block;
+    }
+
+    .image-meta, .refund-meta {
+        display: flex;
+        gap: 15px;
+        color: var(--text-dim);
+        font-size: 12px;
+        margin-bottom: 10px;
+    }
+
+    .image-prompt {
+        color: var(--text);
+        margin: 10px 0;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .action-buttons button {
+        flex: 1;
+        padding: 12px;
+        font-size: 14px;
+    }
+
+    .no-images {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-dim);
+    }
+</style>
+
+@code {
+    [Parameter]
+    public string ModerationPassword { get; set; } = "";
+    
+    private string activeTab = "images";
+    private string alertMessage = "";
+    private string alertType = "info";
+    
+    private List<PendingImage>? pendingImages;
+    private List<RefundRequest>? refundRequests;
+    private int pendingImageCount = 0;
+    private int pendingRefundCount = 0;
+    private bool autoRefresh = true;
+    
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPendingImages();
+        await LoadRefunds();
+        ToggleAutoRefresh();
+    }
+
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ => 
+            {
+                await InvokeAsync(async () => 
+                {
+                    await LoadPendingImages();
+                    await LoadRefunds();
+                    StateHasChanged();
+                });
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+
+    private async Task LoadPendingImages()
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/moderation/pending");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            var response = await Http.SendAsync(request);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return;
+            }
+            
+            var data = await response.Content.ReadFromJsonAsync<PendingImagesResponse>();
+            pendingImageCount = data?.TotalPending ?? 0;
+            pendingImages = data?.Images;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load pending images failed: {ex.Message}");
+        }
+    }
+
+    private async Task LoadRefunds()
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/moderation/refund/pending");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            var response = await Http.SendAsync(request);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return;
+            }
+            
+            refundRequests = await response.Content.ReadFromJsonAsync<List<RefundRequest>>();
+            pendingRefundCount = refundRequests?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load refunds failed: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveImage(int imageId)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/approve");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            request.Content = JsonContent.Create(new { imageId, approved = true });
+            await Http.SendAsync(request);
+            await LoadPendingImages();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Approve image failed: {ex.Message}");
+        }
+    }
+
+    private async Task DenyImage(int imageId)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/deny");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            request.Content = JsonContent.Create(new { imageId, approved = false });
+            await Http.SendAsync(request);
+            await LoadPendingImages();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Deny image failed: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveRefund(string requestId)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/refund/approve");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            request.Content = JsonContent.Create(new { requestId });
+            await Http.SendAsync(request);
+            await LoadRefunds();
+            ShowAlert("Refund approved", "success");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Approve refund failed: {ex.Message}");
+        }
+    }
+
+    private async Task RejectRefund(string requestId)
+    {
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/refund/reject");
+            request.Headers.Add("X-Moderation-Password", ModerationPassword);
+            request.Content = JsonContent.Create(new { requestId });
+            await Http.SendAsync(request);
+            await LoadRefunds();
+            ShowAlert("Refund rejected", "warning");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Reject refund failed: {ex.Message}");
+        }
+    }
+
+    private void ShowAlert(string message, string type)
+    {
+        alertMessage = message;
+        alertType = type;
+        StateHasChanged();
+        _ = Task.Delay(3000).ContinueWith(_ => { alertMessage = ""; StateHasChanged(); });
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+
+    // DTOs
+    private class PendingImage
+    {
+        public int Id { get; set; }
+        public string Author { get; set; } = "";
+        public string UserPrompt { get; set; } = "";
+        public string ImageUrl { get; set; } = "";
+    }
+
+    private class PendingImagesResponse
+    {
+        public int TotalPending { get; set; }
+        public List<PendingImage>? Images { get; set; }
+    }
+
+    private class RefundRequest
+    {
+        public string Id { get; set; } = "";
+        public string UserDisplayName { get; set; } = "";
+        public string Reason { get; set; } = "";
+        public string Prompt { get; set; } = "";
+        public DateTime RequestedAt { get; set; }
+    }
+}
