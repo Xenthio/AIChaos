@@ -1,7 +1,7 @@
 namespace AIChaos.Brain.Models;
 
 /// <summary>
-/// Shared constants for the AI Chaos application.
+/// Shared constants for the Chaos application.
 /// </summary>
 public static class Constants
 {

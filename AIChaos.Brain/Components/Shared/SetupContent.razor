@@ -21,7 +21,7 @@
         </span>
     </h2>
     <p style="color: var(--text-dim); margin-bottom: 15px;">
-        OpenRouter provides access to AI models for generating Lua code.
+        OpenRouter provides access to language models for generating Lua code.
     </p>
 
     <div class="form-group">
@@ -30,7 +30,7 @@
     </div>
 
     <div class="form-group">
-        <label>AI Model</label>
+        <label>Code Generator Model</label>
         <select @bind="selectedModel">
             @if (models == null || !models.Any())
             {
@@ -44,7 +44,7 @@
                 }
             }
         </select>
-        <small>Choose the AI model for generating Lua code</small>
+        <small>Choose the language model for generating Lua code</small>
     </div>
 
     <button @onclick="SaveOpenRouter">💾 Save OpenRouter Settings</button>

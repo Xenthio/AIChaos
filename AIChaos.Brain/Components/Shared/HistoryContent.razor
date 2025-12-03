@@ -63,7 +63,7 @@
                     <div class="history-actions">
                         <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
-                        <button @onclick="() => ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (AI-generated)">🔧</button>
+                        <button @onclick="() => ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (Auto-generated)">🔧</button>
                         <button @onclick="() => ToggleCodeView(cmd.Id)" class="btn-secondary btn-small" title="Show/Hide Code">👁️</button>
                         <button @onclick="() => OpenSavePayloadModal(cmd.Id)" class="btn-success btn-small" title="Save Payload">💾</button>
                     </div>
@@ -363,9 +363,9 @@
 
             if (!string.IsNullOrEmpty(undoCode))
             {
-                // Queue the AI-generated undo code directly
+                // Queue the auto-generated undo code directly
                 CommandQueue.QueueCode(undoCode);
-                Console.WriteLine($"[FORCE UNDO] AI-generated undo queued for command #{commandId}");
+                Console.WriteLine($"[FORCE UNDO] Auto-generated undo queued for command #{commandId}");
             }
             else
             {

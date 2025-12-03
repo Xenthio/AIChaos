@@ -1,7 +1,7 @@
 namespace AIChaos.Brain.Models;
 
 /// <summary>
-/// Configuration settings for the AI Chaos Brain application.
+/// Configuration settings for the Chaos Brain application.
 /// </summary>
 public class AppSettings
 {

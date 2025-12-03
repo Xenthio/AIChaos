@@ -81,7 +81,7 @@ app.MapControllers();
 var settingsService = app.Services.GetRequiredService<SettingsService>();
 
 Console.WriteLine("========================================");
-Console.WriteLine("  AI Chaos Brain - C# Edition");
+Console.WriteLine("  Chaos Brain - C# Edition");
 Console.WriteLine("========================================");
 Console.WriteLine($"  Viewer: http://localhost:5000/");
 Console.WriteLine("  Dashboard: http://localhost:5000/dashboard");
