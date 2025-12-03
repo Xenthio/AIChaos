@@ -3,6 +3,8 @@
 @inject AccountService AccountService
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
+@inject ImageModerationService ModerationService
+@inject SettingsService SettingsService
 @inject IJSRuntime JS
 
 <PageTitle>AI Chaos - Viewer Control</PageTitle>
@@ -485,6 +487,27 @@
             if (currentAccount.CreditBalance < Constants.CommandCost)
             {
                 ShowStatus($"Insufficient credits. You have ${currentAccount.CreditBalance:F2}, but need ${Constants.CommandCost:F2}", "error");
+                return;
+            }
+
+            var isPrivateDiscordMode = SettingsService.Settings.Safety.PrivateDiscordMode;
+
+            // Check for images in the prompt - queue for moderation if found (skip if Private Discord Mode)
+            if (!isPrivateDiscordMode && ModerationService.NeedsModeration(promptInput))
+            {
+                var imageUrls = ModerationService.ExtractImageUrls(promptInput);
+                foreach (var url in imageUrls)
+                {
+                    ModerationService.AddPendingImage(
+                        url,
+                        promptInput,
+                        "web",
+                        currentAccount.DisplayName,
+                        currentAccount.Id);
+                }
+
+                promptInput = "";
+                ShowStatus($"Your prompt contains {imageUrls.Count} image(s) that require moderator approval before processing.", "info");
                 return;
             }
 

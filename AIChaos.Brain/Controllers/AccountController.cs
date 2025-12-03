@@ -15,6 +15,8 @@ public class AccountController : ControllerBase
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly TestClientService _testClientService;
+    private readonly ImageModerationService _moderationService;
+    private readonly SettingsService _settingsService;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
@@ -22,12 +24,16 @@ public class AccountController : ControllerBase
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
         TestClientService testClientService,
+        ImageModerationService moderationService,
+        SettingsService settingsService,
         ILogger<AccountController> logger)
     {
         _accountService = accountService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
         _testClientService = testClientService;
+        _moderationService = moderationService;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -413,6 +419,32 @@ public class AccountController : ControllerBase
 
         try
         {
+            var isPrivateDiscordMode = _settingsService.Settings.Safety.PrivateDiscordMode;
+
+            // Check for images in the prompt - queue for moderation if found (skip if Private Discord Mode)
+            if (!isPrivateDiscordMode && _moderationService.NeedsModeration(request.Prompt))
+            {
+                var imageUrls = _moderationService.ExtractImageUrls(request.Prompt);
+                foreach (var url in imageUrls)
+                {
+                    _moderationService.AddPendingImage(
+                        url,
+                        request.Prompt,
+                        "web",
+                        account.DisplayName,
+                        account.Id);
+                }
+
+                _logger.LogInformation("[MODERATION] Prompt with {Count} image(s) queued for review from {Username}",
+                    imageUrls.Count, account.Username);
+
+                return Ok(new
+                {
+                    status = "pending_moderation",
+                    message = $"Your prompt contains {imageUrls.Count} image(s) that require moderator approval before processing."
+                });
+            }
+
             // Generate code
             var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(request.Prompt);
 
