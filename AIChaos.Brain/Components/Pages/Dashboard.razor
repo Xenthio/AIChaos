@@ -91,7 +91,7 @@ else
                 </label>
             </div>
 
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; align-items: flex-end;">
                 <button @onclick="SendPrompt" disabled="@isSubmitting" style="flex: 1;">
                     @if (isSubmitting)
                     {
@@ -103,9 +103,14 @@ else
                     }
                 </button>
                 
-                <button @onclick="ManualBlast" class="btn-warning" style="white-space: nowrap; padding: 0 20px;">
-                    💥 BLAST QUEUE
-                </button>
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <input type="number" @bind="blastCount" min="1" max="10" 
+                           style="width: 60px; padding: 10px; text-align: center;" 
+                           title="Number of commands to blast" />
+                    <button @onclick="ManualBlast" class="btn-warning" style="white-space: nowrap; padding: 0 20px;">
+                        💥 BLAST QUEUE
+                    </button>
+                </div>
             </div>
 
             @if (!string.IsNullOrEmpty(statusMessage))
@@ -288,6 +293,7 @@ else
     private List<CommandEntry>? recentCommands;
     private string statusMessage = "";
     private string statusType = "info";
+    private int blastCount = 1;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -439,11 +445,12 @@ else
     {
         try
         {
-            var response = await Http.PostAsJsonAsync("/api/queue/blast", new { Count = 1 });
+            var count = Math.Max(1, Math.Min(blastCount, 10)); // Clamp between 1-10
+            var response = await Http.PostAsJsonAsync("/api/queue/blast", new { Count = count });
             
             if (response.IsSuccessStatusCode)
             {
-                ShowStatus("💥 Queue blasted! Command executed immediately.", "success");
+                ShowStatus($"💥 Queue blasted! {count} command(s) executed immediately.", "success");
             }
             else
             {

@@ -44,12 +44,8 @@ public class QueueSlotService
     {
         lock (_lock)
         {
-            // First, check if we have any queued commands
-            // We need to peek at the queue without removing to check slot availability
-            // Since CommandQueueService doesn't expose a peek, we'll get the command and manage slots
-            
-            var result = _commandQueue.PollNextCommand();
-            if (!result.HasValue)
+            // First, check if there are any queued commands
+            if (_commandQueue.GetQueueCount() == 0)
             {
                 // No commands in queue
                 return null;
@@ -60,17 +56,18 @@ public class QueueSlotService
             
             if (availableSlot == null)
             {
-                // No slots available - need to put the command back
-                // Since we can't put it back easily, we'll hold it for the next poll
-                // Store it temporarily and return null for this poll
-                _logger.LogDebug("[QUEUE] No available slots. Command #{CommandId} waiting.", result.Value.CommandId);
-                
-                // Put command back at the front by re-queueing with special handling
-                // This is a limitation - we'll just return null and the command stays consumed
-                // In production, we'd need a better queue implementation
-                
-                // For now, block this slot temporarily and return the command
-                availableSlot = _slots[0]; // Use first slot even if blocked (manual override)
+                // No slots available - return null to enforce rate limiting
+                _logger.LogDebug("[QUEUE] No available slots. {Count} command(s) waiting.", 
+                    _commandQueue.GetQueueCount());
+                return null;
+            }
+            
+            // Get the next command from the queue
+            var result = _commandQueue.PollNextCommand();
+            if (!result.HasValue)
+            {
+                // Race condition - queue was empty by the time we polled
+                return null;
             }
             
             // Occupy the slot
@@ -78,8 +75,8 @@ public class QueueSlotService
             availableSlot.LastExecutionTime = DateTime.UtcNow;
             availableSlot.CurrentCommandId = result.Value.CommandId;
             
-            _logger.LogInformation("[QUEUE] Slot {SlotId} executing command #{CommandId}", 
-                availableSlot.Id, result.Value.CommandId);
+            _logger.LogInformation("[QUEUE] Slot {SlotId} executing command #{CommandId} ({QueueRemaining} remaining)", 
+                availableSlot.Id, result.Value.CommandId, _commandQueue.GetQueueCount());
             
             // Adjust slot count based on queue depth
             AdjustSlotCount();
@@ -111,7 +108,8 @@ public class QueueSlotService
             foreach (var slot in _slots)
             {
                 slot.IsOccupied = false;
-                slot.LastExecutionTime = DateTime.MinValue;
+                // Set to a time that makes slots immediately available
+                slot.LastExecutionTime = DateTime.UtcNow.AddSeconds(-DefaultSlotBlockSeconds);
             }
             
             return results;
@@ -145,48 +143,44 @@ public class QueueSlotService
     /// </summary>
     private void AdjustSlotCount()
     {
-        // We need to estimate queue depth - for now use a simple heuristic
-        // In production, we'd expose queue count from CommandQueueService
-        
-        // For now, we'll use a simplified approach:
-        // If we have many occupied slots, add more slots
-        // If we have few, remove excess slots
-        
-        var occupiedCount = _slots.Count(s => s.IsOccupied);
+        var queueDepth = _commandQueue.GetQueueCount();
         var targetSlots = MinSlots;
         
-        // Simple heuristic: if most slots are occupied, we likely have high demand
-        if (occupiedCount >= _slots.Count * 0.8)
+        // Determine target slots based on queue depth
+        if (queueDepth >= HighVolumeThreshold)
         {
-            // High demand - scale up
-            targetSlots = Math.Min(MaxSlots, _slots.Count + 1);
+            // High volume - scale to maximum
+            targetSlots = MaxSlots;
         }
-        else if (occupiedCount <= _slots.Count * 0.3 && _slots.Count > MinSlots)
+        else if (queueDepth >= LowVolumeThreshold)
         {
-            // Low demand - scale down
-            targetSlots = Math.Max(MinSlots, _slots.Count - 1);
+            // Medium volume - scale proportionally
+            var ratio = (double)(queueDepth - LowVolumeThreshold) / (HighVolumeThreshold - LowVolumeThreshold);
+            targetSlots = MinSlots + (int)Math.Round(ratio * (MaxSlots - MinSlots));
         }
         else
         {
-            // Maintain current count
-            targetSlots = _slots.Count;
+            // Low volume - use minimum
+            targetSlots = MinSlots;
         }
         
         // Adjust slot count
         while (_slots.Count < targetSlots)
         {
             _slots.Add(new ExecutionSlot { Id = _slots.Count + 1 });
-            _logger.LogInformation("[QUEUE] Scaled UP to {Count} slots", _slots.Count);
+            _logger.LogInformation("[QUEUE] Scaled UP to {Count} slots (queue depth: {QueueDepth})", 
+                _slots.Count, queueDepth);
         }
         
         while (_slots.Count > targetSlots)
         {
-            // Only remove unoccupied slots
-            var emptySlot = _slots.LastOrDefault(s => !s.IsOccupied);
-            if (emptySlot != null)
+            // Remove from the end if it's unoccupied (O(1) operation)
+            var lastSlot = _slots[_slots.Count - 1];
+            if (!lastSlot.IsOccupied)
             {
-                _slots.Remove(emptySlot);
-                _logger.LogInformation("[QUEUE] Scaled DOWN to {Count} slots", _slots.Count);
+                _slots.RemoveAt(_slots.Count - 1);
+                _logger.LogInformation("[QUEUE] Scaled DOWN to {Count} slots (queue depth: {QueueDepth})", 
+                    _slots.Count, queueDepth);
             }
             else
             {
@@ -206,15 +200,15 @@ public class QueueSlotService
             return new QueueSlotStatus
             {
                 TotalSlots = _slots.Count,
-                OccupiedSlots = _slots.Count(s => s.IsOccupied),
+                OccupiedSlots = _slots.Count(s => s.IsOccupied && (now - s.LastExecutionTime).TotalSeconds < DefaultSlotBlockSeconds),
                 AvailableSlots = _slots.Count(s => !s.IsOccupied || 
                     (now - s.LastExecutionTime).TotalSeconds >= DefaultSlotBlockSeconds),
                 Slots = _slots.Select(s => new SlotInfo
                 {
                     Id = s.Id,
-                    IsOccupied = s.IsOccupied,
-                    SecondsUntilAvailable = s.IsOccupied ? 
-                        Math.Max(0, DefaultSlotBlockSeconds - (now - s.LastExecutionTime).TotalSeconds) : 0,
+                    IsOccupied = s.IsOccupied && (now - s.LastExecutionTime).TotalSeconds < DefaultSlotBlockSeconds,
+                    SecondsUntilAvailable = s.IsOccupied && (now - s.LastExecutionTime).TotalSeconds < DefaultSlotBlockSeconds ? 
+                        DefaultSlotBlockSeconds - (now - s.LastExecutionTime).TotalSeconds : 0,
                     CurrentCommandId = s.CurrentCommandId
                 }).ToList()
             };

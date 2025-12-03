@@ -146,6 +146,32 @@ public class CommandQueueService
     }
     
     /// <summary>
+    /// Peeks at the next command without removing it from the queue.
+    /// </summary>
+    public (int CommandId, string Code)? PeekNextCommand()
+    {
+        lock (_lock)
+        {
+            if (_queue.Count > 0)
+            {
+                return _queue[0];
+            }
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Gets the current queue count.
+    /// </summary>
+    public int GetQueueCount()
+    {
+        lock (_lock)
+        {
+            return _queue.Count;
+        }
+    }
+    
+    /// <summary>
     /// Gets the command history.
     /// </summary>
     public List<CommandEntry> GetHistory()
