@@ -197,19 +197,56 @@
         <div class="alert alert-success" style="margin-top: 15px;">@linkYouTubeSuccess</div>
     }
     
-    @if (string.IsNullOrEmpty(linkCode))
+    @if (!youtubeLinkMethodChosen)
     {
-        <button @onclick="GenerateLinkCode" style="margin-top: 15px;">🔗 Generate Link Code</button>
-    }
-    else
-    {
-        <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 5px; margin-top: 15px;">
-            <p style="color: var(--text-dim); margin-bottom: 10px;">Send this code in a YouTube chat to link your channel:</p>
-            <div style="background: var(--bg-dark); padding: 12px; border-radius: 4px; font-family: monospace; font-size: 20px; text-align: center; color: var(--primary); border: 2px dashed var(--primary);">
-                @linkCode
+        <div style="margin: 15px 0;">
+            <p><strong>Choose a method:</strong></p>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button @onclick="ShowOAuthLinkMethod" class="auth-tab">🔐 Google Sign-In</button>
+                <button @onclick="ShowCodeLinkMethod" class="auth-tab">🎫 Verification Code</button>
             </div>
-            <p style="color: var(--text-dim); font-size: 12px; margin-top: 10px;">⏱️ Code expires in 30 minutes</p>
-            <p style="color: var(--text-dim); font-size: 12px;">💬 If that doesn't work, try sending it as a Super Chat to bypass YouTube's spam filter.</p>
+        </div>
+    }
+    
+    @if (showOAuthMethod)
+    {
+        <div style="margin-top: 15px;">
+            <p style="color: var(--text-dim); margin-bottom: 10px;">Sign in with Google to instantly link your YouTube channel:</p>
+            @if (googleOAuthConfigured)
+            {
+                <div id="g_id_link_signin"></div>
+                <p style="color: var(--text-dim); font-size: 12px; margin-top: 10px;">
+                    ℹ️ This will redirect you to Google to authorize YouTube access, then automatically link your channel.
+                </p>
+            }
+            else
+            {
+                <p style="color: var(--warning); margin-top: 10px;">⚠️ Google OAuth not configured. Use the verification code method instead.</p>
+                <button @onclick="ShowCodeLinkMethod" style="margin-top: 10px;">Switch to Verification Code</button>
+            }
+        </div>
+    }
+    
+    @if (showCodeMethod)
+    {
+        <div style="margin-top: 15px;">
+            @if (string.IsNullOrEmpty(linkCode))
+            {
+                <p><strong>Step 1:</strong> Click the button below to generate a verification code.</p>
+                <button @onclick="GenerateLinkCode" style="margin-top: 10px;">🎫 Generate Code</button>
+            }
+            else
+            {
+                <div>
+                    <p><strong>Step 2:</strong> Type this code into the stream chat:</p>
+                    <div style="padding: 15px; background: #000; border-radius: 8px; text-align: center; margin: 10px 0;">
+                        <span style="font-size: 24px; font-weight: bold; color: var(--success); letter-spacing: 3px;">@linkCode</span>
+                    </div>
+                    <p style="color: var(--text-dim); font-size: 12px;">💬 If that doesn't work, try sending it as a Super Chat to bypass YouTube's spam filter.</p>
+                    <p style="color: var(--text-dim); font-size: 12px; margin-top: 5px;">⏱️ The code expires in 30 minutes.</p>
+                    <p style="color: var(--info); font-size: 12px; margin-top: 8px;">💰 <strong>Bonus:</strong> Any Super Chats you've sent before linking will be automatically credited to your account!</p>
+                </div>
+            }
         </div>
     }
     
@@ -320,6 +357,10 @@
     private string linkCode = "";
     private string linkYouTubeError = "";
     private string linkYouTubeSuccess = "";
+    private bool youtubeLinkMethodChosen = false;
+    private bool showOAuthMethod = false;
+    private bool showCodeMethod = false;
+    private bool googleOAuthConfigured = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -640,6 +681,25 @@
         linkCode = "";
         linkYouTubeError = "";
         linkYouTubeSuccess = "";
+        youtubeLinkMethodChosen = false;
+        showOAuthMethod = false;
+        showCodeMethod = false;
+    }
+    
+    private void ShowOAuthLinkMethod()
+    {
+        youtubeLinkMethodChosen = true;
+        showOAuthMethod = true;
+        showCodeMethod = false;
+        // TODO: Check if Google OAuth is configured in settings
+        googleOAuthConfigured = false; // For now, not configured
+    }
+    
+    private void ShowCodeLinkMethod()
+    {
+        youtubeLinkMethodChosen = true;
+        showOAuthMethod = false;
+        showCodeMethod = true;
     }
     
     private string GetStatusClass(CommandStatus status) => status switch
