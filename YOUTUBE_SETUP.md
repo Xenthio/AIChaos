@@ -26,6 +26,8 @@ The YouTube integration for Chaos enables a streamlined "invisible economy" wher
 
 ✅ **Done!** The system is now listening for Super Chats and link codes.
 
+> **⚠️ Important:** You MUST login with YouTube (step 4) for the app to access live chat. Without OAuth authorization, the system cannot see chat messages or Super Chats.
+
 ### Option 2: Full OAuth Setup
 
 If you need to configure OAuth credentials first:
@@ -40,6 +42,36 @@ If you need to configure OAuth credentials first:
 8. Enter credentials in YouTube Integration section
 9. Click "Login with YouTube"
 10. Return to Stream Control to enter Video ID
+
+### ⚠️ Google OAuth User Cap (100 Users for Unverified Apps)
+
+**Important Limitation:**
+- Unverified Google Cloud apps are limited to **100 test users**
+- This affects how many viewers can link their YouTube accounts
+- **Solution:** Use link codes instead of requiring OAuth for viewers
+
+**How Chaos Handles This:**
+- ✅ **Streamer**: Requires OAuth (counts as 1 user)
+- ✅ **Viewers**: Use link codes (typed in chat) - unlimited!
+- ✅ **No OAuth required for viewers** - they just type their code
+
+**Viewer Link Code Flow:**
+1. Viewer goes to your public URL
+2. Gets unique code (e.g., `LINK-4B2R`)
+3. Types code in YouTube chat
+4. System links their channel WITHOUT OAuth
+5. No impact on 100 user limit
+
+**If You Hit the 100 User Cap:**
+- Only affects streamer/moderator OAuth logins
+- Viewers linking via chat codes are NOT affected
+- To expand: Submit app for Google verification (removes cap)
+
+**Google Verification Process:**
+- [Submit for verification](https://support.google.com/cloud/answer/9110914)
+- Typically takes 2-4 weeks
+- Removes 100 user limit completely
+- Required only if you need 100+ moderators/admin accounts
 
 ## How It Works
 
@@ -193,15 +225,20 @@ When your stream is live:
 - Try copying directly from live stream URL
 
 ### "Unauthorized" Error
+- **Most common cause:** OAuth not completed - click "Login with YouTube" in Setup or Stream Control
 - OAuth token expired - click "Login with YouTube" again
 - Verify OAuth credentials in Google Cloud Console
 - Check redirect URI: `http://localhost:5000/api/setup/youtube/callback`
+- **Remember:** The system CANNOT see live chat without OAuth authorization
 
 ### Link Codes Not Working
+- **First check:** Is OAuth authorized? Click "Login with YouTube" if not
+- **Second check:** Is the chat listener running? Look for "✓ Video ID saved and listening to chat" message
 - Check server logs for `[YouTube]` and `[ACCOUNT]` messages
 - Verify chat listener is running (see "✓ Connected!" message)
 - Make sure viewer types exact code (case-sensitive)
 - Codes expire after 30 minutes
+- Remember: Link codes bypass the 100 user OAuth limit!
 
 ### Pending Credits Not Transferring
 - Check `pending_credits.json` file exists
