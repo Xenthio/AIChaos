@@ -117,7 +117,8 @@ public class ModerationController : ControllerBase
             });
         }
         
-        _logger.LogInformation("[MODERATION] Processing approved image for: {Prompt}", entry.UserPrompt);
+        _logger.LogInformation("[MODERATION] Processing approved image #{ImageId} for: {Prompt}", 
+            request.ImageId, entry.UserPrompt);
         
         // Check if there's an existing placeholder command for this image
         CommandEntry? command = null;
@@ -129,7 +130,7 @@ public class ModerationController : ControllerBase
             
             if (command != null && command.Status == CommandStatus.PendingModeration)
             {
-                _logger.LogInformation("[MODERATION] Updating existing command #{CommandId} from PendingModeration to Queued", 
+                _logger.LogInformation("[MODERATION] Found existing command #{CommandId} in PendingModeration status", 
                     command.Id);
                 
                 // Check if this was an interactive mode submission
@@ -162,10 +163,15 @@ public class ModerationController : ControllerBase
                 }
                 
                 // Regular mode (non-interactive) - generate code and queue
+                _logger.LogInformation("[MODERATION] Generating code for regular (non-interactive) mode");
+                
                 // Generate code with image context now that it's approved
                 var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(
                     entry.UserPrompt,
                     imageContext: $"Image URL: {entry.ImageUrl}");
+                
+                _logger.LogInformation("[MODERATION] Code generated successfully. Execution code length: {Length}", 
+                    executionCode.Length);
                 
                 // Update the existing command
                 command.ExecutionCode = executionCode;
@@ -177,30 +183,50 @@ public class ModerationController : ControllerBase
                 // Check if test client mode is enabled
                 var isTestClientModeEnabled = _settingsService.Settings.TestClient.Enabled;
                 
+                _logger.LogInformation("[MODERATION] Test client mode: {Enabled}. Queueing command #{CommandId}", 
+                    isTestClientModeEnabled ? "ENABLED" : "DISABLED", command.Id);
+                
                 // Queue for execution (respect test client mode)
                 if (isTestClientModeEnabled)
                 {
                     _testClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
-                    _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for testing", command.Id);
+                    _logger.LogInformation("[MODERATION] ? Command #{CommandId} queued for testing on test client", command.Id);
                 }
                 else
                 {
                     // Add to execution queue
                     _commandQueue.QueueCommand(command);
-                    _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for execution", command.Id);
+                    var queueCount = _commandQueue.GetQueueCount();
+                    _logger.LogInformation("[MODERATION] ? Command #{CommandId} queued for execution. Queue depth: {QueueCount}", 
+                        command.Id, queueCount);
                 }
                 
                 return Ok(new ApiResponse
                 {
                     Status = "success",
-                    Message = "Image approved and command queued",
+                    Message = isTestClientModeEnabled 
+                        ? "Image approved and command queued for testing" 
+                        : "Image approved and command queued for execution",
                     CommandId = command.Id
                 });
             }
+            else if (command != null)
+            {
+                _logger.LogWarning("[MODERATION] Command #{CommandId} exists but has status {Status} (expected PendingModeration)", 
+                    command.Id, command.Status);
+            }
+            else
+            {
+                _logger.LogWarning("[MODERATION] No command found with ID {CommandId}", entry.CommandId.Value);
+            }
+        }
+        else
+        {
+            _logger.LogWarning("[MODERATION] PendingImageEntry #{ImageId} has no associated CommandId", request.ImageId);
         }
         
         // Fallback: If no existing command was found (shouldn't happen), create a new one
-        _logger.LogWarning("[MODERATION] No existing command found for image #{ImageId}, creating new command", request.ImageId);
+        _logger.LogWarning("[MODERATION] FALLBACK: Creating new command for image #{ImageId}", request.ImageId);
         
         // Generate code with image context now that it's approved
         var (execCode, undoCodeNew) = await _codeGenerator.GenerateCodeAsync(

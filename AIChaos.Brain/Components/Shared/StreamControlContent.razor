@@ -651,30 +651,87 @@
         StateHasChanged();
     }
 
-    private void ApproveImage(int imageId)
+    private async Task ApproveImage(int imageId)
     {
         try
         {
-            ModerationService.ApproveImage(imageId);
-            Task.Run(async () => await LoadPendingImages()).ConfigureAwait(false);
+            // Create request with moderation password header
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/approve");
+            request.Headers.Add("X-Moderation-Password", SettingsService.ModerationPassword);
+            request.Content = JsonContent.Create(new { ImageId = imageId });
+            
+            var response = await Http.SendAsync(request);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<ApiResponse>();
+                globalMessage = result?.Message ?? "Image approved and command queued";
+                globalMessageType = "success";
+                
+                await LoadPendingImages();
+                await LoadHistory(); // Refresh history to show the new command
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                globalMessage = $"Failed to approve image: {response.StatusCode}";
+                globalMessageType = "error";
+                Console.WriteLine($"Approval failed: {errorContent}");
+            }
         }
         catch (Exception ex)
         {
+            globalMessage = $"Failed to approve image: {ex.Message}";
+            globalMessageType = "error";
             Console.WriteLine($"Failed to approve image: {ex.Message}");
         }
+        StateHasChanged();
+        
+        // Clear message after 5 seconds
+        _ = Task.Delay(5000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            globalMessage = "";
+            StateHasChanged();
+        }));
     }
 
-    private void DenyImage(int imageId)
+    private async Task DenyImage(int imageId)
     {
         try
         {
-            ModerationService.DenyImage(imageId);
-            Task.Run(async () => await LoadPendingImages()).ConfigureAwait(false);
+            // Create request with moderation password header
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/deny");
+            request.Headers.Add("X-Moderation-Password", SettingsService.ModerationPassword);
+            request.Content = JsonContent.Create(new { ImageId = imageId });
+            
+            var response = await Http.SendAsync(request);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                globalMessage = "Image denied";
+                globalMessageType = "success";
+                await LoadPendingImages();
+            }
+            else
+            {
+                globalMessage = $"Failed to deny image: {response.StatusCode}";
+                globalMessageType = "error";
+            }
         }
         catch (Exception ex)
         {
+            globalMessage = $"Failed to deny image: {ex.Message}";
+            globalMessageType = "error";
             Console.WriteLine($"Failed to deny image: {ex.Message}");
         }
+        StateHasChanged();
+        
+        // Clear message after 3 seconds
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            globalMessage = "";
+            StateHasChanged();
+        }));
     }
 
     private void ToggleAutoRefreshImages()
