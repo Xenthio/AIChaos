@@ -119,6 +119,6 @@ public class CurrencyConversionService
             return $"${usdAmount:F2}";
         }
 
-        return $"{originalAmount:F2} {currencyCode} ? ${usdAmount:F2} USD";
+        return $"{originalAmount:F2} {currencyCode} → ${usdAmount:F2} USD";
     }
 }
