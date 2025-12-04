@@ -31,6 +31,8 @@ public class RefundService
     private readonly AccountService _accountService;
     private readonly ILogger<RefundService> _logger;
     private readonly ConcurrentDictionary<string, RefundRequest> _requests = new();
+    private readonly HashSet<int> _refundedCommandIds = new();
+    private readonly object _lock = new();
 
     public RefundService(AccountService accountService, ILogger<RefundService> logger)
     {
@@ -41,22 +43,42 @@ public class RefundService
     /// <summary>
     /// Creates a new refund request.
     /// </summary>
-    public RefundRequest CreateRequest(string userId, string displayName, int commandId, string prompt, string reason, decimal amount)
+    public RefundRequest? CreateRequest(string userId, string displayName, int commandId, string prompt, string reason, decimal amount)
     {
-        var request = new RefundRequest
+        lock (_lock)
         {
-            UserId = userId,
-            UserDisplayName = displayName,
-            CommandId = commandId,
-            Prompt = prompt,
-            Reason = reason,
-            Amount = amount
-        };
+            // Check if this command has already been refunded
+            if (_refundedCommandIds.Contains(commandId))
+            {
+                _logger.LogWarning("[REFUND] Duplicate refund request rejected for command #{CommandId} by {User}", commandId, displayName);
+                return null;
+            }
 
-        _requests.TryAdd(request.Id, request);
-        _logger.LogInformation("[REFUND] New request from {User}: {Reason} (${Amount})", displayName, reason, amount);
+            // Check if there's already a pending request for this command
+            var existingPending = _requests.Values
+                .FirstOrDefault(r => r.CommandId == commandId && r.Status == RefundStatus.Pending);
+            
+            if (existingPending != null)
+            {
+                _logger.LogWarning("[REFUND] Pending refund request already exists for command #{CommandId} by {User}", commandId, displayName);
+                return null;
+            }
 
-        return request;
+            var request = new RefundRequest
+            {
+                UserId = userId,
+                UserDisplayName = displayName,
+                CommandId = commandId,
+                Prompt = prompt,
+                Reason = reason,
+                Amount = amount
+            };
+
+            _requests.TryAdd(request.Id, request);
+            _logger.LogInformation("[REFUND] New request from {User}: {Reason} (${Amount})", displayName, reason, amount);
+
+            return request;
+        }
     }
 
     /// <summary>
@@ -75,14 +97,21 @@ public class RefundService
     /// </summary>
     public bool ApproveRefund(string requestId)
     {
-        if (_requests.TryGetValue(requestId, out var request) && request.Status == RefundStatus.Pending)
+        lock (_lock)
         {
-            request.Status = RefundStatus.Approved;
-            _accountService.AddCredits(request.UserId, request.Amount);
-            _logger.LogInformation("[REFUND] Approved request {Id} for {User}", requestId, request.UserDisplayName);
-            return true;
+            if (_requests.TryGetValue(requestId, out var request) && request.Status == RefundStatus.Pending)
+            {
+                // Mark the command as refunded to prevent duplicate refunds
+                _refundedCommandIds.Add(request.CommandId);
+                
+                request.Status = RefundStatus.Approved;
+                _accountService.AddCredits(request.UserId, request.Amount);
+                _logger.LogInformation("[REFUND] Approved request {Id} for {User}, command #{CommandId}", 
+                    requestId, request.UserDisplayName, request.CommandId);
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     /// <summary>
@@ -90,12 +119,37 @@ public class RefundService
     /// </summary>
     public bool RejectRefund(string requestId)
     {
-        if (_requests.TryGetValue(requestId, out var request) && request.Status == RefundStatus.Pending)
+        lock (_lock)
         {
-            request.Status = RefundStatus.Rejected;
-            _logger.LogInformation("[REFUND] Rejected request {Id} for {User}", requestId, request.UserDisplayName);
-            return true;
+            if (_requests.TryGetValue(requestId, out var request) && request.Status == RefundStatus.Pending)
+            {
+                // Mark the command as refunded (denied) to prevent re-requests
+                _refundedCommandIds.Add(request.CommandId);
+                
+                request.Status = RefundStatus.Rejected;
+                _logger.LogInformation("[REFUND] Rejected request {Id} for {User}, command #{CommandId}", 
+                    requestId, request.UserDisplayName, request.CommandId);
+                return true;
+            }
+            return false;
         }
-        return false;
+    }
+
+    /// <summary>
+    /// Checks if a command has already been refunded or has a pending refund request.
+    /// </summary>
+    public bool CanRequestRefund(int commandId)
+    {
+        lock (_lock)
+        {
+            // Check if already refunded
+            if (_refundedCommandIds.Contains(commandId))
+            {
+                return false;
+            }
+
+            // Check if there's a pending request
+            return !_requests.Values.Any(r => r.CommandId == commandId && r.Status == RefundStatus.Pending);
+        }
     }
 }
