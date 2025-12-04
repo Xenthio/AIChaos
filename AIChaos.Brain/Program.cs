@@ -10,6 +10,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
+// Configure base path from appsettings
+var basePath = builder.Configuration.GetValue<string>("BasePath") ?? "/";
+builder.Services.AddSingleton<IConfiguration>(builder.Configuration);
+
 // Configure HttpClient with base address for Blazor components
 // Note: In Blazor Server, components run on the server and make HTTP calls to the same server
 // We set a base address so relative URLs like "/api/account/login" work

@@ -1,10 +1,12 @@
+@inject IConfiguration Configuration
+
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <base href="/" />
+    <base href="@(Configuration.GetValue<string>("BasePath") ?? "/")" />
     <link rel="stylesheet" href="/css/style.css" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
