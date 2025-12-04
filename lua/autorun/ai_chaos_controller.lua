@@ -57,6 +57,157 @@ if SERVER then
         net.Broadcast()
     end
     
+    -- Workshop Helper Functions
+    -- Table to track downloaded workshop addons
+    _G._AI_WORKSHOP_ADDONS = _G._AI_WORKSHOP_ADDONS or {}
+    
+    -- Helper: Check if a model is a gesture or invisible model
+    local function IsValidSpawnModel(modelPath)
+        if not modelPath then return false end
+        local lower = string.lower(modelPath)
+        -- Exclude gesture models and other non-visual models
+        if string.find(lower, "gesture") then return false end
+        if string.find(lower, "ragdoll") then return false end
+        if string.find(lower, "gib") then return false end
+        if string.find(lower, "bone") then return false end
+        return true
+    end
+    
+    -- Helper: Get all models from a Workshop addon
+    function GetWorkshopModels(workshopId)
+        local models = {}
+        local searchPaths = {"models/", "models/props/", "models/player/", "models/weapons/"}
+        
+        for _, basePath in ipairs(searchPaths) do
+            local files, dirs = file.Find(basePath .. "*", "WORKSHOP")
+            if files then
+                for _, fileName in ipairs(files) do
+                    if string.EndsWith(fileName, ".mdl") then
+                        local modelPath = basePath .. fileName
+                        table.insert(models, modelPath)
+                    end
+                end
+            end
+        end
+        
+        return models
+    end
+    
+    -- Helper: Get all models from all mounted addons
+    function GetAllMountedModels()
+        local models = {}
+        local searchPaths = {"models/", "models/props/", "models/player/", "models/weapons/"}
+        
+        for _, basePath in ipairs(searchPaths) do
+            local files, dirs = file.Find(basePath .. "*", "GAME")
+            if files then
+                for _, fileName in ipairs(files) do
+                    if string.EndsWith(fileName, ".mdl") then
+                        local modelPath = basePath .. fileName
+                        table.insert(models, modelPath)
+                    end
+                end
+            end
+        end
+        
+        return models
+    end
+    
+    -- Mount a Workshop addon at runtime
+    function MountWorkshopAddon(workshopId)
+        if not workshopId then 
+            print("[AI Chaos] MountWorkshopAddon: No workshop ID provided")
+            return false 
+        end
+        
+        -- Check if already mounted
+        if _G._AI_WORKSHOP_ADDONS[workshopId] then
+            print("[AI Chaos] Workshop addon " .. workshopId .. " already mounted")
+            return true
+        end
+        
+        -- Use steamworks.Download to download and mount the addon
+        print("[AI Chaos] Downloading and mounting workshop addon: " .. workshopId)
+        steamworks.Download(workshopId, true, function(path)
+            if path then
+                print("[AI Chaos] Workshop addon " .. workshopId .. " downloaded to: " .. path)
+                _G._AI_WORKSHOP_ADDONS[workshopId] = path
+                game.MountGMA(path)
+            else
+                print("[AI Chaos] Failed to download workshop addon: " .. workshopId)
+            end
+        end)
+        
+        return true
+    end
+    
+    -- Download and spawn the first valid model from a Workshop addon
+    function DownloadAndSpawnWorkshopModel(workshopId, spawnPos)
+        if not workshopId then 
+            print("[AI Chaos] DownloadAndSpawnWorkshopModel: No workshop ID provided")
+            return nil 
+        end
+        
+        spawnPos = spawnPos or (Entity(1):GetPos() + Entity(1):GetForward() * 100 + Vector(0, 0, 50))
+        
+        print("[AI Chaos] Attempting to spawn model from workshop addon: " .. workshopId)
+        
+        -- Download and mount the addon first
+        steamworks.Download(workshopId, true, function(path)
+            if not path then
+                print("[AI Chaos] Failed to download workshop addon: " .. workshopId)
+                return
+            end
+            
+            print("[AI Chaos] Workshop addon downloaded: " .. path)
+            _G._AI_WORKSHOP_ADDONS[workshopId] = path
+            game.MountGMA(path)
+            
+            -- Wait a moment for mounting to complete
+            timer.Simple(0.5, function()
+                local models = GetWorkshopModels(workshopId)
+                
+                if #models == 0 then
+                    print("[AI Chaos] No models found in workshop addon: " .. workshopId)
+                    return
+                end
+                
+                -- Find first valid spawn model
+                local selectedModel = nil
+                for _, modelPath in ipairs(models) do
+                    if IsValidSpawnModel(modelPath) then
+                        selectedModel = modelPath
+                        break
+                    end
+                end
+                
+                if not selectedModel and #models > 0 then
+                    -- Fallback to first model if no valid ones found
+                    selectedModel = models[1]
+                end
+                
+                if selectedModel then
+                    print("[AI Chaos] Spawning model: " .. selectedModel)
+                    local ent = ents.Create("prop_physics")
+                    if IsValid(ent) then
+                        ent:SetModel(selectedModel)
+                        ent:SetPos(spawnPos)
+                        ent:Spawn()
+                        print("[AI Chaos] Successfully spawned workshop model!")
+                        
+                        -- Store reference for potential future use
+                        _G._AI_LAST_WORKSHOP_SPAWN = ent
+                    end
+                else
+                    print("[AI Chaos] No valid model found in workshop addon")
+                end
+            end)
+        end)
+        
+        -- Return a reference to track spawning (async operation)
+        return true
+    end
+    
     -- Helper Function: Report execution result back to server (with optional captured data)
     -- Note: commandId can be negative for interactive sessions, nil/0 is not valid
     local function ReportResult(commandId, success, errorMsg, resultData)

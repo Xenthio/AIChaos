@@ -62,68 +62,24 @@ public class AiCodeGeneratorService
            
         """;
     
-    private static readonly string SystemPrompt = $"""
-        You are an expert Lua scripter for Garry's Mod (GLua). 
-        You will receive a request from a livestream chat and the current map name. 
-        The chat is controlling the streamer's playthrough of Half-Life 2 via your generated scripts.
-        Generate valid GLua code to execute that request immediately.
-
-        **IMPORTANT: You must return TWO code blocks separated by '---UNDO---':**
-        1. The EXECUTION code (what the user requested, aswell as any auto cleanup)
-        2. The UNDO code (code to reverse/stop the effect)
-
-        The undo code should completely reverse any changes, stop timers, remove entities, restore original values, etc.
-
-        {GroundRules}
-
-        **Output:** RETURN ONLY THE RAW LUA CODE. Do not include markdown backticks (```lua) or explanations.
-           Format: EXECUTION_CODE
-           ---UNDO---
-           UNDO_CODE
+    /// <summary>
+    /// Workshop helper functions documentation - only included when Workshop settings allow runtime downloads.
+    /// </summary>
+    public static readonly string WorkshopHelpers = """
         
-        9. **Syntax:** Pay close attention to Lua syntax. Ensure all blocks (`if`, `for`, `function`) are correctly closed with `end`. Mismatched blocks will cause the script to fail.
-
-        --- EXAMPLES ---
-
-        INPUT: "Make everyone tiny"
-        OUTPUT:
-        for _, v in pairs(player.GetAll()) do 
-            v:SetModelScale(0.2, 1) 
-        end
-        timer.Simple(10, function()
-            for _, v in pairs(player.GetAll()) do 
-                v:SetModelScale(1, 1) 
-            end
-        end)
-        ---UNDO---
-        for _, v in pairs(player.GetAll()) do 
-            v:SetModelScale(1, 1) 
-        end
-
-        INPUT: "Disable gravity"
-        OUTPUT:
-        RunConsoleCommand("sv_gravity", "0")
-        timer.Simple(10, function() RunConsoleCommand("sv_gravity", "600") end)
-        ---UNDO---
-        RunConsoleCommand("sv_gravity", "600")
-
-        INPUT: "Make the screen go black for 5 seconds"
-        OUTPUT:
-        RunOnClient([=[
-            local black = vgui.Create("DPanel")
-            black:SetSize(ScrW(), ScrH())
-            black:SetBackgroundColor(Color(0,0,0))
-            black:Center()
-            timer.Simple(5, function() if IsValid(black) then black:Remove() end end)
-        ]=])
-        ---UNDO---
-        RunOnClient([=[
-            for _, panel in pairs(vgui.GetAll()) do
-                if IsValid(panel) and panel:GetClassName() == "DPanel" then
-                    panel:Remove()
-                end
-            end
-        ]=])
+        11. **Workshop Addon Support:** You have access to helper functions for downloading and spawning Workshop content:
+           - `DownloadAndSpawnWorkshopModel(workshopId, spawnPos)` - Downloads a Workshop addon and spawns the first valid model found (excluding gestures/invisible models). Returns the spawned entity or nil on failure.
+             Example: `local ent = DownloadAndSpawnWorkshopModel("123456789", ply:GetPos() + ply:GetForward() * 100 + Vector(0,0,50))`
+           - `MountWorkshopAddon(workshopId)` - Downloads and mounts a Workshop addon at runtime. Returns true on success.
+             Example: `MountWorkshopAddon("123456789")`
+           - `GetWorkshopModels(workshopId)` - Gets a list of model paths from a mounted Workshop addon (requires addon to be mounted first).
+             Example: `local models = GetWorkshopModels("123456789") for _, mdl in ipairs(models) do print(mdl) end`
+           - `GetAllMountedModels()` - Gets all model paths from all currently mounted addons (both pre-downloaded and runtime-mounted).
+             Example: `local allModels = GetAllMountedModels()`
+           
+           **Note:** Workshop downloads happen in the background. The first spawn attempt may take a few seconds.
+           For interactive mode, the agent is aware of all mounted addons (pre-downloaded + runtime).
+           
         """;
 
     // Unfiltered prompt for Private Discord Mode - no safety restrictions
@@ -196,6 +152,80 @@ public class AiCodeGeneratorService
     }
 
     /// <summary>
+    /// Builds the system prompt dynamically based on settings.
+    /// </summary>
+    private string BuildSystemPrompt(bool includeWorkshopHelpers)
+    {
+        var groundRulesWithWorkshop = includeWorkshopHelpers 
+            ? GroundRules + WorkshopHelpers 
+            : GroundRules;
+
+        return $"""
+            You are an expert Lua scripter for Garry's Mod (GLua). 
+            You will receive a request from a livestream chat and the current map name. 
+            The chat is controlling the streamer's playthrough of Half-Life 2 via your generated scripts.
+            Generate valid GLua code to execute that request immediately.
+
+            **IMPORTANT: You must return TWO code blocks separated by '---UNDO---':**
+            1. The EXECUTION code (what the user requested, aswell as any auto cleanup)
+            2. The UNDO code (code to reverse/stop the effect)
+
+            The undo code should completely reverse any changes, stop timers, remove entities, restore original values, etc.
+
+            {groundRulesWithWorkshop}
+
+            **Output:** RETURN ONLY THE RAW LUA CODE. Do not include markdown backticks (```lua) or explanations.
+               Format: EXECUTION_CODE
+               ---UNDO---
+               UNDO_CODE
+            
+            9. **Syntax:** Pay close attention to Lua syntax. Ensure all blocks (`if`, `for`, `function`) are correctly closed with `end`. Mismatched blocks will cause the script to fail.
+
+            --- EXAMPLES ---
+
+            INPUT: "Make everyone tiny"
+            OUTPUT:
+            for _, v in pairs(player.GetAll()) do 
+                v:SetModelScale(0.2, 1) 
+            end
+            timer.Simple(10, function()
+                for _, v in pairs(player.GetAll()) do 
+                    v:SetModelScale(1, 1) 
+                end
+            end)
+            ---UNDO---
+            for _, v in pairs(player.GetAll()) do 
+                v:SetModelScale(1, 1) 
+            end
+
+            INPUT: "Disable gravity"
+            OUTPUT:
+            RunConsoleCommand("sv_gravity", "0")
+            timer.Simple(10, function() RunConsoleCommand("sv_gravity", "600") end)
+            ---UNDO---
+            RunConsoleCommand("sv_gravity", "600")
+
+            INPUT: "Make the screen go black for 5 seconds"
+            OUTPUT:
+            RunOnClient([=[
+                local black = vgui.Create("DPanel")
+                black:SetSize(ScrW(), ScrH())
+                black:SetBackgroundColor(Color(0,0,0))
+                black:Center()
+                timer.Simple(5, function() if IsValid(black) then black:Remove() end end)
+            ]=])
+            ---UNDO---
+            RunOnClient([=[
+                for _, panel in pairs(vgui.GetAll()) do
+                    if IsValid(panel) and panel:GetClassName() == "DPanel" then
+                        panel:Remove()
+                    end
+                end
+            ]=])
+            """;
+    }
+
+    /// <summary>
     /// Generates Lua code for the given user request.
     /// </summary>
     public async Task<(string ExecutionCode, string UndoCode)> GenerateCodeAsync(
@@ -230,7 +260,9 @@ public class AiCodeGeneratorService
         {
             var settings = _settingsService.Settings;
             // Use unfiltered prompt when Private Discord Mode is enabled
-            var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
+            var activePrompt = settings.Safety.PrivateDiscordMode 
+                ? PrivateDiscordModePrompt 
+                : BuildSystemPrompt(settings.Workshop.AllowRuntimeDownload);
 
             var requestBody = new
             {

@@ -130,6 +130,27 @@
     }
 </div>
 
+<!-- Workshop Settings -->
+<div class="card">
+    <h2>
+        🛠️ Workshop Addon Support
+        <span class="status-badge @(workshopEnabled ? "status-connected" : "status-disconnected")">
+            @(workshopEnabled ? "Enabled" : "Disabled")
+        </span>
+    </h2>
+    <div class="alert alert-info" style="margin-bottom: 15px;">
+        <strong>ℹ️ About Workshop Support:</strong> When enabled, the AI can download and mount Workshop addons at runtime to spawn models and access content. When disabled, only pre-downloaded/mounted addons are accessible.
+    </div>
+
+    <div class="form-group checkbox-group">
+        <input type="checkbox" @bind="workshopEnabled" id="workshopEnabled">
+        <label for="workshopEnabled" style="margin: 0; font-weight: bold;">Allow Workshop Addon Downloading & Mounting at Runtime</label>
+        <small style="display: block; margin-left: 24px; color: var(--text-dim);">When enabled, provides helper functions like DownloadAndSpawnWorkshopModel() for the AI to use</small>
+    </div>
+
+    <button @onclick="SaveWorkshopSettings" class="btn-secondary" style="margin-top: 15px;">💾 Save Workshop Settings</button>
+</div>
+
 <!-- YouTube Integration -->
 <div class="card">
     <h2>
@@ -268,6 +289,9 @@
     private bool youtubeAllowChat = false;
     private bool youtubeAllowViewerOAuth = true;
 
+    // Workshop
+    private bool workshopEnabled = false;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadSetupStatus();
@@ -295,6 +319,8 @@
             youtubeListening = YouTubeService.IsListening;
             youtubeVideoId = settings.YouTube.VideoId ?? "";
             youtubeAllowViewerOAuth = settings.YouTube.AllowViewerOAuth;
+
+            workshopEnabled = settings.Workshop.AllowRuntimeDownload;
         }
         catch (Exception ex)
         {
@@ -479,6 +505,20 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         catch
         {
             ShowAlert("Error stopping YouTube listener", "error");
+        }
+    }
+
+    private async Task SaveWorkshopSettings()
+    {
+        try
+        {
+            SettingsService.UpdateWorkshopSettings(workshopEnabled);
+            ShowAlert("Workshop settings saved!", "success");
+            await LoadSetupStatus();
+        }
+        catch
+        {
+            ShowAlert("Error saving workshop settings", "error");
         }
     }
 
