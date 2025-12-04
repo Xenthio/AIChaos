@@ -376,6 +376,53 @@ The slot-based queue replaces traditional FIFO with dynamic pacing:
 
 ---
 
+## 🛠️ Workshop Addon Support
+
+AIChaos now includes Workshop addon integration, allowing the AI to download and spawn content from the Steam Workshop:
+
+### Features
+
+- **Runtime Workshop Downloads** - AI can download and mount Workshop addons on-the-fly
+- **Smart Model Spawning** - Automatically finds and spawns valid models (excludes gestures/invisible models)
+- **Addon Browsing** - Access all models from pre-downloaded and runtime-mounted addons
+- **Safe by Default** - Workshop downloads are disabled by default, enable in Setup
+
+### Setup
+
+1. Go to **Dashboard → Setup**
+2. Find the **"Workshop Addon Support"** section
+3. Enable **"Allow Workshop Addon Downloading & Mounting at Runtime"**
+4. Click **"Save Workshop Settings"**
+
+### Lua Helper Functions
+
+When Workshop support is enabled, the AI has access to these helper functions:
+
+```lua
+-- Download and spawn the first valid model from a Workshop addon
+local ent = DownloadAndSpawnWorkshopModel("123456789", spawnPos)
+
+-- Mount a Workshop addon for browsing its contents
+MountWorkshopAddon("123456789")
+
+-- Get all models from a specific Workshop addon
+local models = GetWorkshopModels("123456789")
+
+-- Get all models from all currently mounted addons
+local allModels = GetAllMountedModels()
+```
+
+### Example Ideas
+
+With Workshop support enabled, viewers can request things like:
+- "Download and spawn something from workshop ID 123456789"
+- "Spawn a random model from the workshop"
+- "Browse models in addon 987654321 and spawn the first one"
+
+**Note:** Workshop downloads happen asynchronously. The first spawn may take a few seconds.
+
+---
+
 ## 🙋 Need Help?
 
 1. Check the [Troubleshooting](#-troubleshooting) section above
