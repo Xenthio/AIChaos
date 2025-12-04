@@ -292,7 +292,7 @@ public class SettingsService
     /// <summary>
     /// Updates YouTube credentials without replacing the entire settings object.
     /// </summary>
-    public void UpdateYouTubeCredentials(string clientId, string clientSecret, string videoId, decimal minAmount, bool allowChat)
+    public void UpdateYouTubeCredentials(string clientId, string clientSecret, string videoId, decimal minAmount, bool allowChat, bool allowViewerOAuth = true)
     {
         lock (_lock)
         {
@@ -301,6 +301,7 @@ public class SettingsService
             _settings.YouTube.VideoId = videoId;
             _settings.YouTube.MinSuperChatAmount = minAmount;
             _settings.YouTube.AllowRegularChat = allowChat;
+            _settings.YouTube.AllowViewerOAuth = allowViewerOAuth;
             SaveSettings();
         }
     }

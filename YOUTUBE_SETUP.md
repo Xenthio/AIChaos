@@ -90,6 +90,36 @@ If you need to configure OAuth credentials first:
 - Allows unlimited OAuth logins
 - Recommended if you expect 100+ concurrent viewers
 
+### 🔧 Viewer OAuth Login Control
+
+**Streamers can choose how viewers link their accounts:**
+
+In the Dashboard → **Setup** → **YouTube Integration**, you'll find a checkbox:
+
+**☑️ "Allow viewers to link via Google Sign-In (first 100 users)"**
+
+- **Enabled (Default):** Viewers see both OAuth and link code options
+  - First 100 can use "Login with Google" (fastest method)
+  - Link codes always available as backup
+  - Best user experience for early adopters
+
+- **Disabled:** Viewers ONLY see link code option
+  - Forces all viewers to use chat verification codes
+  - Useful if you want to avoid managing OAuth user cap
+  - Simpler if you don't want viewers doing OAuth flow
+  - Still allows unlimited viewers via link codes
+
+**When to disable viewer OAuth:**
+- You don't want to deal with the 100 user OAuth limit
+- You prefer all viewers use the same linking method
+- You want to keep OAuth exclusively for streamer/moderators
+- You haven't set up OAuth consent screen yet
+
+**Note:** Disabling this setting does NOT affect:
+- Streamer's ability to login with YouTube (still required)
+- Link code functionality (always works)
+- Pending credits system (still transfers on link)
+
 ## How It Works
 
 ### For Streamers

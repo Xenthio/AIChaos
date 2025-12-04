@@ -170,6 +170,12 @@
         <label for="youtubeAllowChat" style="margin: 0;">Also allow regular chat commands (not just Super Chats)</label>
     </div>
 
+    <div class="form-group checkbox-group">
+        <input type="checkbox" @bind="youtubeAllowViewerOAuth" id="youtubeAllowViewerOAuth">
+        <label for="youtubeAllowViewerOAuth" style="margin: 0;">Allow viewers to link via Google Sign-In (first 100 users)</label>
+        <small style="display: block; margin-left: 24px; color: var(--text-dim);">When disabled, viewers must use link codes only</small>
+    </div>
+
     <div class="btn-group" style="margin-top: 15px;">
         <button @onclick="SaveYouTubeCredentials" class="btn-secondary">💾 Save Credentials</button>
         <button @onclick="AuthorizeYouTube" class="youtube-btn">🔗 Login with YouTube</button>
@@ -260,6 +266,7 @@
     private string youtubeVideoId = "";
     private decimal youtubeMinAmount = 1.00m;
     private bool youtubeAllowChat = false;
+    private bool youtubeAllowViewerOAuth = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -287,6 +294,7 @@
             youtubeConfigured = SettingsService.IsYouTubeConfigured;
             youtubeListening = YouTubeService.IsListening;
             youtubeVideoId = settings.YouTube.VideoId ?? "";
+            youtubeAllowViewerOAuth = settings.YouTube.AllowViewerOAuth;
         }
         catch (Exception ex)
         {
@@ -406,7 +414,7 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         try
         {
             SettingsService.UpdateYouTubeCredentials(youtubeClientId, youtubeClientSecret, youtubeVideoId, youtubeMinAmount,
-            youtubeAllowChat);
+            youtubeAllowChat, youtubeAllowViewerOAuth);
             ShowAlert("YouTube credentials saved!", "success");
             await LoadSetupStatus();
         }

@@ -85,10 +85,13 @@ else
     @if (!youtubeLinkMethodSelected)
     {
         <div style="display: flex; flex-direction: column; gap: 10px;">
-            <button @onclick="() => SelectLinkMethod(true)" style="padding: 15px;">
-                <strong>🔐 Google Sign-In</strong><br/>
-                <small style="color: var(--text-dim);">Instant linking via OAuth (requires setup)</small>
-            </button>
+            @if (allowViewerOAuth)
+            {
+                <button @onclick="() => SelectLinkMethod(true)" style="padding: 15px;">
+                    <strong>🔐 Google Sign-In</strong><br/>
+                    <small style="color: var(--text-dim);">Instant linking via OAuth (requires setup)</small>
+                </button>
+            }
             <button @onclick="() => SelectLinkMethod(false)" style="padding: 15px;">
                 <strong>🎫 Verification Code</strong><br/>
                 <small style="color: var(--text-dim);">Generate a code to send in chat</small>
@@ -202,6 +205,7 @@ else
     private string? youtubeLinkCode = null;
     private bool linkSuccessful = false;
     private bool isOAuthConfigured = false;
+    private bool allowViewerOAuth = true;
     private string? googleClientId = null;
     private DotNetObjectReference<AccountBar>? objRef;
 
@@ -261,6 +265,7 @@ else
             // Check if OAuth is configured
             var settings = SettingsService.Settings;
             isOAuthConfigured = !string.IsNullOrEmpty(settings.YouTube.ClientId);
+            allowViewerOAuth = settings.YouTube.AllowViewerOAuth;
             googleClientId = settings.YouTube.ClientId;
 
             if (isOAuthConfigured)

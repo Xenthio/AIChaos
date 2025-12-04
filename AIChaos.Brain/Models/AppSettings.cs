@@ -47,6 +47,7 @@ public class YouTubeSettings
     public string ChatCommand { get; set; } = "!chaos";
     public int CooldownSeconds { get; set; } = 5;
     public bool Enabled { get; set; } = false;
+    public bool AllowViewerOAuth { get; set; } = true; // Allow first 100 viewers to use OAuth login
 }
 
 public class SafetySettings
