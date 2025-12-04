@@ -226,7 +226,9 @@ To let viewers send Ideas (like through YouTube Super Chats), you need a public 
    ```
    > ⚠️ **Production tip**: For public deployments, set up a reverse proxy (nginx/caddy) with HTTPS instead of exposing port 5000 directly.
 
-2. Make sure port 5000 is accessible from your gaming PC (configure firewall/security groups)
+2. Configure network access:
+   - **For testing/local network**: Make sure port 5000 is accessible from your gaming PC
+   - **For production/public use**: Set up a reverse proxy (nginx/caddy) with HTTPS on ports 80/443, keep port 5000 firewalled to localhost only
 
 3. In your **GMod addons folder** on your gaming PC, create a file:
    ```
@@ -250,7 +252,10 @@ To let viewers send Ideas (like through YouTube Super Chats), you need a public 
 - 🔒 **Set admin password** - Protect the dashboard from unauthorized access (configured on first visit)
 - 🔒 **Monitor the History tab** - Keep an eye on submitted Ideas for abuse
 
-> ⚠️ **Note**: The setup command uses HTTP on 0.0.0.0:5000 for simplicity - this should only be exposed via a reverse proxy with HTTPS in production. For local network testing without public access, binding to 0.0.0.0 is acceptable. For production streaming, use nginx/caddy with HTTPS on standard ports (80/443) and keep port 5000 firewalled to localhost only.
+> ⚠️ **Security Notes**:
+> - **Local testing**: Binding to 0.0.0.0:5000 is acceptable for local network testing without public access
+> - **Production deployment**: Use nginx/caddy with HTTPS on standard ports (80/443) and keep port 5000 firewalled to localhost only
+> - **Port configuration**: Only expose 80/443 publicly; the reverse proxy handles SSL and forwards to localhost:5000
 
 **Example cloud providers:**
 - **DigitalOcean** - Simple droplets starting at $6/month
