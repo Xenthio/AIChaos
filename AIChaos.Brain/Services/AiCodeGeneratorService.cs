@@ -105,7 +105,7 @@ public class AiCodeGeneratorService
            - **NEVER** wrap server-side logic (e.g. `ent:SetModelScale`) inside `RunOnClient`.
 
         2. **UI:** Make sure you can interact with UI elements and popups that require it! (MakePopup())
-           -You can do advanced UI in HTML, for better effects and fancy styling and js.
+           - You can do advanced UI in HTML, for better effects and fancy styling and js.
 
         3. **Output:** RETURN ONLY THE RAW LUA CODE. Do not include markdown backticks (```lua) or explanations.
            Format: EXECUTION_CODE

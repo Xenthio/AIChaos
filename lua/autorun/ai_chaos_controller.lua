@@ -67,19 +67,25 @@ if SERVER then
         local lower = string.lower(modelPath)
         -- Exclude gesture models and other non-visual models
         if string.find(lower, "gesture") then return false end
-        if string.find(lower, "ragdoll") then return false end
         if string.find(lower, "gib") then return false end
         if string.find(lower, "bone") then return false end
         return true
     end
     
     -- Helper: Get all models from a Workshop addon
+    -- Note: Workshop content is accessed via "GAME" path after mounting
     function GetWorkshopModels(workshopId)
         local models = {}
         local searchPaths = {"models/", "models/props/", "models/player/", "models/weapons/"}
         
+        -- First ensure the addon is mounted
+        if not _G._AI_WORKSHOP_ADDONS[workshopId] then
+            print("[AI Chaos] GetWorkshopModels: Workshop addon " .. workshopId .. " not yet mounted")
+            return models
+        end
+        
         for _, basePath in ipairs(searchPaths) do
-            local files, dirs = file.Find(basePath .. "*", "WORKSHOP")
+            local files, dirs = file.Find(basePath .. "*", "GAME")
             if files then
                 for _, fileName in ipairs(files) do
                     if string.EndsWith(fileName, ".mdl") then
@@ -163,12 +169,19 @@ if SERVER then
             _G._AI_WORKSHOP_ADDONS[workshopId] = path
             game.MountGMA(path)
             
-            -- Wait a moment for mounting to complete
-            timer.Simple(0.5, function()
+            -- Use a retry mechanism to check if mounting succeeded
+            local function TrySpawnModel(attempts)
+                attempts = attempts or 0
+                if attempts > 5 then
+                    print("[AI Chaos] Failed to mount/spawn after multiple attempts")
+                    return
+                end
+                
                 local models = GetWorkshopModels(workshopId)
                 
                 if #models == 0 then
-                    print("[AI Chaos] No models found in workshop addon: " .. workshopId)
+                    print("[AI Chaos] No models found yet, retrying... (attempt " .. attempts .. ")")
+                    timer.Simple(0.5, function() TrySpawnModel(attempts + 1) end)
                     return
                 end
                 
@@ -201,7 +214,10 @@ if SERVER then
                 else
                     print("[AI Chaos] No valid model found in workshop addon")
                 end
-            end)
+            end
+            
+            -- Start attempting to spawn
+            TrySpawnModel(0)
         end)
         
         -- Return a reference to track spawning (async operation)
