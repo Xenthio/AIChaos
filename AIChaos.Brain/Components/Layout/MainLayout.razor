@@ -13,7 +13,7 @@
 </Header>
 
 @* Show AccountBar if logged in user (not anonymous) OR not in single user mode *@
-@if (!SettingsService.Settings.General.SingleUserMode || (currentAccount != null && currentAccount.Id != "anonymous-default-user"))
+@if (!SettingsService.Settings.General.SingleUserMode || (currentAccount != null && currentAccount.Id != AccountService.ANONYMOUS_USER_ID))
 {
     <AccountBar CurrentAccount="@currentAccount" OnAccountChanged="@LoadAccount" />
 }

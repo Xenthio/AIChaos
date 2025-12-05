@@ -24,7 +24,11 @@ public class AccountService
     private const int DEFAULT_RATE_LIMIT_SECONDS = 20;
     private const int VERIFICATION_CODE_EXPIRY_MINUTES = 30;
     private const int SESSION_EXPIRY_DAYS = 30;
-    private const string ANONYMOUS_USER_ID = "anonymous-default-user";
+    
+    /// <summary>
+    /// The ID used for the anonymous user in single-user mode.
+    /// </summary>
+    public const string ANONYMOUS_USER_ID = "anonymous-default-user";
 
     /// <summary>
     /// Event fired when a YouTube channel is successfully linked to an account.
@@ -928,8 +932,16 @@ public class AccountService
         {
             _logger.LogInformation("[INTERACTIVE] Credits deducted for interactive session. Balance: ${Balance}", finalAccount.CreditBalance);
         }
+        else
+        {
+            _logger.LogInformation("[INTERACTIVE] Starting interactive session (single user mode - no credits required)");
+        }
         
-        return (true, "Credits deducted - starting interactive session", null, finalAccount.CreditBalance);
+        var message = isSingleUserMode 
+            ? "Starting interactive session" 
+            : "Credits deducted - starting interactive session";
+        
+        return (true, message, null, finalAccount.CreditBalance);
     }
     
     /// <summary>

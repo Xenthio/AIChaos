@@ -17,7 +17,7 @@
 <SectionContent SectionId="PageSections.Title">🎮 CHAOS DASHBOARD</SectionContent>
 <SectionContent SectionId="PageSections.Subtitle">@GetSubtitle()</SectionContent>
 
-@if (currentAccount == null || currentAccount.Id == "anonymous-default-user")
+@if (currentAccount == null || currentAccount.Id == AccountService.ANONYMOUS_USER_ID)
 {
     <div class="login-container">
         <div class="card">
