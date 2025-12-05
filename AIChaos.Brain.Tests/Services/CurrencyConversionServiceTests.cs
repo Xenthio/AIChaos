@@ -39,11 +39,13 @@ public class CurrencyConversionServiceTests
         // Arrange
         var service = new CurrencyConversionService(_httpClient, _loggerMock.Object);
         decimal amount = 100m;
+        string? nullCurrencyCode = null;
 
         // Act
-        var result = await service.ConvertToUsdAsync(amount, null!);
+        var result = await service.ConvertToUsdAsync(amount, nullCurrencyCode!);
 
         // Assert
+        // When currency code is null, the service treats it as USD and returns the same amount
         Assert.Equal(amount, result);
     }
 
