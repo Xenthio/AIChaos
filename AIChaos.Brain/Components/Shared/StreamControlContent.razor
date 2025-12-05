@@ -5,6 +5,7 @@
 @inject ImageModerationService ModerationService
 @inject RefundService RefundService
 @inject CommandQueueService CommandQueue
+@inject QueueSlotService QueueSlots
 @inject SettingsService SettingsService
 @inject YouTubeService YouTubeService
 @inject NavigationManager Navigation
@@ -457,11 +458,11 @@
         try
         {
             var count = Math.Max(1, Math.Min(blastCount, 10));
-            var response = await Http.PostAsJsonAsync("/api/queue/blast", new { Count = count });
+            var commands = QueueSlots.ManualBlast(count);
             
-            if (response.IsSuccessStatusCode)
+            if (commands != null)
             {
-                blastMessage = $"💥 Blasted {count} command(s)!";
+                blastMessage = $"💥 Blasted {commands.Count} command(s)!";
                 blastMessageType = "success";
                 await LoadQueueStatus();
             }
@@ -506,7 +507,7 @@
     {
         try
         {
-            var response = await Http.GetFromJsonAsync<QueueSlotStatus>("/api/queue/status");
+            var response = QueueSlots.GetStatus();
             if (response != null)
             {
                 totalSlots = response.TotalSlots;

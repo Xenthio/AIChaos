@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject SettingsService Settings
 @inject CommandQueueService CommandQueue
+@inject QueueSlotService QueueSlots
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
 @inject NavigationManager Navigation
@@ -477,11 +478,11 @@ else
         try
         {
             var count = Math.Max(1, Math.Min(blastCount, 10)); // Clamp between 1-10
-            var response = await Http.PostAsJsonAsync("/api/queue/blast", new { Count = count });
+            var commands = QueueSlots.ManualBlast(count);
             
-            if (response.IsSuccessStatusCode)
+            if (commands != null)
             {
-                ShowStatus($"💥 Queue blasted! {count} command(s) executed immediately.", "success");
+                ShowStatus($"💥 Queue blasted! {commands.Count} command(s) executed immediately.", "success");
             }
             else
             {
