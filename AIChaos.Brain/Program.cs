@@ -74,7 +74,13 @@ app.Use(async (context, next) =>
     var forwardedPrefix = context.Request.Headers["X-Forwarded-Prefix"].FirstOrDefault();
     if (!string.IsNullOrEmpty(forwardedPrefix))
     {
+        Console.WriteLine($"[DEBUG] Received X-Forwarded-Prefix: {forwardedPrefix}");
         context.Request.PathBase = forwardedPrefix;
+        Console.WriteLine($"[DEBUG] Set PathBase to: {context.Request.PathBase}");
+    }
+    else
+    {
+        Console.WriteLine($"[DEBUG] No X-Forwarded-Prefix header received. Path: {context.Request.Path}");
     }
     await next();
 });
