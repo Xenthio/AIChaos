@@ -174,16 +174,9 @@
         </div>
     </div>
 
-    <div class="form-row">
-        <div class="form-group">
-            <label>Live Stream Video ID</label>
-            <input type="text" @bind="youtubeVideoId" placeholder="e.g., dQw4w9WgXcQ">
-            <small>The video ID from your live stream URL</small>
-        </div>
-        <div class="form-group">
-            <label>Minimum Super Chat ($)</label>
-            <input type="number" @bind="youtubeMinAmount" min="0" step="0.01">
-        </div>
+    <div class="form-group">
+        <label>Minimum Super Chat ($)</label>
+        <input type="number" @bind="youtubeMinAmount" min="0" step="0.01">
     </div>
 
     <div class="form-group checkbox-group">
@@ -200,15 +193,10 @@
     <div class="btn-group" style="margin-top: 15px;">
         <button @onclick="SaveYouTubeCredentials" class="btn-secondary">💾 Save Credentials</button>
         <button @onclick="AuthorizeYouTube" class="youtube-btn">🔗 Login with YouTube</button>
-        @if (!youtubeListening)
-        {
-            <button @onclick="StartYouTube" class="btn-info">▶️ Start Listening</button>
-        }
-        else
-        {
-            <button @onclick="StopYouTube" class="btn-danger">⏹️ Stop</button>
-        }
     </div>
+    <p style="color: var(--text-dim); font-size: 12px; margin-top: 10px;">
+        ℹ️ Manage your active stream in the <strong>Stream Control</strong> tab
+    </p>
 </div>
 
 <style>
@@ -281,10 +269,8 @@
 
     // YouTube
     private bool youtubeConfigured = false;
-    private bool youtubeListening = false;
     private string youtubeClientId = "";
     private string youtubeClientSecret = "";
-    private string youtubeVideoId = "";
     private decimal youtubeMinAmount = 1.00m;
     private bool youtubeAllowChat = false;
     private bool youtubeAllowViewerOAuth = true;
@@ -316,8 +302,6 @@
             "Disabled");
 
             youtubeConfigured = SettingsService.IsYouTubeConfigured;
-            youtubeListening = YouTubeService.IsListening;
-            youtubeVideoId = settings.YouTube.VideoId ?? "";
             youtubeAllowViewerOAuth = settings.YouTube.AllowViewerOAuth;
 
             workshopEnabled = settings.Workshop.AllowRuntimeDownload;
@@ -439,7 +423,8 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
     {
         try
         {
-            SettingsService.UpdateYouTubeCredentials(youtubeClientId, youtubeClientSecret, youtubeVideoId, youtubeMinAmount,
+            // Don't pass video ID anymore - that's managed in Stream Control
+            SettingsService.UpdateYouTubeCredentials(youtubeClientId, youtubeClientSecret, "", youtubeMinAmount,
             youtubeAllowChat, youtubeAllowViewerOAuth);
             ShowAlert("YouTube credentials saved!", "success");
             await LoadSetupStatus();
@@ -454,7 +439,15 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
     {
         try
         {
-            var redirectUri = $"{Navigation.BaseUri}api/setup/youtube/callback";
+            // Use tunnel URL if available (for public callback), otherwise fall back to current navigation base URI
+            var baseUrl = !string.IsNullOrEmpty(SettingsService.Settings.Tunnel.CurrentUrl) 
+                ? SettingsService.Settings.Tunnel.CurrentUrl 
+                : Navigation.BaseUri;
+                
+            // Ensure baseUrl ends with /
+            if (!baseUrl.EndsWith("/")) baseUrl += "/";
+
+            var redirectUri = $"{baseUrl}api/setup/youtube/callback";
             var authUrl = YouTubeService.GetAuthorizationUrl(redirectUri);
 
             if (!string.IsNullOrEmpty(authUrl))
@@ -472,41 +465,6 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         }
     }
 
-    private async Task StartYouTube()
-    {
-        try
-        {
-            var success = await YouTubeService.StartListeningAsync(youtubeVideoId);
-
-            if (success)
-            {
-                ShowAlert("Started listening to YouTube!", "success");
-                await LoadSetupStatus();
-            }
-            else
-            {
-                ShowAlert("Failed to start YouTube listener. Make sure the video is a live stream with an active chat.", "error");
-            }
-        }
-        catch
-        {
-            ShowAlert("Error starting YouTube listener", "error");
-        }
-    }
-
-    private async Task StopYouTube()
-    {
-        try
-        {
-            YouTubeService.StopListening();
-            ShowAlert("Stopped listening to YouTube", "info");
-            await LoadSetupStatus();
-        }
-        catch
-        {
-            ShowAlert("Error stopping YouTube listener", "error");
-        }
-    }
 
     private async Task SaveWorkshopSettings()
     {
@@ -521,7 +479,7 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
             ShowAlert("Error saving workshop settings", "error");
         }
     }
-
+      
     private void ShowAlert(string message, string type)
     {
         InvokeAsync(() =>

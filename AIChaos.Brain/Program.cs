@@ -2,6 +2,7 @@ using AIChaos.Brain.Models;
 using AIChaos.Brain.Services;
 using AIChaos.Brain.Components;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,20 +11,23 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 
+// Configure forwarded headers for reverse proxy support
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | 
+                               ForwardedHeaders.XForwardedProto | 
+                               ForwardedHeaders.XForwardedHost;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 // Configure HttpClient with base address for Blazor components
-// Note: In Blazor Server, components run on the server and make HTTP calls to the same server
-// We set a base address so relative URLs like "/api/account/login" work
 builder.Services.AddHttpClient();
 builder.Services.AddTransient(sp =>
 {
-    // Get the HttpClient from the factory and configure it
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
     var httpClient = httpClientFactory.CreateClient();
-    
-    // Set base address to localhost - this works because Blazor Server runs on the same machine
-    // In production, this should match your deployment configuration
     httpClient.BaseAddress = new Uri("http://localhost:5000/");
-    
     return httpClient;
 });
 
@@ -62,6 +66,30 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Handle X-Forwarded-Prefix from nginx for subdirectory deployment
+// This MUST be before UseForwardedHeaders and other middleware
+app.Use(async (context, next) =>
+{
+    var forwardedPrefix = context.Request.Headers["X-Forwarded-Prefix"].FirstOrDefault();
+    if (!string.IsNullOrEmpty(forwardedPrefix))
+    {
+        //Console.WriteLine($"[DEBUG] Received X-Forwarded-Prefix: {forwardedPrefix}");
+        context.Request.PathBase = forwardedPrefix;
+        
+        // Also need to strip the prefix from the path if nginx didn't
+        if (context.Request.Path.StartsWithSegments(forwardedPrefix, out var remainder))
+        {
+            context.Request.Path = remainder;
+        }
+        
+        //Console.WriteLine($"[DEBUG] PathBase: {context.Request.PathBase}, Path: {context.Request.Path}");
+    }
+    await next();
+});
+
+// Use forwarded headers
+app.UseForwardedHeaders();
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
@@ -86,11 +114,11 @@ Console.WriteLine("  Chaos Brain - C# Edition");
 Console.WriteLine("========================================");
 Console.WriteLine($"  Viewer: http://localhost:5000/");
 Console.WriteLine("  Dashboard: http://localhost:5000/dashboard");
-Console.WriteLine("  Setup: http://localhost:5000/setup");
-Console.WriteLine("  History: http://localhost:5000/history");
-Console.WriteLine("  Moderation: http://localhost:5000/moderation");
+Console.WriteLine("  Setup: http://localhost:5000/dashboard/setup");
+Console.WriteLine("  History: http://localhost:5000/dashboard/history");
+Console.WriteLine("  Moderation: http://localhost:5000/dashboard/moderation");
 Console.WriteLine("========================================");
-Console.WriteLine($"  MODERATION PASSWORD: {settingsService.ModerationPassword}");
+Console.WriteLine($"  MODERATION PASSWORD: {settingsService.ModerationPassword} (OBSOLETE)");
 Console.WriteLine("  (Password changes each session)");
 Console.WriteLine("========================================");
 

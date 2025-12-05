@@ -7,6 +7,7 @@
 @inject SettingsService SettingsService
 @inject TestClientService TestClientService
 @inject RefundService RefundService
+@inject YouTubeService YouTubeService
 @inject HttpClient Http
 @inject IJSRuntime JS
 @using AIChaos.Brain.Components.Layout
@@ -18,6 +19,16 @@
 <SectionContent SectionId="PageSections.Title">🎮 CHAOS</SectionContent>
 <SectionContent SectionId="PageSections.Subtitle">Control the streamer's game!</SectionContent>
 
+@if (!YouTubeService.IsListening)
+{
+    <div class="card" style="text-align: center; padding: 60px 20px;">
+        <h2 style="font-size: 32px; margin-bottom: 20px;">📺 Stream Offline</h2>
+        <p style="color: var(--text-dim); font-size: 18px;">Come back soon!</p>
+        <p style="color: var(--text-dim); font-size: 14px; margin-top: 10px;">The stream is not currently active.</p>
+    </div>
+}
+else
+{
 <div class="card">
     <h2>Send Your Idea</h2>
     <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 15px;">Each dollar gets you one Idea. Be creative - funny, helpful, or chaotic!</p>
@@ -171,6 +182,7 @@
         <button @onclick="SubmitRefund" class="btn-primary">Submit Report</button>
     </div>
 </Modal>
+}
 
 @* Login/Register Modal *@
 
@@ -277,6 +289,7 @@
     private int selectedCommandIdForRefund = 0;
     private string selectedRefundReason = "";
     private bool _isInitialized = false;
+    private System.Threading.Timer? streamStateRefreshTimer = null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -293,6 +306,9 @@
         
         // Subscribe to history changes
         CommandQueue.HistoryChanged += OnHistoryChanged;
+        
+        // Start stream state refresh timer
+        StartStreamStateRefresh();
     }
 
     private async void OnHistoryChanged(object? sender, EventArgs e)
@@ -311,6 +327,28 @@
             }
         });
     }
+    
+    private void StartStreamStateRefresh()
+    {
+        // Refresh UI every 2 seconds to check stream state
+        streamStateRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(() =>
+                {
+                    if (!_isInitialized)
+                        return;
+                    
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error refreshing stream state: {ex.Message}");
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
 
     public void Dispose()
     {
@@ -319,6 +357,11 @@
         
         // Stop interactive polling if active
         interactivePollingTimer?.Dispose();
+        
+        // Stop stream state refresh
+        streamStateRefreshTimer?.Dispose();
+        
+        _isInitialized = false;
     }
 
     private async Task SubmitCommand()

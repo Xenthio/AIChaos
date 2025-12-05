@@ -31,18 +31,25 @@ public class StreamPanelController : ControllerBase
     [HttpGet("youtube/callback")]
     public async Task<ActionResult> YouTubeCallback([FromQuery] string? code, [FromQuery] string? error)
     {
+        // Build proper redirect URLs that respect the path base
+        var dashboardUrl = Url.Content("~/dashboard/stream");
+        
         if (!string.IsNullOrEmpty(error))
         {
-            return Redirect($"/dashboard/stream?error=YouTube authorization was denied");
+            return Redirect($"{dashboardUrl}?error=YouTube authorization was denied");
         }
         
         if (string.IsNullOrEmpty(code))
         {
-            return Redirect($"/dashboard/stream?error=No authorization code received from YouTube");
+            return Redirect($"{dashboardUrl}?error=No authorization code received from YouTube");
         }
         
         var settings = _settingsService.Settings.YouTube;
-        var redirectUri = $"{Request.Scheme}://{Request.Host}/api/setup/youtube/callback";
+        
+        // Build the redirect URI using the current request's scheme, host, and path base
+        var redirectUri = $"{Request.Scheme}://{Request.Host}{Request.PathBase}/api/setup/youtube/callback";
+        
+        _logger.LogInformation("Exchanging YouTube code with redirect_uri: {RedirectUri}", redirectUri);
         
         try
         {
@@ -64,7 +71,7 @@ public class StreamPanelController : ControllerBase
                 {
                     var errorContent = await tokenResponse.Content.ReadAsStringAsync();
                     _logger.LogError("YouTube token exchange failed: {Error}", errorContent);
-                    return Redirect($"/dashboard/stream?error=Failed to exchange authorization code for access token");
+                    return Redirect($"{dashboardUrl}?error=Failed to exchange authorization code for access token");
                 }
                 
                 var tokenJson = await tokenResponse.Content.ReadAsStringAsync();
@@ -78,13 +85,13 @@ public class StreamPanelController : ControllerBase
                 _settingsService.UpdateYouTube(settings);
                 _logger.LogInformation("YouTube OAuth successful");
                 
-                return Redirect("/dashboard/stream?success=YouTube authorization successful! You can now use YouTube features.");
+                return Redirect($"{dashboardUrl}?success=YouTube authorization successful! You can now use YouTube features.");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "YouTube OAuth callback error");
-            return Redirect($"/dashboard/stream?error=An error occurred during YouTube authorization: {ex.Message}");
+            return Redirect($"{dashboardUrl}?error=An error occurred during YouTube authorization: {ex.Message}");
         }
     }
 }
