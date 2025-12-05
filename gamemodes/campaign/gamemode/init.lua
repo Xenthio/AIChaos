@@ -7,17 +7,26 @@ include("shared.lua")
 
 function GM:Initialize()
 	print("[Campaign] Campaign Gamemode Initialized")
+	
+	-- HL2 Game Rules
 	RunConsoleCommand("gmod_suit", "1")
 	RunConsoleCommand("sv_defaultdeployspeed", "1")
-	RunConsoleCommand("mp_falldamage", "0")
+	RunConsoleCommand("mp_falldamage", "1") -- 0 = MP style (10 dmg), 1 = Realistic HL2 Style (Velocity based)
+	
+	-- HL2 Movement Physics
+	RunConsoleCommand("sv_accelerate", "10")
+	RunConsoleCommand("sv_airaccelerate", "10")
+	RunConsoleCommand("sv_friction", "4")
+	RunConsoleCommand("sv_stopspeed", "100")
+	
+	-- Disable Sandbox cheats/features
+	RunConsoleCommand("sbox_noclip", "0")
+	RunConsoleCommand("sbox_godmode", "0")
 end
 
 -- Player spawn - only remove suit if they haven't picked it up yet
 function GM:PlayerSpawn(ply)
 	player_manager.SetPlayerClass( ply, "player_campaign" )
-	RunConsoleCommand("gmod_suit", "1")
-	RunConsoleCommand("sv_defaultdeployspeed", "1")
-	RunConsoleCommand("mp_falldamage", "1")
 	
 	self.BaseClass:PlayerSpawn(ply)
 	
