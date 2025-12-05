@@ -4,6 +4,8 @@ Chaos is a stream-ready system that lets viewers send creative "Ideas" to contro
 
 > **Perfect for streamers** who want to create an interactive, chaotic experience with their audience! 💥
 
+> **🚀 Quick Start**: Chaos now runs in **Single User Mode** by default - no login or credits required! Just install and play. Perfect for local testing or personal use. [Learn more about Single User Mode](SINGLE_USER_MODE.md)
+
 ---
 
 ## 📋 Table of Contents
@@ -418,7 +420,8 @@ Chaos features a streamlined YouTube integration with $1 per Idea pricing:
 
 This version includes the complete **StreamReady Update** with:
 
-- **💵 $1 per Idea pricing** - Simple, transparent economy
+- **🚀 Single User Mode** - NEW! No login or credits required by default ([Learn more](SINGLE_USER_MODE.md))
+- **💵 $1 per Idea pricing** - Simple, transparent economy (when using multi-user mode)
 - **👻 Invisible economy UX** - Balance hidden from main interface, shown only in profile
 - **🎛️ Slot-based queue** - Dynamic pacing (3-10 concurrent slots based on demand)
 - **📊 Unified Stream Control** - All-in-one dashboard for streaming
@@ -426,6 +429,17 @@ This version includes the complete **StreamReady Update** with:
 - **🔗 Universal URL moderation** - Review all links, not just images
 - **📱 Mobile responsive** - Horizontal scrolling tabs for mobile
 - **✨ Real-time feedback** - Instant notifications for account linking
+
+### Single User Mode (Default)
+
+By default, Chaos runs in **Single User Mode** for the easiest setup:
+- ✅ No login required - just open and play
+- ✅ Unlimited submissions - no credit system
+- ✅ No rate limiting - instant command execution
+- ✅ Perfect for local testing or personal use
+- ✅ Admin dashboard still protected with login
+
+**For public streams**: Disable Single User Mode in `appsettings.json` to enable the full credit and authentication system.
 
 ### Queue System Details
 
