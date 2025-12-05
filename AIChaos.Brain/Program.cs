@@ -65,10 +65,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Use forwarded headers - MUST be before other middleware
-app.UseForwardedHeaders();
-
 // Handle X-Forwarded-Prefix from nginx for subdirectory deployment
+// This MUST be before UseForwardedHeaders and other middleware
 app.Use(async (context, next) =>
 {
     var forwardedPrefix = context.Request.Headers["X-Forwarded-Prefix"].FirstOrDefault();
@@ -76,14 +74,20 @@ app.Use(async (context, next) =>
     {
         Console.WriteLine($"[DEBUG] Received X-Forwarded-Prefix: {forwardedPrefix}");
         context.Request.PathBase = forwardedPrefix;
-        Console.WriteLine($"[DEBUG] Set PathBase to: {context.Request.PathBase}");
-    }
-    else
-    {
-        Console.WriteLine($"[DEBUG] No X-Forwarded-Prefix header received. Path: {context.Request.Path}");
+        
+        // Also need to strip the prefix from the path if nginx didn't
+        if (context.Request.Path.StartsWithSegments(forwardedPrefix, out var remainder))
+        {
+            context.Request.Path = remainder;
+        }
+        
+        Console.WriteLine($"[DEBUG] PathBase: {context.Request.PathBase}, Path: {context.Request.Path}");
     }
     await next();
 });
+
+// Use forwarded headers
+app.UseForwardedHeaders();
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
