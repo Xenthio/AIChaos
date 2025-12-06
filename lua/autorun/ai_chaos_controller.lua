@@ -133,7 +133,9 @@ if SERVER then
         })
     end
     
-    -- Find the first valid model in a workshop addon and spawn it in front of the player
+    -- Find the first valid model in recently mounted workshop addons and spawn it in front of the player
+    -- Note: This searches all mounted workshop addons. After downloading a specific addon,
+    -- it will search that addon along with any previously mounted workshop content.
     -- Excludes gesture models and other non-visible models
     function FindAndSpawnFirstWorkshopModel(workshopId)
         local player = Entity(1)
@@ -183,7 +185,8 @@ if SERVER then
     end
     
     -- Browse and list all models from workshop addons (for AI preparation phase)
-    -- Returns a table of model paths from all mounted workshop addons
+    -- Returns a table of model paths from all currently mounted workshop addons
+    -- Note: This includes all workshop addons that are mounted, not just a specific one
     function BrowseWorkshopModels()
         local models = {}
         local files, folders = file.Find("models/*.mdl", "workshop")

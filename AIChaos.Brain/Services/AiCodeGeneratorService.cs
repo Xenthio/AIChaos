@@ -63,11 +63,12 @@ public class AiCodeGeneratorService
         11. **Workshop Helper Functions (ADVANCED):**
             You have access to workshop helper functions when AllowWorkshopDownload setting is enabled:
             
-            - `BrowseWorkshopModels()` - Returns a table of all available model paths from mounted workshop addons
+            - `BrowseWorkshopModels()` - Returns a table of all available model paths from currently mounted workshop addons
+              Note: This includes all mounted workshop content, not just a specific addon
               Example usage in preparation phase:
               ```lua
               local models = BrowseWorkshopModels()
-              print("Found " .. #models .. " workshop models")
+              print("Found " .. #models .. " workshop models across all mounted addons")
               for i, model in ipairs(models) do
                   print(i .. ": " .. model)
               end
@@ -75,11 +76,12 @@ public class AiCodeGeneratorService
             
             - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and mounts a workshop addon, then spawns the first valid model
               Parameters:
-                - workshopId: String - The Steam Workshop ID (e.g., "104691717")
+                - workshopId: String - The Steam Workshop ID (can be found in the workshop URL)
                 - callback: Function (optional) - Called with the spawned entity (or nil on failure)
               Example:
               ```lua
-              DownloadAndSpawnWorkshopModel("104691717", function(ent)
+              -- Replace WORKSHOP_ID with actual workshop item ID
+              DownloadAndSpawnWorkshopModel("WORKSHOP_ID", function(ent)
                   if IsValid(ent) then
                       print("Spawned workshop model!")
                       -- Can apply effects to the entity here
@@ -89,9 +91,9 @@ public class AiCodeGeneratorService
               end)
               ```
             
-            - `FindAndSpawnFirstWorkshopModel(workshopId)` - Finds and spawns the first valid model from a workshop addon
+            - `FindAndSpawnFirstWorkshopModel(workshopId)` - Finds and spawns the first valid model from recently mounted workshop content
               Returns: Entity or nil
-              Note: Automatically filters out gesture models and other non-visible models
+              Note: Searches all mounted workshop addons, automatically filters out gesture models and other non-visible models
               
             **Workshop Usage Notes:**
             - Workshop downloads are ONLY available when AllowWorkshopDownload is enabled in settings
