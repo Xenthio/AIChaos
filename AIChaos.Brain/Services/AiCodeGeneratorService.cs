@@ -59,6 +59,73 @@ public class AiCodeGeneratorService
            - If you are spawning many props over time (which is what you should do if you are spawning many), you should start cleaning up old ones as you spawn new ones in (though, make sure they have enough time to be seen).
 
         10. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps!
+        
+        11. **Workshop Helper Functions (ADVANCED):**
+            You have access to workshop helper functions when AllowWorkshopDownload setting is enabled:
+            
+            - `GetAllMountedAddonAssets()` - Returns a table with all assets from currently mounted workshop addons
+              Returns: Table with categories { models = {...}, materials = {...}, sounds = {...} }
+              Example usage in preparation phase:
+              ```lua
+              local assets = GetAllMountedAddonAssets()
+              print("Found " .. #assets.models .. " models, " .. #assets.materials .. " materials, " .. #assets.sounds .. " sounds")
+              for i, model in ipairs(assets.models) do
+                  print(i .. ": " .. model)
+              end
+              ```
+            
+            - `DownloadAndMountWorkshopAddon(workshopId, callback)` - Downloads and mounts a workshop addon at runtime
+              Parameters:
+                - workshopId: String - The Steam Workshop ID (can be found in the workshop URL)
+                - callback: Function (optional) - Called with success status and path: callback(success, path)
+              Example:
+              ```lua
+              DownloadAndMountWorkshopAddon("WORKSHOP_ID", function(success, path)
+                  if success then
+                      print("Addon mounted at: " .. path)
+                  else
+                      print("Failed to mount addon")
+                  end
+              end)
+              ```
+            
+            - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Downloads addon and lists all its assets
+              Parameters:
+                - workshopId: String - The Steam Workshop ID
+                - callback: Function (optional) - Called with assets table: callback(assets)
+              Returns (via callback): Table with categories { models = {...}, materials = {...}, sounds = {...} }
+              Example:
+              ```lua
+              DownloadAndGetWorkshopAssets("WORKSHOP_ID", function(assets)
+                  if assets then
+                      print("Found " .. #assets.models .. " models in this addon")
+                      -- Use the assets as needed
+                  end
+              end)
+              ```
+            
+            - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads addon and spawns the first valid model (excludes gestures/invisible models)
+              Parameters:
+                - workshopId: String - The Steam Workshop ID
+                - callback: Function (optional) - Called with the spawned entity (or nil on failure)
+              Example:
+              ```lua
+              DownloadAndSpawnWorkshopModel("WORKSHOP_ID", function(ent)
+                  if IsValid(ent) then
+                      print("Spawned workshop model!")
+                      -- Can apply effects to the entity here
+                  else
+                      print("Failed to spawn workshop model")
+                  end
+              end)
+              ```
+              
+            **Workshop Usage Notes:**
+            - Workshop downloads are ONLY available when AllowWorkshopDownload is enabled in settings
+            - Models are spawned in front of the player automatically
+            - Gesture models and reference models are automatically excluded
+            - Use `GetAllMountedAddonAssets()` to browse all mounted content (no download needed)
+            - Use `DownloadAndGetWorkshopAssets()` to download and browse a specific addon before spawning
            
         """;
     

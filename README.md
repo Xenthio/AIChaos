@@ -414,6 +414,7 @@ Chaos features a streamlined YouTube integration with $1 per Idea pricing:
 - [TUNNEL_COMPARISON.md](TUNNEL_COMPARISON.md) - Compare ngrok, bore, and other tunnels
 - [YOUTUBE_SETUP.md](YOUTUBE_SETUP.md) - Detailed YouTube OAuth integration guide
 - [NGROK_LAUNCHER_README.md](NGROK_LAUNCHER_README.md) - ngrok auto-launcher details
+- [WORKSHOP_INTEGRATION.md](WORKSHOP_INTEGRATION.md) - Workshop content download and spawn feature
 - [AIChaos.Brain/README.md](AIChaos.Brain/README.md) - Technical details about the Brain server
 
 ## ⚡ StreamReady Features
@@ -429,6 +430,7 @@ This version includes the complete **StreamReady Update** with:
 - **🔗 Universal URL moderation** - Review all links, not just images
 - **📱 Mobile responsive** - Horizontal scrolling tabs for mobile
 - **✨ Real-time feedback** - Instant notifications for account linking
+- **🎨 Workshop Integration** - AI can download and spawn models from Steam Workshop ([Learn more](WORKSHOP_INTEGRATION.md))
 
 ### Single User Mode (Default)
 

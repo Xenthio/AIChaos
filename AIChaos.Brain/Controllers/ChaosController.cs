@@ -230,4 +230,15 @@ public class ChaosController : ControllerBase
             CommandId = request.CommandId
         });
     }
+
+    /// <summary>
+    /// Check if workshop downloads are allowed based on settings.
+    /// Used by the GMod addon to verify permission before downloading workshop content.
+    /// </summary>
+    [HttpGet("api/settings/workshop-allowed")]
+    public ActionResult<object> CheckWorkshopAllowed()
+    {
+        var allowed = _settingsService.Settings.General.AllowWorkshopDownload;
+        return Ok(new { allowed });
+    }
 }
