@@ -72,8 +72,27 @@ if SERVER then
         return true
     end
     
+    -- Helper: Validate workshop ID format
+    local function ValidateWorkshopId(workshopId, functionName)
+        if not workshopId or workshopId == "" then 
+            print("[AI Chaos] " .. functionName .. ": No workshop ID provided")
+            return false 
+        end
+        
+        -- Validate it's a numeric string
+        if not string.match(workshopId, "^%d+$") then
+            print("[AI Chaos] " .. functionName .. ": Invalid workshop ID format (must be numeric): " .. tostring(workshopId))
+            return false
+        end
+        
+        return true
+    end
+    
     -- Helper: Recursively find all .mdl files in a directory and its subdirectories
-    local function FindModelsRecursive(basePath, modelsTable)
+    local function FindModelsRecursive(basePath, modelsTable, depth)
+        depth = depth or 0
+        if depth > 10 then return end -- Prevent stack overflow with max depth limit
+        
         local files, dirs = file.Find(basePath .. "*", "GAME")
         if files then
             for _, fileName in ipairs(files) do
@@ -87,7 +106,7 @@ if SERVER then
             for _, dirName in ipairs(dirs) do
                 -- Skip "." and ".."
                 if dirName ~= "." and dirName ~= ".." then
-                    FindModelsRecursive(basePath .. dirName .. "/", modelsTable)
+                    FindModelsRecursive(basePath .. dirName .. "/", modelsTable, depth + 1)
                 end
             end
         end
@@ -126,14 +145,7 @@ if SERVER then
     
     -- Mount a Workshop addon at runtime
     function MountWorkshopAddon(workshopId)
-        if not workshopId or workshopId == "" then 
-            print("[AI Chaos] MountWorkshopAddon: No workshop ID provided")
-            return false 
-        end
-        
-        -- Validate it's a numeric string
-        if not string.match(workshopId, "^%d+$") then
-            print("[AI Chaos] MountWorkshopAddon: Invalid workshop ID format (must be numeric): " .. tostring(workshopId))
+        if not ValidateWorkshopId(workshopId, "MountWorkshopAddon") then
             return false
         end
         
@@ -160,14 +172,7 @@ if SERVER then
     
     -- Download and spawn the first valid model from a Workshop addon
     function DownloadAndSpawnWorkshopModel(workshopId, spawnPos)
-        if not workshopId or workshopId == "" then 
-            print("[AI Chaos] DownloadAndSpawnWorkshopModel: No workshop ID provided")
-            return nil 
-        end
-        
-        -- Validate it's a numeric string
-        if not string.match(workshopId, "^%d+$") then
-            print("[AI Chaos] DownloadAndSpawnWorkshopModel: Invalid workshop ID format (must be numeric): " .. tostring(workshopId))
+        if not ValidateWorkshopId(workshopId, "DownloadAndSpawnWorkshopModel") then
             return nil
         end
         
@@ -248,8 +253,8 @@ if SERVER then
             TrySpawnModel(0)
         end)
         
-        -- Return a reference to track spawning (async operation)
-        return true
+        -- Return nil to maintain consistency with error paths
+        return nil
     end
     
     -- Helper Function: Report execution result back to server (with optional captured data)
