@@ -12,6 +12,7 @@ public class AppSettings
     public AdminSettings Admin { get; set; } = new();
     public TunnelSettings Tunnel { get; set; } = new();
     public TestClientSettings TestClient { get; set; } = new();
+    public WorkshopSettings Workshop { get; set; } = new();
 }
 
 public class OpenRouterSettings
@@ -118,6 +119,18 @@ public class TestClientSettings
     /// Last time the test client polled.
     /// </summary>
     public DateTime? LastPollTime { get; set; } = null;
+}
+
+/// <summary>
+/// Settings for Workshop addon support - allows downloading and mounting Workshop addons at runtime.
+/// </summary>
+public class WorkshopSettings
+{
+    /// <summary>
+    /// Whether Workshop addon downloading and mounting at runtime is enabled.
+    /// When disabled, only pre-downloaded/mounted addons are accessible.
+    /// </summary>
+    public bool AllowRuntimeDownload { get; set; } = false;
 }
 
 /// <summary>

@@ -330,4 +330,16 @@ public class SettingsService
             SaveSettings();
         }
     }
+    
+    /// <summary>
+    /// Updates Workshop settings.
+    /// </summary>
+    public void UpdateWorkshopSettings(bool allowRuntimeDownload)
+    {
+        lock (_lock)
+        {
+            _settings.Workshop.AllowRuntimeDownload = allowRuntimeDownload;
+            SaveSettings();
+        }
+    }
 }
