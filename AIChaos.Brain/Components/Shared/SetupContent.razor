@@ -12,6 +12,39 @@
     }
 </div>
 
+<!-- General Settings -->
+<div class="card">
+    <h2>⚙️ General Settings</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Configure application-wide behavior and modes.
+    </p>
+
+    <div class="form-group">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="streamMode" style="width: 18px; height: 18px;">
+            <div>
+                <strong>Stream Mode</strong>
+                <div style="color: var(--text-dim); font-size: 13px; margin-top: 3px;">
+                    @if (streamMode)
+                    {
+                        <span>📺 Enabled - Login and credits required for viewers</span>
+                    }
+                    else
+                    {
+                        <span>🎮 Disabled - No login or credits required (Single User Mode)</span>
+                    }
+                </div>
+            </div>
+        </label>
+        <small style="display: block; margin-top: 8px; color: var(--text-dim);">
+            When enabled: Full authentication and credit system is active. Recommended for public streams.<br/>
+            When disabled: Users can submit commands without logging in or using credits. Perfect for local testing or personal use.
+        </small>
+    </div>
+
+    <button @onclick="SaveGeneralSettings">💾 Save General Settings</button>
+</div>
+
 <!-- OpenRouter API -->
 <div class="card">
     <h2>
@@ -229,6 +262,9 @@
     private string alertMessage = "";
     private string alertType = "info";
 
+    // General Settings
+    private bool streamMode = false;
+
     // OpenRouter
     private bool openRouterConfigured = false;
     private string openRouterApiKey = "";
@@ -266,6 +302,9 @@
         {
             var settings = SettingsService.Settings;
             var tunnelStatus = TunnelService.GetStatus();
+
+            // General Settings
+            streamMode = settings.General.StreamMode;
 
             openRouterConfigured = SettingsService.IsOpenRouterConfigured;
 
@@ -323,6 +362,19 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         catch
         {
             ShowAlert("Error saving settings", "error");
+        }
+    }
+
+    private void SaveGeneralSettings()
+    {
+        try
+        {
+            SettingsService.UpdateGeneralSettings(streamMode);
+            ShowAlert("General settings saved! Changes will take effect on next page load.", "success");
+        }
+        catch
+        {
+            ShowAlert("Error saving general settings", "error");
         }
     }
 

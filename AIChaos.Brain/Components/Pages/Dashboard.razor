@@ -17,18 +17,31 @@
 <SectionContent SectionId="PageSections.Title">🎮 CHAOS DASHBOARD</SectionContent>
 <SectionContent SectionId="PageSections.Subtitle">@GetSubtitle()</SectionContent>
 
-@if (currentAccount == null)
+@if (currentAccount == null || currentAccount.Id == AccountService.ANONYMOUS_USER_ID)
 {
     <div class="login-container">
         <div class="card">
-            <h2>🔒 Login Required</h2>
-            <p style="color: var(--text-dim); margin-bottom: 20px;">Dashboard access requires an account. The first account
-                created is automatically an admin.</p>
+            <h2>🔒 Admin Login</h2>
+            <p style="color: var(--text-dim); margin-bottom: 20px;">Dashboard access requires an admin or moderator account. The first account created is automatically an admin.</p>
+            
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" @bind="loginUsername" placeholder="Enter username" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" @bind="loginPassword" placeholder="Enter password" />
+            </div>
+            
             @if (!string.IsNullOrEmpty(loginAlert))
             {
                 <div class="alert alert-@loginAlertType">@loginAlert</div>
             }
-            <p>Please log in from the <a href="/" style="color: var(--accent);">Viewer page</a>.</p>
+            
+            <div style="display: flex; gap: 10px;">
+                <button @onclick="Login">Login</button>
+                <button @onclick="Register">Register</button>
+            </div>
         </div>
     </div>
 }
@@ -38,6 +51,7 @@ else if (currentAccount.Role < UserRole.Moderator)
         <div class="card">
             <h2>⛔ Access Denied</h2>
             <p>Dashboard access requires Moderator or Admin privileges.</p>
+            <p>Your account (@currentAccount.Username) is a regular user.</p>
             <p>Contact an administrator to request access.</p>
         </div>
     </div>
@@ -319,6 +333,8 @@ else
 
     private string loginAlert = "";
     private string loginAlertType = "error";
+    private string loginUsername = "";
+    private string loginPassword = "";
     private string promptInput = "";
     private bool interactiveMode = false;
     private bool isSubmitting = false;
@@ -506,5 +522,72 @@ else
     };
 
     private string GetStatusText(CommandStatus status) => status.ToString();
+
+    private async Task Login()
+    {
+        try
+        {
+            loginAlert = "";
+            var (success, error, account, sessionToken) = AccountService.Login(loginUsername, loginPassword);
+            if (success && account != null && sessionToken != null)
+            {
+                // Store session token
+                await JS.InvokeVoidAsync("localStorage.setItem", "sessionToken", sessionToken);
+                loginUsername = "";
+                loginPassword = "";
+                
+                // Reload the page to update the currentAccount
+                Navigation.NavigateTo("/dashboard", forceLoad: true);
+            }
+            else
+            {
+                loginAlert = error ?? "Invalid username or password";
+                loginAlertType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            loginAlert = $"Login failed: {ex.Message}";
+            loginAlertType = "error";
+        }
+    }
+
+    private async Task Register()
+    {
+        try
+        {
+            loginAlert = "";
+            var (success, error, account) = AccountService.CreateAccount(loginUsername, loginPassword);
+            if (success && account != null)
+            {
+                // Login after registration
+                var (loginSuccess, _, loginAccount, sessionToken) = AccountService.Login(loginUsername, loginPassword);
+                if (loginSuccess && loginAccount != null && sessionToken != null)
+                {
+                    await JS.InvokeVoidAsync("localStorage.setItem", "sessionToken", sessionToken);
+                    loginUsername = "";
+                    loginPassword = "";
+                    
+                    // Reload the page to update the currentAccount
+                    Navigation.NavigateTo("/dashboard", forceLoad: true);
+                }
+                else
+                {
+                    loginAlert = "Account created but login failed. Please login manually.";
+                    loginAlertType = "warning";
+                }
+            }
+            else
+            {
+                loginAlert = error ?? "Registration failed";
+                loginAlertType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            loginAlert = $"Registration failed: {ex.Message}";
+            loginAlertType = "error";
+        }
+    }
 }
 

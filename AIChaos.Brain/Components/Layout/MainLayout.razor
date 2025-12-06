@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject AccountService AccountService
+@inject SettingsService SettingsService
 @inject IJSRuntime JS
 
 <Header>
@@ -11,7 +12,11 @@
     </SubtitleContent>
 </Header>
 
-<AccountBar CurrentAccount="@currentAccount" OnAccountChanged="@LoadAccount" />
+@* Show AccountBar if logged in user (not anonymous) OR in stream mode *@
+@if (SettingsService.Settings.General.StreamMode || (currentAccount != null && currentAccount.Id != AccountService.ANONYMOUS_USER_ID))
+{
+    <AccountBar CurrentAccount="@currentAccount" OnAccountChanged="@LoadAccount" />
+}
 
 <NavMenu />
 
@@ -42,7 +47,7 @@
     {
         try
         {
-            // Get session token from localStorage (secure approach)
+            // Always check for session token first (for admin/moderator access)
             var sessionToken = await JS.InvokeAsync<string>("localStorage.getItem", "sessionToken");
             if (!string.IsNullOrEmpty(sessionToken))
             {
@@ -54,12 +59,22 @@
                     await JS.InvokeVoidAsync("localStorage.removeItem", "sessionToken");
                 }
             }
+
+            // If no session and NOT in stream mode (i.e., in single user mode), use the anonymous account
+            if (currentAccount == null && !SettingsService.Settings.General.StreamMode)
+            {
+                currentAccount = AccountService.GetOrCreateAnonymousAccount();
+            }
         }
         catch (Exception ex)
         {
             // Log error but don't throw - this prevents circuit crashes
             Console.WriteLine($"Error loading account: {ex.Message}");
-            currentAccount = null;
+            
+            // Fallback to anonymous account if NOT in stream mode (i.e., in single user mode)
+            currentAccount = !SettingsService.Settings.General.StreamMode
+                ? AccountService.GetOrCreateAnonymousAccount()
+                : null;
         }
 
         await InvokeAsync(StateHasChanged);

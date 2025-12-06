@@ -19,7 +19,7 @@
 <SectionContent SectionId="PageSections.Title">🎮 CHAOS</SectionContent>
 <SectionContent SectionId="PageSections.Subtitle">Control the streamer's game!</SectionContent>
 
-@if (!YouTubeService.IsListening)
+@if (!YouTubeService.IsListening && SettingsService.Settings.General.StreamMode)
 {
     <div class="card" style="text-align: center; padding: 60px 20px;">
         <h2 style="font-size: 32px; margin-bottom: 20px;">📺 Stream Offline</h2>
@@ -31,7 +31,14 @@ else
 {
 <div class="card">
     <h2>Send Your Idea</h2>
-    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 15px;">Each dollar gets you one Idea. Be creative - funny, helpful, or chaotic!</p>
+    @if (SettingsService.Settings.General.StreamMode)
+    {
+        <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 15px;">Each dollar gets you one Idea. Be creative - funny, helpful, or chaotic!</p>
+    }
+    else
+    {
+        <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 15px;">Be creative - funny, helpful, or chaotic!</p>
+    }
     <div class="form-group">
         <textarea @bind="promptInput" placeholder="@GetPlaceholder()" disabled="@(currentAccount == null)"></textarea>
     </div>
@@ -53,7 +60,7 @@ else
         {
             <text>🔒 LOGIN TO PLAY</text>
         }
-        else if (currentAccount.CreditBalance < Constants.CommandCost)
+        else if (SettingsService.Settings.General.StreamMode && currentAccount.CreditBalance < Constants.CommandCost)
         {
             <text>💸 You'll need to donate again to send another</text>
         }
@@ -374,8 +381,10 @@ else
         
         try
         {
-            // Check balance FIRST (before starting interactive session)
-            if (currentAccount.CreditBalance < Constants.CommandCost)
+            var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+            
+            // Check balance FIRST (before starting interactive session) - skip in single user mode
+            if (!isSingleUserMode && currentAccount.CreditBalance < Constants.CommandCost)
             {
                 ShowStatus($"Insufficient credits. You need ${Constants.CommandCost:F2}", "error");
                 isSubmitting = false;
@@ -402,7 +411,8 @@ else
                 addCommandWithStatus: (prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue) =>
                     CommandQueue.AddCommandWithStatus(prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue),
                 isPrivateDiscordMode: SettingsService.Settings.Safety.PrivateDiscordMode,
-                isTestClientModeEnabled: TestClientService.IsEnabled
+                isTestClientModeEnabled: TestClientService.IsEnabled,
+                isSingleUserMode: isSingleUserMode
             );
 
             // Update balance in UI
@@ -432,6 +442,8 @@ else
     {
         try
         {
+            var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+            
             // Use AccountService to handle credit deduction and moderation checks
             var (success, message, commandId, newBalance) = await AccountService.SubmitInteractiveCommandAsync(
                 currentAccount!.Id,
@@ -442,7 +454,8 @@ else
                     ModerationService.AddPendingImage(url, prompt, source, author, userId, cmdId),
                 addCommandWithStatus: (prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue) =>
                     CommandQueue.AddCommandWithStatus(prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue),
-                isPrivateDiscordMode: SettingsService.Settings.Safety.PrivateDiscordMode
+                isPrivateDiscordMode: SettingsService.Settings.Safety.PrivateDiscordMode,
+                isSingleUserMode: isSingleUserMode
             );
             
             // Update balance in UI
@@ -677,6 +690,12 @@ else
     {
         if (currentAccount == null || isSubmitting)
             return true;
+        
+        var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+        
+        // In single user mode, don't check balance
+        if (isSingleUserMode)
+            return false;
         
         // Disable if balance is below cost
         if (currentAccount.CreditBalance < Constants.CommandCost)

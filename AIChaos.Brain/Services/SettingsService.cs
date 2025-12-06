@@ -124,6 +124,18 @@ public class SettingsService
     }
     
     /// <summary>
+    /// Updates General settings.
+    /// </summary>
+    public void UpdateGeneralSettings(bool streamMode)
+    {
+        lock (_lock)
+        {
+            _settings.General.StreamMode = streamMode;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
     /// Updates Twitch settings.
     /// </summary>
     public void UpdateTwitch(TwitchSettings twitch)
