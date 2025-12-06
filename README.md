@@ -399,10 +399,11 @@ AIChaos now includes Workshop addon integration, allowing the AI to download and
 When Workshop support is enabled, the AI has access to these helper functions:
 
 ```lua
--- Download and spawn the first valid model from a Workshop addon
-local ent = DownloadAndSpawnWorkshopModel("123456789", spawnPos)
+-- Download and spawn the first valid model from a Workshop addon (async)
+DownloadAndSpawnWorkshopModel("123456789", spawnPos)
+-- The spawned entity will be available in _G._AI_LAST_WORKSHOP_SPAWN when ready
 
--- Mount a Workshop addon for browsing its contents
+-- Mount a Workshop addon for browsing its contents (async)
 MountWorkshopAddon("123456789")
 
 -- Get all models from a specific Workshop addon

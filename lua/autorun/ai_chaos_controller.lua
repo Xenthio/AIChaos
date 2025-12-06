@@ -72,6 +72,27 @@ if SERVER then
         return true
     end
     
+    -- Helper: Recursively find all .mdl files in a directory and its subdirectories
+    local function FindModelsRecursive(basePath, modelsTable)
+        local files, dirs = file.Find(basePath .. "*", "GAME")
+        if files then
+            for _, fileName in ipairs(files) do
+                if string.EndsWith(fileName, ".mdl") then
+                    local modelPath = basePath .. fileName
+                    table.insert(modelsTable, modelPath)
+                end
+            end
+        end
+        if dirs then
+            for _, dirName in ipairs(dirs) do
+                -- Skip "." and ".."
+                if dirName ~= "." and dirName ~= ".." then
+                    FindModelsRecursive(basePath .. dirName .. "/", modelsTable)
+                end
+            end
+        end
+    end
+    
     -- Helper: Get all models from a Workshop addon
     -- Note: Workshop content is accessed via "GAME" path after mounting
     function GetWorkshopModels(workshopId)
@@ -85,15 +106,7 @@ if SERVER then
         end
         
         for _, basePath in ipairs(searchPaths) do
-            local files, dirs = file.Find(basePath .. "*", "GAME")
-            if files then
-                for _, fileName in ipairs(files) do
-                    if string.EndsWith(fileName, ".mdl") then
-                        local modelPath = basePath .. fileName
-                        table.insert(models, modelPath)
-                    end
-                end
-            end
+            FindModelsRecursive(basePath, models)
         end
         
         return models
@@ -105,15 +118,7 @@ if SERVER then
         local searchPaths = {"models/", "models/props/", "models/player/", "models/weapons/"}
         
         for _, basePath in ipairs(searchPaths) do
-            local files, dirs = file.Find(basePath .. "*", "GAME")
-            if files then
-                for _, fileName in ipairs(files) do
-                    if string.EndsWith(fileName, ".mdl") then
-                        local modelPath = basePath .. fileName
-                        table.insert(models, modelPath)
-                    end
-                end
-            end
+            FindModelsRecursive(basePath, models)
         end
         
         return models
@@ -121,9 +126,15 @@ if SERVER then
     
     -- Mount a Workshop addon at runtime
     function MountWorkshopAddon(workshopId)
-        if not workshopId then 
+        if not workshopId or workshopId == "" then 
             print("[AI Chaos] MountWorkshopAddon: No workshop ID provided")
             return false 
+        end
+        
+        -- Validate it's a numeric string
+        if not string.match(workshopId, "^%d+$") then
+            print("[AI Chaos] MountWorkshopAddon: Invalid workshop ID format (must be numeric): " .. tostring(workshopId))
+            return false
         end
         
         -- Check if already mounted
@@ -149,12 +160,26 @@ if SERVER then
     
     -- Download and spawn the first valid model from a Workshop addon
     function DownloadAndSpawnWorkshopModel(workshopId, spawnPos)
-        if not workshopId then 
+        if not workshopId or workshopId == "" then 
             print("[AI Chaos] DownloadAndSpawnWorkshopModel: No workshop ID provided")
             return nil 
         end
         
-        spawnPos = spawnPos or (Entity(1):GetPos() + Entity(1):GetForward() * 100 + Vector(0, 0, 50))
+        -- Validate it's a numeric string
+        if not string.match(workshopId, "^%d+$") then
+            print("[AI Chaos] DownloadAndSpawnWorkshopModel: Invalid workshop ID format (must be numeric): " .. tostring(workshopId))
+            return nil
+        end
+        
+        -- Default spawn position with Entity(1) validation
+        if not spawnPos then
+            local player = Entity(1)
+            if not IsValid(player) then
+                spawnPos = Vector(0, 0, 100)
+            else
+                spawnPos = player:GetPos() + player:GetForward() * 100 + Vector(0, 0, 50)
+            end
+        end
         
         print("[AI Chaos] Attempting to spawn model from workshop addon: " .. workshopId)
         
@@ -194,25 +219,28 @@ if SERVER then
                     end
                 end
                 
-                if not selectedModel and #models > 0 then
-                    -- Fallback to first model if no valid ones found
-                    selectedModel = models[1]
+                if not selectedModel then
+                    print("[AI Chaos] No valid spawn models found in workshop addon (all models were gestures/gibs/bones)")
+                    return
                 end
                 
-                if selectedModel then
-                    print("[AI Chaos] Spawning model: " .. selectedModel)
-                    local ent = ents.Create("prop_physics")
-                    if IsValid(ent) then
+                print("[AI Chaos] Spawning model: " .. selectedModel)
+                local ent = ents.Create("prop_physics")
+                if IsValid(ent) then
+                    local success, err = pcall(function()
                         ent:SetModel(selectedModel)
-                        ent:SetPos(spawnPos)
-                        ent:Spawn()
-                        print("[AI Chaos] Successfully spawned workshop model!")
-                        
-                        -- Store reference for potential future use
-                        _G._AI_LAST_WORKSHOP_SPAWN = ent
+                    end)
+                    if not success then
+                        print("[AI Chaos] Failed to set model: " .. tostring(err))
+                        ent:Remove()
+                        return
                     end
-                else
-                    print("[AI Chaos] No valid model found in workshop addon")
+                    ent:SetPos(spawnPos)
+                    ent:Spawn()
+                    print("[AI Chaos] Successfully spawned workshop model!")
+                    
+                    -- Store reference for potential future use
+                    _G._AI_LAST_WORKSHOP_SPAWN = ent
                 end
             end
             
