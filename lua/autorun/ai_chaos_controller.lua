@@ -61,32 +61,6 @@ if SERVER then
     -- These functions allow downloading and spawning models from Steam Workshop
     -- Note: These require the AllowWorkshopDownload setting to be enabled
     
-    -- Helper to check if workshop downloads are allowed
-    local function IsWorkshopDownloadAllowed()
-        -- Request workshop permission status from the Brain server
-        local allowed = false
-        local checkUrl = BASE_URL .. "/api/settings/workshop-allowed"
-        
-        HTTP({
-            method = "GET",
-            url = checkUrl,
-            headers = { 
-                ["ngrok-skip-browser-warning"] = "true"
-            },
-            success = function(code, body, headers)
-                if code == 200 then
-                    local data = util.JSONToTable(body)
-                    allowed = data and data.allowed == true
-                end
-            end,
-            failed = function(err)
-                print("[AI Chaos] Failed to check workshop permission: " .. tostring(err))
-            end
-        })
-        
-        return allowed
-    end
-    
     -- Download and mount a workshop addon, then spawn the first valid model found
     -- workshopId: The Steam Workshop ID (e.g., "104691717")
     -- callback: Optional callback function that receives the spawned entity (or nil on failure)
@@ -97,43 +71,66 @@ if SERVER then
             return
         end
         
-        -- Note: In actual GMod, this would use steamworks.Download() and steamworks.ShouldMountAddon()
-        -- For now, we'll implement a basic version that assumes the addon is already mounted
-        print("[AI Chaos] Workshop: Attempting to download workshop item " .. workshopId)
-        
-        steamworks.FileInfo(workshopId, function(result)
-            if not result then
-                print("[AI Chaos] Workshop: Failed to get info for " .. workshopId)
-                if callback then callback(nil) end
-                return
-            end
-            
-            print("[AI Chaos] Workshop: Found addon: " .. (result.title or "Unknown"))
-            
-            -- Download the addon
-            steamworks.Download(workshopId, true, function(path)
-                if not path then
-                    print("[AI Chaos] Workshop: Download failed for " .. workshopId)
-                    if callback then callback(nil) end
-                    return
-                end
-                
-                print("[AI Chaos] Workshop: Downloaded to " .. path)
-                
-                -- Mount the addon
-                if steamworks.ShouldMountAddon(workshopId) then
-                    steamworks.SetShouldMountAddon(workshopId, true)
-                    print("[AI Chaos] Workshop: Addon mounted")
+        -- Check if workshop downloads are allowed
+        local checkUrl = BASE_URL .. "/api/settings/workshop-allowed"
+        HTTP({
+            method = "GET",
+            url = checkUrl,
+            headers = { 
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, body, headers)
+                if code == 200 then
+                    local data = util.JSONToTable(body)
+                    if not (data and data.allowed == true) then
+                        print("[AI Chaos] Workshop: Downloads are disabled in settings")
+                        if callback then callback(nil) end
+                        return
+                    end
                     
-                    -- Find and spawn the first valid model
-                    local ent = FindAndSpawnFirstWorkshopModel(workshopId)
-                    if callback then callback(ent) end
-                else
-                    print("[AI Chaos] Workshop: Failed to mount addon")
-                    if callback then callback(nil) end
+                    -- Permission granted, proceed with download
+                    print("[AI Chaos] Workshop: Attempting to download workshop item " .. workshopId)
+                    
+                    steamworks.FileInfo(workshopId, function(result)
+                        if not result then
+                            print("[AI Chaos] Workshop: Failed to get info for " .. workshopId)
+                            if callback then callback(nil) end
+                            return
+                        end
+                        
+                        print("[AI Chaos] Workshop: Found addon: " .. (result.title or "Unknown"))
+                        
+                        -- Download the addon
+                        steamworks.Download(workshopId, true, function(path)
+                            if not path then
+                                print("[AI Chaos] Workshop: Download failed for " .. workshopId)
+                                if callback then callback(nil) end
+                                return
+                            end
+                            
+                            print("[AI Chaos] Workshop: Downloaded to " .. path)
+                            
+                            -- Mount the addon
+                            if steamworks.ShouldMountAddon(workshopId) then
+                                steamworks.SetShouldMountAddon(workshopId, true)
+                                print("[AI Chaos] Workshop: Addon mounted")
+                                
+                                -- Find and spawn the first valid model
+                                local ent = FindAndSpawnFirstWorkshopModel(workshopId)
+                                if callback then callback(ent) end
+                            else
+                                print("[AI Chaos] Workshop: Failed to mount addon")
+                                if callback then callback(nil) end
+                            end
+                        end)
+                    end)
                 end
-            end)
-        end)
+            end,
+            failed = function(err)
+                print("[AI Chaos] Workshop: Failed to check permission: " .. tostring(err))
+                if callback then callback(nil) end
+            end
+        })
     end
     
     -- Find the first valid model in a workshop addon and spawn it in front of the player
