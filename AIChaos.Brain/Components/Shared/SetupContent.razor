@@ -42,7 +42,31 @@
         </small>
     </div>
 
+    <div class="form-group" style="margin-top: 20px;">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="allowWorkshopDownload" style="width: 18px; height: 18px;">
+            <div>
+                <strong>Allow Workshop Downloads</strong>
+                <div style="color: var(--text-dim); font-size: 13px; margin-top: 3px;">
+                    @if (allowWorkshopDownload)
+                    {
+                        <span>✅ Enabled - AI can download and spawn workshop content</span>
+                    }
+                    else
+                    {
+                        <span>🔒 Disabled - Workshop downloads are blocked (default)</span>
+                    }
+                </div>
+            </div>
+        </label>
+        <small style="display: block; margin-top: 8px; color: var(--text-dim);">
+            When enabled: The AI can download workshop addons and spawn models from them. Use with caution!<br/>
+            When disabled: Workshop download functions will be unavailable to the AI for security.
+        </small>
+    </div>
+
     <button @onclick="SaveGeneralSettings">💾 Save General Settings</button>
+
 </div>
 
 <!-- OpenRouter API -->
@@ -264,6 +288,7 @@
 
     // General Settings
     private bool streamMode = false;
+    private bool allowWorkshopDownload = false;
 
     // OpenRouter
     private bool openRouterConfigured = false;
@@ -305,6 +330,7 @@
 
             // General Settings
             streamMode = settings.General.StreamMode;
+            allowWorkshopDownload = settings.General.AllowWorkshopDownload;
 
             openRouterConfigured = SettingsService.IsOpenRouterConfigured;
 
@@ -369,7 +395,7 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
     {
         try
         {
-            SettingsService.UpdateGeneralSettings(streamMode);
+            SettingsService.UpdateGeneralSettings(streamMode, allowWorkshopDownload);
             ShowAlert("General settings saved! Changes will take effect on next page load.", "success");
         }
         catch

@@ -72,6 +72,16 @@ public class GeneralSettings
     /// - Admin login is still required for dashboard access
     /// </summary>
     public bool StreamMode { get; set; } = false;
+    
+    /// <summary>
+    /// When enabled, allows the AI to download and mount workshop addons at runtime.
+    /// This feature is disabled by default for security reasons.
+    /// When enabled, the AI can:
+    /// - Download workshop addons
+    /// - Browse files in workshop addons
+    /// - Spawn models from workshop content
+    /// </summary>
+    public bool AllowWorkshopDownload { get; set; } = false;
 }
 
 public class AdminSettings

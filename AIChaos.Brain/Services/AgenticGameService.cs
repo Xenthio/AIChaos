@@ -73,12 +73,14 @@ public class AgenticGameService
         
         **WHEN TO USE PREPARATION (isComplete: false):**
         - Need to find specific models that exist in the game
+        - Need to browse workshop addons for available models
         - Need to check player inventory or current state
         - Need to find specific entities by class or property
         - Complex effects that depend on game state
         
         **PREPARATION CODE EXAMPLES (when needed):**
         - Search for models: `local models = {} for _, ent in pairs(ents.GetAll()) do local m = ent:GetModel() if m and m:find("pattern") then table.insert(models, m) end end PrintTable(models)`
+        - Browse workshop models: `local models = BrowseWorkshopModels() print("Found " .. #models .. " workshop models") PrintTable(models)`
         - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass(), npc:GetPos()) end`
         - Check player state: `local p = Entity(1) print("Health:", p:Health(), "Pos:", p:GetPos(), "Weapon:", p:GetActiveWeapon():GetClass())`
         
@@ -89,6 +91,7 @@ public class AgenticGameService
         4. After getting preparation results, generate the main code with full context
         5. If the main code fails, analyze the error and generate fixed code
         6. Maximum iterations are limited - don't waste them on unnecessary preparation
+        7. You can use BrowseWorkshopModels() in preparation to discover available workshop content
         
         {{AiCodeGeneratorService.GroundRules}}
         """;

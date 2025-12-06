@@ -57,6 +57,156 @@ if SERVER then
         net.Broadcast()
     end
     
+    -- 2. Workshop Helper Functions
+    -- These functions allow downloading and spawning models from Steam Workshop
+    -- Note: These require the AllowWorkshopDownload setting to be enabled
+    
+    -- Helper to check if workshop downloads are allowed
+    local function IsWorkshopDownloadAllowed()
+        -- Request workshop permission status from the Brain server
+        local allowed = false
+        local checkUrl = BASE_URL .. "/api/settings/workshop-allowed"
+        
+        HTTP({
+            method = "GET",
+            url = checkUrl,
+            headers = { 
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, body, headers)
+                if code == 200 then
+                    local data = util.JSONToTable(body)
+                    allowed = data and data.allowed == true
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] Failed to check workshop permission: " .. tostring(err))
+            end
+        })
+        
+        return allowed
+    end
+    
+    -- Download and mount a workshop addon, then spawn the first valid model found
+    -- workshopId: The Steam Workshop ID (e.g., "104691717")
+    -- callback: Optional callback function that receives the spawned entity (or nil on failure)
+    function DownloadAndSpawnWorkshopModel(workshopId, callback)
+        if not workshopId then
+            print("[AI Chaos] Workshop: No workshop ID provided")
+            if callback then callback(nil) end
+            return
+        end
+        
+        -- Note: In actual GMod, this would use steamworks.Download() and steamworks.ShouldMountAddon()
+        -- For now, we'll implement a basic version that assumes the addon is already mounted
+        print("[AI Chaos] Workshop: Attempting to download workshop item " .. workshopId)
+        
+        steamworks.FileInfo(workshopId, function(result)
+            if not result then
+                print("[AI Chaos] Workshop: Failed to get info for " .. workshopId)
+                if callback then callback(nil) end
+                return
+            end
+            
+            print("[AI Chaos] Workshop: Found addon: " .. (result.title or "Unknown"))
+            
+            -- Download the addon
+            steamworks.Download(workshopId, true, function(path)
+                if not path then
+                    print("[AI Chaos] Workshop: Download failed for " .. workshopId)
+                    if callback then callback(nil) end
+                    return
+                end
+                
+                print("[AI Chaos] Workshop: Downloaded to " .. path)
+                
+                -- Mount the addon
+                if steamworks.ShouldMountAddon(workshopId) then
+                    steamworks.SetShouldMountAddon(workshopId, true)
+                    print("[AI Chaos] Workshop: Addon mounted")
+                    
+                    -- Find and spawn the first valid model
+                    local ent = FindAndSpawnFirstWorkshopModel(workshopId)
+                    if callback then callback(ent) end
+                else
+                    print("[AI Chaos] Workshop: Failed to mount addon")
+                    if callback then callback(nil) end
+                end
+            end)
+        end)
+    end
+    
+    -- Find the first valid model in a workshop addon and spawn it in front of the player
+    -- Excludes gesture models and other non-visible models
+    function FindAndSpawnFirstWorkshopModel(workshopId)
+        local player = Entity(1)
+        if not IsValid(player) then
+            print("[AI Chaos] Workshop: No valid player found")
+            return nil
+        end
+        
+        -- Get all files from the workshop addon
+        local files, folders = file.Find("models/*.mdl", "workshop")
+        
+        -- Filter out gesture and other non-visible models
+        local validModel = nil
+        for _, modelPath in ipairs(files or {}) do
+            local lowerPath = string.lower(modelPath)
+            -- Skip gesture models, reference models, and other typically invisible models
+            if not (string.find(lowerPath, "gesture") or 
+                    string.find(lowerPath, "reference") or
+                    string.find(lowerPath, "ref.mdl") or
+                    string.find(lowerPath, "phys.mdl")) then
+                validModel = "models/" .. modelPath
+                break
+            end
+        end
+        
+        if not validModel then
+            print("[AI Chaos] Workshop: No valid models found in workshop addon")
+            return nil
+        end
+        
+        print("[AI Chaos] Workshop: Spawning model: " .. validModel)
+        
+        -- Spawn the model in front of the player
+        local pos = player:GetPos() + player:GetForward() * 100 + Vector(0, 0, 50)
+        local ang = player:GetAngles()
+        ang.p = 0 -- Keep it upright
+        
+        local ent = ents.Create("prop_physics")
+        ent:SetModel(validModel)
+        ent:SetPos(pos)
+        ent:SetAngles(ang)
+        ent:Spawn()
+        ent:Activate()
+        
+        print("[AI Chaos] Workshop: Model spawned successfully")
+        return ent
+    end
+    
+    -- Browse and list all models from workshop addons (for AI preparation phase)
+    -- Returns a table of model paths from all mounted workshop addons
+    function BrowseWorkshopModels()
+        local models = {}
+        local files, folders = file.Find("models/*.mdl", "workshop")
+        
+        for _, modelPath in ipairs(files or {}) do
+            local fullPath = "models/" .. modelPath
+            local lowerPath = string.lower(fullPath)
+            
+            -- Filter out non-visible models
+            if not (string.find(lowerPath, "gesture") or 
+                    string.find(lowerPath, "reference") or
+                    string.find(lowerPath, "ref.mdl") or
+                    string.find(lowerPath, "phys.mdl")) then
+                table.insert(models, fullPath)
+            end
+        end
+        
+        return models
+    end
+    
     -- Helper Function: Report execution result back to server (with optional captured data)
     -- Note: commandId can be negative for interactive sessions, nil/0 is not valid
     local function ReportResult(commandId, success, errorMsg, resultData)

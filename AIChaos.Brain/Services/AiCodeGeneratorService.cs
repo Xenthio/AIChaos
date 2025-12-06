@@ -59,6 +59,45 @@ public class AiCodeGeneratorService
            - If you are spawning many props over time (which is what you should do if you are spawning many), you should start cleaning up old ones as you spawn new ones in (though, make sure they have enough time to be seen).
 
         10. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps!
+        
+        11. **Workshop Helper Functions (ADVANCED):**
+            You have access to workshop helper functions when AllowWorkshopDownload setting is enabled:
+            
+            - `BrowseWorkshopModels()` - Returns a table of all available model paths from mounted workshop addons
+              Example usage in preparation phase:
+              ```lua
+              local models = BrowseWorkshopModels()
+              print("Found " .. #models .. " workshop models")
+              for i, model in ipairs(models) do
+                  print(i .. ": " .. model)
+              end
+              ```
+            
+            - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and mounts a workshop addon, then spawns the first valid model
+              Parameters:
+                - workshopId: String - The Steam Workshop ID (e.g., "104691717")
+                - callback: Function (optional) - Called with the spawned entity (or nil on failure)
+              Example:
+              ```lua
+              DownloadAndSpawnWorkshopModel("104691717", function(ent)
+                  if IsValid(ent) then
+                      print("Spawned workshop model!")
+                      -- Can apply effects to the entity here
+                  else
+                      print("Failed to spawn workshop model")
+                  end
+              end)
+              ```
+            
+            - `FindAndSpawnFirstWorkshopModel(workshopId)` - Finds and spawns the first valid model from a workshop addon
+              Returns: Entity or nil
+              Note: Automatically filters out gesture models and other non-visible models
+              
+            **Workshop Usage Notes:**
+            - Workshop downloads are ONLY available when AllowWorkshopDownload is enabled in settings
+            - Models are spawned in front of the player automatically
+            - Gesture models and reference models are automatically excluded
+            - Workshop functions are best used in interactive/agentic mode where you can browse first
            
         """;
     

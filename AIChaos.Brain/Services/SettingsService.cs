@@ -126,11 +126,12 @@ public class SettingsService
     /// <summary>
     /// Updates General settings.
     /// </summary>
-    public void UpdateGeneralSettings(bool streamMode)
+    public void UpdateGeneralSettings(bool streamMode, bool allowWorkshopDownload)
     {
         lock (_lock)
         {
             _settings.General.StreamMode = streamMode;
+            _settings.General.AllowWorkshopDownload = allowWorkshopDownload;
             SaveSettings();
         }
     }
