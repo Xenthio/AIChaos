@@ -80,7 +80,7 @@ public class AgenticGameService
         
         **PREPARATION CODE EXAMPLES (when needed):**
         - Search for models: `local models = {} for _, ent in pairs(ents.GetAll()) do local m = ent:GetModel() if m and m:find("pattern") then table.insert(models, m) end end PrintTable(models)`
-        - Browse workshop models: `local models = BrowseWorkshopModels() print("Found " .. #models .. " workshop models") PrintTable(models)`
+        - Browse workshop assets: `local assets = GetAllMountedAddonAssets() print("Found " .. #assets.models .. " models, " .. #assets.materials .. " materials") PrintTable(assets.models)`
         - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass(), npc:GetPos()) end`
         - Check player state: `local p = Entity(1) print("Health:", p:Health(), "Pos:", p:GetPos(), "Weapon:", p:GetActiveWeapon():GetClass())`
         
@@ -91,7 +91,7 @@ public class AgenticGameService
         4. After getting preparation results, generate the main code with full context
         5. If the main code fails, analyze the error and generate fixed code
         6. Maximum iterations are limited - don't waste them on unnecessary preparation
-        7. You can use BrowseWorkshopModels() in preparation to discover available workshop content
+        7. You can use GetAllMountedAddonAssets() in preparation to discover available workshop content
         
         {{AiCodeGeneratorService.GroundRules}}
         """;
