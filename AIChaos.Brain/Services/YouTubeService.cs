@@ -23,8 +23,10 @@ public partial class YouTubeService : IDisposable
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _pollingTask;
     private readonly Dictionary<string, DateTime> _cooldowns = new();
+    private readonly SemaphoreSlim _listenerLock = new(1, 1);
+    private bool _isPolling = false;
 
-    public bool IsListening => _pollingTask != null && !_pollingTask.IsCompleted;
+    public bool IsListening => _isPolling && _pollingTask != null && !_pollingTask.IsCompleted;
     public string? CurrentVideoId { get; private set; }
     public string? LiveChatId { get; private set; }
 
@@ -122,6 +124,16 @@ public partial class YouTubeService : IDisposable
 
             return video?.LiveStreamingDetails?.ActiveLiveChatId;
         }
+        catch (Google.GoogleApiException apiEx) when (apiEx.HttpStatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogError("[YouTube] QUOTA EXCEEDED! Cannot get live chat ID for video {VideoId}", videoId);
+            _logger.LogError("[YouTube] Your YouTube API quota has been exhausted. It resets daily (usually midnight Pacific Time).");
+            _logger.LogError("[YouTube] To reduce quota usage:");
+            _logger.LogError("[YouTube]   1. Increase polling interval (currently checking every 10+ seconds)");
+            _logger.LogError("[YouTube]   2. Request a quota increase at: https://console.cloud.google.com/apis/api/youtube.googleapis.com/quotas");
+            _logger.LogError("[YouTube]   3. Consider using YouTube's EventSub webhooks instead of polling (requires server setup)");
+            return null;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get live chat ID for video {VideoId}", videoId);
@@ -134,39 +146,68 @@ public partial class YouTubeService : IDisposable
     /// </summary>
     public async Task<bool> StartListeningAsync(string? videoId = null)
     {
-        var settings = _settingsService.Settings.YouTube;
-        videoId ??= settings.VideoId;
-
-        if (string.IsNullOrEmpty(videoId))
+        // Try to acquire the lock - if we can't, another listener is already starting/running
+        if (!await _listenerLock.WaitAsync(0))
         {
-            _logger.LogWarning("No video ID provided");
+            _logger.LogWarning("[YouTube] Cannot start listening - a listener is already running or being started");
             return false;
         }
 
-        if (!await InitializeAsync())
+        try
         {
-            return false;
-        }
+            // Double-check we're not already polling
+            if (_isPolling)
+            {
+                _logger.LogWarning("[YouTube] Cannot start listening - already polling");
+                return false;
+            }
 
-        var liveChatId = await GetLiveChatIdAsync(videoId);
-        if (string.IsNullOrEmpty(liveChatId))
+            var settings = _settingsService.Settings.YouTube;
+            videoId ??= settings.VideoId;
+
+            if (string.IsNullOrEmpty(videoId))
+            {
+                _logger.LogWarning("No video ID provided");
+                return false;
+            }
+
+            if (!await InitializeAsync())
+            {
+                return false;
+            }
+
+            var liveChatId = await GetLiveChatIdAsync(videoId);
+            if (string.IsNullOrEmpty(liveChatId))
+            {
+                _logger.LogWarning("Could not find live chat for video {VideoId}", videoId);
+                return false;
+            }
+
+            // Cancel any existing polling task
+            if (_cancellationTokenSource != null)
+            {
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource.Dispose();
+            }
+
+            CurrentVideoId = videoId;
+            LiveChatId = liveChatId;
+            _isPolling = true;
+
+            _cancellationTokenSource = new CancellationTokenSource();
+            _pollingTask = PollLiveChatAsync(liveChatId, _cancellationTokenSource.Token);
+
+            settings.VideoId = videoId;
+            settings.Enabled = true;
+            _settingsService.SaveSettings();
+
+            _logger.LogInformation("[YouTube] Started listening to YouTube live chat for video {VideoId}", videoId);
+            return true;
+        }
+        finally
         {
-            _logger.LogWarning("Could not find live chat for video {VideoId}", videoId);
-            return false;
+            _listenerLock.Release();
         }
-
-        CurrentVideoId = videoId;
-        LiveChatId = liveChatId;
-
-        _cancellationTokenSource = new CancellationTokenSource();
-        _pollingTask = PollLiveChatAsync(liveChatId, _cancellationTokenSource.Token);
-
-        settings.VideoId = videoId;
-        settings.Enabled = true;
-        _settingsService.SaveSettings();
-
-        _logger.LogInformation("Started listening to YouTube live chat for video {VideoId}", videoId);
-        return true;
     }
 
     /// <summary>
@@ -174,6 +215,9 @@ public partial class YouTubeService : IDisposable
     /// </summary>
     public void StopListening()
     {
+        _logger.LogInformation("[YouTube] Stopping YouTube live chat listener...");
+        
+        _isPolling = false;
         _cancellationTokenSource?.Cancel();
         CurrentVideoId = null;
         LiveChatId = null;
@@ -182,19 +226,30 @@ public partial class YouTubeService : IDisposable
         settings.Enabled = false;
         _settingsService.SaveSettings();
 
-        _logger.LogInformation("Stopped listening to YouTube live chat");
+        _logger.LogInformation("[YouTube] Stopped listening to YouTube live chat");
     }
 
     private async Task PollLiveChatAsync(string liveChatId, CancellationToken cancellationToken)
     {
         var settings = _settingsService.Settings.YouTube;
         string? nextPageToken = null;
+        var pollCount = 0;
 
-        while (!cancellationToken.IsCancellationRequested)
+        _logger.LogInformation("[YouTube] Starting live chat polling loop for chat ID: {LiveChatId}", liveChatId);
+        _logger.LogInformation("[YouTube] Polling interval: {Interval} seconds (configurable in settings)", settings.PollingIntervalSeconds);
+
+        while (!cancellationToken.IsCancellationRequested && _isPolling)
         {
             try
             {
-                if (_youtubeService == null) break;
+                if (_youtubeService == null)
+                {
+                    _logger.LogWarning("[YouTube] YouTube service is null, stopping polling");
+                    break;
+                }
+
+                pollCount++;
+                _logger.LogDebug("[YouTube] Poll #{PollCount} starting...", pollCount);
 
                 var request = _youtubeService.LiveChatMessages.List(liveChatId, "snippet,authorDetails");
                 request.PageToken = nextPageToken;
@@ -207,20 +262,49 @@ public partial class YouTubeService : IDisposable
                     ProcessMessageAsync(message);
                 }
 
-                // Wait before next poll (use pollingIntervalMillis from response)
-                var delay = (int)(response.PollingIntervalMillis ?? 5000);
+                // Wait before next poll - use the configured interval (in milliseconds)
+                var configuredMinInterval = settings.PollingIntervalSeconds * 1000;
+                var suggestedDelay = (int)(response.PollingIntervalMillis ?? configuredMinInterval);
+                var delay = Math.Max(suggestedDelay, configuredMinInterval);
+                
+                // Additional safety check - if delay is somehow less than 1 second, force it to configured minimum
+                if (delay < 1000)
+                {
+                    _logger.LogWarning("[YouTube] Detected suspiciously low polling interval ({Delay}ms), forcing to {ConfiguredMin}ms", 
+                        delay, configuredMinInterval);
+                    delay = configuredMinInterval;
+                }
+                
+                _logger.LogDebug("[YouTube] Poll #{PollCount} complete. Next poll in {Delay}ms", pollCount, delay);
                 await Task.Delay(delay, cancellationToken);
             }
             catch (OperationCanceledException)
             {
+                _logger.LogInformation("[YouTube] Polling cancelled after {PollCount} polls", pollCount);
+                break;
+            }
+            catch (Google.GoogleApiException apiEx) when (apiEx.HttpStatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                _logger.LogError("[YouTube] Quota exceeded after {PollCount} polls! Stopping live chat polling.", pollCount);
+                _logger.LogError("[YouTube] Please wait until your quota resets (usually midnight Pacific Time).");
+                
+                // Stop polling to prevent further quota usage
+                _isPolling = false;
                 break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error polling YouTube live chat");
-                await Task.Delay(5000, cancellationToken);
+                _logger.LogError(ex, "[YouTube] Error polling YouTube live chat (poll #{PollCount})", pollCount);
+                // Use configured interval on error
+                await Task.Delay(settings.PollingIntervalSeconds * 1000, cancellationToken);
             }
         }
+
+        _logger.LogInformation("[YouTube] Polling loop ended after {PollCount} polls. Reason: {Reason}", 
+            pollCount, 
+            cancellationToken.IsCancellationRequested ? "Cancelled" : !_isPolling ? "Stopped" : "Unknown");
+        
+        _isPolling = false;
     }
 
     private async Task ProcessMessageAsync(LiveChatMessage message)
@@ -356,6 +440,7 @@ public partial class YouTubeService : IDisposable
         StopListening();
         _youtubeService?.Dispose();
         _cancellationTokenSource?.Dispose();
+        _listenerLock?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

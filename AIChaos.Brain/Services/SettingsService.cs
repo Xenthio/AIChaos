@@ -319,27 +319,16 @@ public class SettingsService
     }
     
     /// <summary>
-    /// Updates test client-specific settings.
+    /// Updates the YouTube polling interval (in seconds).
     /// </summary>
-    public void UpdateTestClientSettings(string testMap, int timeoutSeconds)
+    public void UpdateYouTubePollingInterval(int intervalSeconds)
     {
         lock (_lock)
         {
-            _settings.TestClient.TestMap = testMap;
-            _settings.TestClient.TimeoutSeconds = timeoutSeconds;
+            // Enforce minimum of 1 second to prevent abuse
+            _settings.YouTube.PollingIntervalSeconds = Math.Max(1, intervalSeconds);
             SaveSettings();
-        }
-    }
-    
-    /// <summary>
-    /// Updates test client mode enabled state.
-    /// </summary>
-    public void UpdateTestClient(bool enabled)
-    {
-        lock (_lock)
-        {
-            _settings.TestClient.Enabled = enabled;
-            SaveSettings();
+            _logger.LogInformation("[Settings] YouTube polling interval updated to {Interval} seconds", _settings.YouTube.PollingIntervalSeconds);
         }
     }
 }

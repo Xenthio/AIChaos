@@ -49,6 +49,7 @@ public class YouTubeSettings
     public int CooldownSeconds { get; set; } = 5;
     public bool Enabled { get; set; } = false;
     public bool AllowViewerOAuth { get; set; } = true; // Allow first 100 viewers to use OAuth login
+    public int PollingIntervalSeconds { get; set; } = 20; // Minimum time between polls (default 20 seconds)
 }
 
 public class SafetySettings
