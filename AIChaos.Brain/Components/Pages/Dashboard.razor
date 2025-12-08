@@ -12,6 +12,7 @@
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
 @using AIChaos.Brain.Helpers
+@using AIChaos.Brain.Models
 
 <PageTitle>Chaos Dashboard</PageTitle>
 
@@ -360,12 +361,13 @@ else
         statusMessage = message;
         statusType = type;
         StateHasChanged();
-        _ = Task.Delay(3000).ContinueWith(async _ =>
+        _ = Task.Run(async () =>
         {
+            await Task.Delay(Constants.MessageDurations.Short);
             await InvokeAsync(() =>
-    {
-    statusMessage = "";
-    StateHasChanged();
+            {
+                statusMessage = "";
+                StateHasChanged();
             });
         });
     }

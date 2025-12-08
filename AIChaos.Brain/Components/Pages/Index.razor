@@ -16,6 +16,7 @@
 @using AIChaos.Brain.Components.Shared
 @using System.Net.Http.Json
 @using AIChaos.Brain.Helpers
+@using AIChaos.Brain.Models
 @implements IDisposable
 
 <PageTitle>Chaos - Viewer Control</PageTitle>
@@ -718,11 +719,12 @@ else
         statusMessage = message;
         statusType = type;
         StateHasChanged();
-        _ = Task.Delay(3000).ContinueWith(async _ => 
-        { 
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(Constants.MessageDurations.Short);
             await InvokeAsync(() =>
             {
-                statusMessage = ""; 
+                statusMessage = "";
                 StateHasChanged();
             });
         });
