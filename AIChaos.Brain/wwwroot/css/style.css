@@ -1,7 +1,9 @@
 :root {
     --primary: #00ff41;
     --primary-dark: #00cc33;
+    --accent: #00ff41;
     --bg-dark: #121212;
+    --bg-darker: #0a0a0a;
     --bg-card: #1e1e1e;
     --text: #00ff41;
     --text-dim: #888;
@@ -270,11 +272,12 @@ textarea#promptInput {
     border-radius: 3px;
 }
 
-.status-pending { background: #555; color: #fff; }
-.status-queued { background: var(--warning); color: #000; }
-.status-executed { background: var(--success); color: #000; }
-.status-undone { background: var(--info); color: #000; }
-.status-failed { background: var(--error); color: #fff; }
+.status-pending { background: #888; color: #fff; }
+.status-pendingmoderation { background: #ff9800; color: #000; }
+.status-queued { background: #f0ad4e; color: #000; }
+.status-executed { background: #5cb85c; color: #000; }
+.status-undone { background: #5bc0de; color: #000; }
+.status-failed { background: #d9534f; color: #fff; }
 
 .history-response {
     color: var(--info);
@@ -470,4 +473,53 @@ code {
     border: 1px solid var(--border);
     border-radius: 8px;
     font-size: 14px;
+}
+
+/* Admin/Dashboard Tabs */
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+    border-bottom: 2px solid var(--bg-darker);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.admin-tabs::-webkit-scrollbar {
+    height: 6px;
+}
+
+.admin-tabs::-webkit-scrollbar-track {
+    background: var(--bg-darker);
+}
+
+.admin-tabs::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 3px;
+}
+
+.admin-tab {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.admin-tab:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.admin-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
 }
