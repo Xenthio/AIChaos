@@ -379,18 +379,18 @@ else
         try
         {
             // Generate code using AI
-            var (executionCode, undoCode) = await CodeGenerator.GenerateCodeAsync(promptInput);
+            var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(promptInput);
 
             // Add command to queue
             var command = CommandQueue.AddCommand(
-            userPrompt: promptInput,
-            executionCode: executionCode,
-            undoCode: undoCode,
-            source: "dashboard",
-            author: currentAccount?.DisplayName ?? "Admin",
-            imageContext: null,
-            userId: currentAccount?.Id ?? "admin",
-            aiResponse: null
+                userPrompt: promptInput,
+                executionCode: executionCode,
+                undoCode: undoCode,
+                source: "dashboard",
+                author: currentAccount?.DisplayName ?? "Admin",
+                imageContext: null,
+                userId: currentAccount?.Id ?? "admin",
+                aiResponse: null
             );
 
             ShowStatus($"✓ {promptInput}", "success");

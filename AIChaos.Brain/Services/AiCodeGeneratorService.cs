@@ -198,8 +198,9 @@ public class AiCodeGeneratorService
 
     /// <summary>
     /// Generates Lua code for the given user request.
+    /// Returns a tuple with execution code, undo code, and whether code needs moderation.
     /// </summary>
-    public async Task<(string ExecutionCode, string UndoCode)> GenerateCodeAsync(
+    public async Task<(string ExecutionCode, string UndoCode, bool NeedsModeration, string? ModerationReason)> GenerateCodeAsync(
         string userRequest,
         string currentMap = "unknown",
         string? imageContext = null,
@@ -275,47 +276,132 @@ public class AiCodeGeneratorService
                 var executionCode = parts[0].Trim();
                 var undoCode = parts.Length > 1 ? parts[1].Trim() : "print(\"No undo code provided\")";
                 
-                // Strip URLs if blocking is enabled
+                // Check for dangerous patterns first (always block these)
+                var dangerousReason = GetDangerousPatternReason(executionCode);
+                if (dangerousReason != null)
+                {
+                    _logger.LogWarning("AI generated code containing dangerous patterns: {Reason}. Blocking.", dangerousReason);
+                    return ("print(\"[BLOCKED] This command would break the game: " + dangerousReason + "\")", 
+                            "print(\"No undo needed - command was blocked\")",
+                            false,
+                            null);
+                }
+                
+                // Check for filtered patterns (send to moderation if BlockLinksInGeneratedCode is enabled)
+                string? moderationReason = null;
                 if (settings.General.BlockLinksInGeneratedCode)
                 {
-                    executionCode = StripUrlsFromCode(executionCode);
-                    undoCode = StripUrlsFromCode(undoCode);
+                    moderationReason = GetFilteredPatternReason(executionCode);
+                    if (moderationReason != null)
+                    {
+                        _logger.LogInformation("AI generated code with filtered content: {Reason}. Sending to moderation.", moderationReason);
+                        // Return original code but flag for moderation
+                        return (executionCode, undoCode, true, moderationReason);
+                    }
                 }
                 
-                // Validate the generated code for dangerous patterns
-                if (ContainsDangerousPatterns(executionCode))
-                {
-                    _logger.LogWarning("AI generated code containing dangerous patterns (map change/disconnect/kill). Rejecting.");
-                    return ("print(\"[BLOCKED] This command would break the game (map change, disconnect, or kill player).\")", 
-                            "print(\"No undo needed - command was blocked\")");
-                }
-                
-                return (executionCode, undoCode);
+                return (executionCode, undoCode, false, null);
             }
 
             // Single code block without undo separator
             var singleCode = code;
             
-            // Strip URLs if blocking is enabled
-            if (settings.General.BlockLinksInGeneratedCode)
+            // Check for dangerous patterns
+            var singleDangerousReason = GetDangerousPatternReason(singleCode);
+            if (singleDangerousReason != null)
             {
-                singleCode = StripUrlsFromCode(singleCode);
+                _logger.LogWarning("AI generated code containing dangerous patterns: {Reason}. Blocking.", singleDangerousReason);
+                return ("print(\"[BLOCKED] This command would break the game: " + singleDangerousReason + "\")", 
+                        "print(\"No undo needed - command was blocked\")",
+                        false,
+                        null);
             }
             
-            if (ContainsDangerousPatterns(singleCode))
+            // Check for filtered patterns
+            string? singleModerationReason = null;
+            if (settings.General.BlockLinksInGeneratedCode)
             {
-                _logger.LogWarning("AI generated code containing dangerous patterns (map change/disconnect/kill). Rejecting.");
-                return ("print(\"[BLOCKED] This command would break the game (map change, disconnect, or kill player).\")", 
-                        "print(\"No undo needed - command was blocked\")");
+                singleModerationReason = GetFilteredPatternReason(singleCode);
+                if (singleModerationReason != null)
+                {
+                    _logger.LogInformation("AI generated code with filtered content: {Reason}. Sending to moderation.", singleModerationReason);
+                    return (singleCode, "print(\"Undo not available for this command\")", true, singleModerationReason);
+                }
             }
 
-            return (singleCode, "print(\"Undo not available for this command\")");
+            return (singleCode, "print(\"Undo not available for this command\")", false, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate code");
-            return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")");
+            return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")", false, null);
         }
+    }
+
+    /// <summary>
+    /// Checks if code contains dangerous patterns that could break the game.
+    /// These are always blocked, never sent to moderation.
+    /// </summary>
+    private static string? GetDangerousPatternReason(string code)
+    {
+        var dangerousChecks = new Dictionary<string, string>
+        {
+            [@"changelevel"] = "Map change command",
+            [@"RunConsoleCommand.*[""']map[""']"] = "Map change via console",
+            [@"game\.ConsoleCommand.*map"] = "Map change via console",
+            [@"RunConsoleCommand.*[""']disconnect[""']"] = "Disconnect command",
+            [@"game\.ConsoleCommand.*disconnect"] = "Disconnect command",
+            [@":\s*Kick\s*\("] = "Player kick",
+            [@"player\.Kick"] = "Player kick",
+            [@"RunConsoleCommand.*[""']kill[""']"] = "Kill command",
+            [@"game\.ConsoleCommand.*kill"] = "Kill command",
+            [@"RunConsoleCommand.*[""']suicide[""']"] = "Suicide command",
+            [@"game\.ConsoleCommand.*suicide"] = "Suicide command",
+            [@"SetHealth\s*\(\s*0\s*\)"] = "Instant death (SetHealth to 0)",
+            [@"SetHealth\s*\(\s*-"] = "Instant death (negative health)",
+            [@":Kill\s*\(\s*\)"] = "Instant death (Kill method)",
+            [@"TakeDamage\s*\(\s*9999"] = "Extreme damage",
+            [@"TakeDamage\s*\(\s*999999"] = "Extreme damage"
+        };
+
+        foreach (var (pattern, reason) in dangerousChecks)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(code, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if code contains filtered patterns that require moderation.
+    /// Returns the reason if filtered content is found, null otherwise.
+    /// </summary>
+    private static string? GetFilteredPatternReason(string code)
+    {
+        var filteredChecks = new Dictionary<string, string>
+        {
+            [@"http\.Fetch"] = "External HTTP request (http.Fetch)",
+            [@"HTTP\.Fetch"] = "External HTTP request (HTTP.Fetch)",
+            [@"html:?OpenURL"] = "External URL opening (html:OpenURL)",
+            [@"gui\.OpenURL"] = "External URL opening (gui.OpenURL)",
+            [@"steamworks\.OpenURL"] = "External URL opening (steamworks.OpenURL)",
+            [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
+            [@"iframe.*src.*http"] = "External iframe detected",
+            [@"https?://"] = "URL detected in code"
+        };
+
+        foreach (var (pattern, reason) in filteredChecks)
+        {
+            if (System.Text.RegularExpressions.Regex.IsMatch(code, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -323,47 +409,8 @@ public class AiCodeGeneratorService
     /// </summary>
     private static bool ContainsDangerousPatterns(string code)
     {
-        var dangerousPatterns = new[]
-        {
-            // Map changes
-            "changelevel",
-            @"RunConsoleCommand.*[""']map[""']",
-            @"game\.ConsoleCommand.*map",
-            
-            // Disconnect commands
-            @"RunConsoleCommand.*[""']disconnect[""']",
-            @"game\.ConsoleCommand.*disconnect",
-            @":\s*Kick\s*\(",
-            @"player\.Kick",
-            
-            // Player killing via console
-            @"RunConsoleCommand.*[""']kill[""']",
-            @"game\.ConsoleCommand.*kill",
-            @"RunConsoleCommand.*[""']suicide[""']",
-            @"game\.ConsoleCommand.*suicide",
-            
-            // Direct health manipulation to 0 or negative (more aggressive patterns)
-            @"SetHealth\s*\(\s*0\s*\)",
-            @"SetHealth\s*\(\s*-",
-            @":Kill\s*\(\s*\)",
-            @"TakeDamage\s*\(\s*9999",
-            @"TakeDamage\s*\(\s*999999",
-            
-            // URL opening functions
-            @"html:?OpenURL",
-            @"gui\.OpenURL",
-            @"steamworks\.OpenURL",
-            
-            // External iframes in HTML
-            @"<iframe[^>]*src\s*=\s*[""']https?://",
-            @"iframe.*src.*http"
-        };
-
-        return dangerousPatterns.Any(pattern =>
-            System.Text.RegularExpressions.Regex.IsMatch(code, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        return GetDangerousPatternReason(code) != null;
     }
-
-
     /// <summary>
     /// Generates force undo code for a stuck command.
     /// </summary>

@@ -284,7 +284,11 @@ public class AccountController : ControllerBase
             var (success, message, commandId, newBalance) = await _accountService.SubmitChaosCommandAsync(
                 account.Id,
                 request.Prompt,
-                codeGenerator: async (prompt) => await _codeGenerator.GenerateCodeAsync(prompt),
+                codeGenerator: async (prompt) =>
+                {
+                    var (exec, undo, _, _) = await _codeGenerator.GenerateCodeAsync(prompt);
+                    return (exec, undo);
+                },
                 needsModeration: _moderationService.NeedsModeration,
                 extractImageUrls: _moderationService.ExtractImageUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 

@@ -354,6 +354,47 @@ public class ImageReviewRequest
     public int ImageId { get; set; }
     public bool Approved { get; set; }
 }
+
+/// <summary>
+/// Represents code pending moderation review due to filtered content.
+/// </summary>
+public class PendingCodeEntry
+{
+    public int Id { get; set; }
+    public int? CommandId { get; set; } // Link to the command entry in history
+    public string UserPrompt { get; set; } = "";
+    public string ExecutionCode { get; set; } = "";
+    public string UndoCode { get; set; } = "";
+    public string Source { get; set; } = "web";
+    public string Author { get; set; } = "anonymous";
+    public string? UserId { get; set; }
+    public string FilterReason { get; set; } = ""; // What triggered the filter
+    public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
+    public CodeModerationStatus Status { get; set; } = CodeModerationStatus.Pending;
+    public DateTime? ReviewedAt { get; set; }
+}
+
+/// <summary>
+/// Status of code in the moderation queue.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum CodeModerationStatus
+{
+    Pending,
+    Approved,
+    Denied
+}
+
+/// <summary>
+/// Request to review code (approve/deny).
+/// </summary>
+public class CodeReviewRequest
+{
+    public int CodeId { get; set; }
+    public bool Approved { get; set; }
+}
+
+/// <summary>
 /// Request to report test result from test client.
 /// </summary>
 public class TestResultRequest
@@ -369,34 +410,4 @@ public class TestResultRequest
     
     [JsonPropertyName("is_test_client")]
     public bool IsTestClient { get; set; }
-}
-
-/// <summary>
-/// Response for agentic session.
-/// </summary>
-public class AgentSessionResponse
-{
-    public string Status { get; set; } = "";
-    public string? Message { get; set; }
-    public int SessionId { get; set; }
-    public string? Mode { get; set; }
-    public int Iteration { get; set; }
-    public string? CurrentPhase { get; set; }
-    public bool IsComplete { get; set; }
-    public string? FinalCode { get; set; }
-    public List<AgentStepResponse> Steps { get; set; } = new();
-}
-
-/// <summary>
-/// Response for a single agent step.
-/// </summary>
-public class AgentStepResponse
-{
-    public int StepNumber { get; set; }
-    public string Phase { get; set; } = "";
-    public string? Code { get; set; }
-    public bool? Success { get; set; }
-    public string? Error { get; set; }
-    public string? ResultData { get; set; }
-    public string? AiThinking { get; set; }
 }

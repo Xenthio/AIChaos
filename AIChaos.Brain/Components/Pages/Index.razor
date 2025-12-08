@@ -403,7 +403,11 @@ else
             var (success, message, commandId, newBalance) = await AccountService.SubmitChaosCommandAsync(
                 currentAccount.Id,
                 promptInput,
-                codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(prompt),
+                codeGenerator: async (prompt) =>
+                {
+                    var (exec, undo, _, _) = await CodeGenerator.GenerateCodeAsync(prompt);
+                    return (exec, undo);
+                },
                 needsModeration: ModerationService.NeedsModeration,
                 extractImageUrls: ModerationService.ExtractImageUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 

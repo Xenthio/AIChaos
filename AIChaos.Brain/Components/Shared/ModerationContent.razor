@@ -5,6 +5,7 @@
 
 @inject ImageModerationService ModerationService
 @inject RefundService RefundService
+@inject CodeModerationService CodeModerationService
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
 @inject TestClientService TestClientService
@@ -19,6 +20,9 @@
 <div class="tabs">
     <button class="tab-btn @(activeTab == "images" ? "active" : "")" @onclick='() => activeTab = "images"'>
         🖼️ Images <span class="pending-count">@pendingImageCount</span>
+    </button>
+    <button class="tab-btn @(activeTab == "code" ? "active" : "")" @onclick='() => activeTab = "code"'>
+        ⚠️ Code <span class="pending-count">@pendingCodeCount</span>
     </button>
     <button class="tab-btn @(activeTab == "refunds" ? "active" : "")" @onclick='() => activeTab = "refunds"'>
         💰 Refunds <span class="pending-count">@pendingRefundCount</span>
@@ -55,6 +59,52 @@
                         <div class="action-buttons">
                             <button @onclick="async () => await ApproveImage(img.Id)" class="btn-success">✅ APPROVE</button>
                             <button @onclick="() => DenyImage(img.Id)" class="btn-danger">❌ DENY</button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@if (activeTab == "code")
+{
+    <div class="card">
+        <h2>⚠️ Pending Code (Filtered Content)</h2>
+        <div class="btn-group" style="margin-bottom: 20px;">
+            <button @onclick="LoadPendingCode" class="btn-secondary">🔄 Refresh</button>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+                <span style="color: var(--text-dim);">Auto-refresh (5s)</span>
+            </label>
+        </div>
+        <div>
+            @if (pendingCode == null || !pendingCode.Any())
+            {
+                <div class="no-images">✅ No code pending moderation</div>
+            }
+            else
+            {
+                @foreach (var codeEntry in pendingCode)
+                {
+                    <div class="image-card">
+                        <div class="image-meta">
+                            <span><strong>#@codeEntry.Id</strong></span>
+                            <span>👤 @codeEntry.Author</span>
+                            <span style="color: var(--warning);">⚠️ @codeEntry.FilterReason</span>
+                        </div>
+                        <div class="image-prompt"><strong>Prompt:</strong> @codeEntry.UserPrompt</div>
+                        <details style="margin-bottom: 10px;">
+                            <summary style="cursor: pointer; color: var(--info);">View Execution Code</summary>
+                            <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto;"><code>@codeEntry.ExecutionCode</code></pre>
+                        </details>
+                        <details>
+                            <summary style="cursor: pointer; color: var(--info);">View Undo Code</summary>
+                            <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto;"><code>@codeEntry.UndoCode</code></pre>
+                        </details>
+                        <div class="action-buttons" style="margin-top: 10px;">
+                            <button @onclick="async () => await ApproveCode(codeEntry.Id)" class="btn-success">✅ APPROVE</button>
+                            <button @onclick="() => DenyCode(codeEntry.Id)" class="btn-danger">❌ DENY</button>
                         </div>
                     </div>
                 }
@@ -172,6 +222,18 @@
         display: flex;
         gap: 10px;
     }
+
+    .code-preview {
+        background: rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        border-radius: 5px;
+        overflow-x: auto;
+        white-space: pre;
+        color: #e0e0e0;
+        font-family: monospace;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
 </style>
 
 @code {
@@ -179,8 +241,10 @@
     private string alertMessage = "";
     private string alertType = "info";
     private List<PendingImageEntry>? pendingImages;
+    private List<PendingCodeEntry>? pendingCode;
     private List<RefundRequest>? pendingRefunds;
     private int pendingImageCount => pendingImages?.Count ?? 0;
+    private int pendingCodeCount => pendingCode?.Count ?? 0;
     private int pendingRefundCount => pendingRefunds?.Count ?? 0;
     private bool autoRefresh = false;
     private System.Threading.Timer? refreshTimer;
@@ -188,10 +252,12 @@
     protected override void OnInitialized()
     {
         LoadPendingImages();
+        LoadPendingCode();
         LoadPendingRefunds();
         
         // Subscribe to events for real-time updates
         ModerationService.PendingImagesChanged += OnPendingImagesChanged;
+        CodeModerationService.PendingCodeChanged += OnPendingCodeChanged;
         CommandQueue.HistoryChanged += OnHistoryChanged;
     }
 
@@ -200,6 +266,15 @@
         await InvokeAsync(() =>
         {
             LoadPendingImages();
+            StateHasChanged();
+        });
+    }
+
+    private async void OnPendingCodeChanged(object? sender, EventArgs e)
+    {
+        await InvokeAsync(() =>
+        {
+            LoadPendingCode();
             StateHasChanged();
         });
     }
@@ -227,6 +302,20 @@
         }
     }
 
+    private void LoadPendingCode()
+    {
+        try
+        {
+            pendingCode = CodeModerationService.GetPendingCode();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Load pending code failed: {ex.Message}");
+            ShowAlert("Failed to load pending code", "error");
+        }
+    }
+
     private void LoadPendingRefunds()
     {
         try
@@ -250,6 +339,7 @@
                 InvokeAsync(() =>
                 {
                     LoadPendingImages();
+                    LoadPendingCode();
                     LoadPendingRefunds();
                 });
             }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
@@ -292,7 +382,7 @@
             }
             
             // Generate code with image context
-            var (executionCode, undoCode) = await CodeGenerator.GenerateCodeAsync(
+            var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
                 entry.UserPrompt,
                 imageContext: $"Image URL: {entry.ImageUrl}");
             
@@ -308,7 +398,7 @@
                     command.ImageContext = entry.ImageUrl;
                     command.Status = CommandStatus.Queued;
                     command.AiResponse = null; // Clear the pending message
-                    
+
                     // Check if test client mode is enabled
                     var isTestClientModeEnabled = TestClientService.IsEnabled;
                     
@@ -384,6 +474,97 @@
         }
     }
 
+    private async Task ApproveCode(int codeId)
+    {
+        try
+        {
+            var entry = CodeModerationService.ApproveCode(codeId);
+            if (entry == null)
+            {
+                ShowAlert("Failed to approve code - code not found", "error");
+                return;
+            }
+
+            // Update the linked command if it exists
+            if (entry.CommandId.HasValue)
+            {
+                var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                if (command != null)
+                {
+                    command.ExecutionCode = entry.ExecutionCode;
+                    command.UndoCode = entry.UndoCode;
+                    command.Status = CommandStatus.Queued;
+                    command.AiResponse = null;
+
+                    // Queue for execution
+                    if (TestClientService.IsEnabled)
+                    {
+                        TestClientService.QueueForTesting(command.Id, entry.ExecutionCode, entry.UserPrompt);
+                        ShowAlert($"Code approved! Command #{command.Id} queued for testing.", "success");
+                    }
+                    else
+                    {
+                        CommandQueue.QueueInteractiveCode(command.Id, entry.ExecutionCode);
+                        ShowAlert($"Code approved! Command #{command.Id} queued for execution.", "success");
+                    }
+                }
+            }
+            else
+            {
+                ShowAlert("Code approved but no linked command found", "warning");
+            }
+
+            LoadPendingCode();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Approve code failed: {ex.Message}");
+            ShowAlert($"Error approving code: {ex.Message}", "error");
+        }
+    }
+
+    private void DenyCode(int codeId)
+    {
+        try
+        {
+            var entry = CodeModerationService.DenyCode(codeId);
+            if (entry != null)
+            {
+                // Refund credits if there's a linked command
+                if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
+                {
+                    AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                    
+                    // Update the command status to Failed
+                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                    if (command != null)
+                    {
+                        command.Status = CommandStatus.Failed;
+                        command.ErrorMessage = "Code denied by moderator: " + entry.FilterReason;
+                        command.AiResponse = $"❌ Your code was denied by a moderator. Reason: {entry.FilterReason}. Credits have been refunded.";
+                    }
+                    
+                    ShowAlert($"Code denied and ${Constants.CommandCost:F2} refunded", "success");
+                }
+                else
+                {
+                    ShowAlert("Code denied", "success");
+                }
+                
+                LoadPendingCode();
+            }
+            else
+            {
+                ShowAlert("Failed to deny code", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Deny code failed: {ex.Message}");
+            ShowAlert("Error denying code", "error");
+        }
+    }
+
     private void ApproveRefund(string refundId)
     {
         try
@@ -450,6 +631,7 @@
         
         // Unsubscribe from events
         ModerationService.PendingImagesChanged -= OnPendingImagesChanged;
+        CodeModerationService.PendingCodeChanged -= OnPendingCodeChanged;
         CommandQueue.HistoryChanged -= OnHistoryChanged;
     }
 }

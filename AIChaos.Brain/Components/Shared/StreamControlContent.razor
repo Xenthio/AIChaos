@@ -4,11 +4,13 @@
 
 @inject ImageModerationService ModerationService
 @inject RefundService RefundService
+@inject CodeModerationService CodeModerationService
 @inject CommandQueueService CommandQueue
 @inject QueueSlotService QueueSlots
 @inject SettingsService SettingsService
 @inject YouTubeService YouTubeService
 @inject AiCodeGeneratorService CodeGenerator
+@inject TestClientService TestClientService
 @inject NavigationManager Navigation
 @inject HttpClient Http
 @inject IJSRuntime JS
@@ -166,6 +168,47 @@
                         <div class="refund-actions">
                             <button @onclick="() => ApproveRefund(refund.Id)" class="btn-success btn-small">✅ Refund</button>
                             <button @onclick="() => DenyRefund(refund.Id)" class="btn-danger btn-small">❌ Deny</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Pending Code -->
+    <div class="card moderation-section">
+        <h2>⚠️ Filtered Code <span class="badge">@pendingCodeCount</span></h2>
+        <div style="margin-bottom: 15px;">
+            <button @onclick="LoadPendingCode" class="btn-secondary">🔄 Refresh</button>
+            <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
+                <input type="checkbox" @bind="autoRefreshCode" @bind:after="ToggleAutoRefreshCode">
+                <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
+            </label>
+        </div>
+        
+        @if (pendingCode == null || !pendingCode.Any())
+        {
+            <div class="empty-state">✅ No filtered code pending</div>
+        }
+        else
+        {
+            <div class="image-list">
+                @foreach (var codereq in pendingCode)
+                {
+                    <div class="image-card-compact" style="flex-direction: column; align-items: stretch;">
+                        <div class="image-info">
+                            <span class="image-id">#@codereq.Id</span>
+                            <span class="image-author">👤 @codereq.Author</span>
+                            <span style="color: var(--warning);">⚠️ @codereq.FilterReason</span>
+                        </div>
+                        <div class="image-prompt" style="margin-bottom: 5px;"><strong>Prompt:</strong> @codereq.UserPrompt</div>
+                        <details style="margin-bottom: 10px;">
+                            <summary style="cursor: pointer; color: var(--info); font-size: 12px;">View Code</summary>
+                            <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 5px;"><code>@codereq.ExecutionCode</code></pre>
+                        </details>
+                        <div class="image-actions">
+                            <button @onclick="() => ApproveCode(codereq.Id)" class="btn-success btn-small">✅ Approve</button>
+                            <button @onclick="() => DenyCode(codereq.Id)" class="btn-danger btn-small">❌ Deny</button>
                         </div>
                     </div>
                 }
@@ -429,6 +472,12 @@
     private bool autoRefreshImages = false;
     private System.Threading.Timer? imageRefreshTimer;
 
+    // Code Moderation
+    private List<PendingCodeEntry>? pendingCode;
+    private int pendingCodeCount = 0;
+    private bool autoRefreshCode = false;
+    private System.Threading.Timer? codeRefreshTimer;
+
     // Refunds
     private List<RefundRequest>? pendingRefunds;
     private int pendingRefundCount = 0;
@@ -476,6 +525,7 @@
     private async Task LoadAll()
     {
         await LoadPendingImages();
+        await LoadPendingCode();
         await LoadPendingRefunds();
         await LoadHistory();
         await LoadQueueStatus();
@@ -832,25 +882,6 @@
         }));
     }
 
-    private void ToggleAutoRefreshImages()
-    {
-        if (autoRefreshImages)
-        {
-            imageRefreshTimer = new System.Threading.Timer(async _ =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadPendingImages();
-                });
-            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
-        }
-        else
-        {
-            imageRefreshTimer?.Dispose();
-            imageRefreshTimer = null;
-        }
-    }
-
     private async Task LoadPendingRefunds()
     {
         try
@@ -891,22 +922,156 @@
         }
     }
 
-    private void ToggleAutoRefreshRefunds()
+    private async Task LoadPendingCode()
     {
-        if (autoRefreshRefunds)
+        try
         {
-            refundRefreshTimer = new System.Threading.Timer(async _ =>
+            pendingCode = CodeModerationService.GetPendingCode();
+            pendingCodeCount = pendingCode?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending code: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task ApproveCode(int codeId)
+    {
+        try
+        {
+            var entry = CodeModerationService.ApproveCode(codeId);
+            if (entry == null)
+            {
+                globalMessage = "Failed to approve code - code not found";
+                globalMessageType = "error";
+                StateHasChanged();
+                return;
+            }
+
+            // Update the linked command if it exists
+            if (entry.CommandId.HasValue)
+            {
+                var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                if (command != null)
+                {
+                    command.ExecutionCode = entry.ExecutionCode;
+                    command.UndoCode = entry.UndoCode;
+                    command.Status = CommandStatus.Queued;
+                    command.AiResponse = null;
+
+                    // Queue for execution
+                    if (TestClientService.IsEnabled)
+                    {
+                        TestClientService.QueueForTesting(command.Id, entry.ExecutionCode, entry.UserPrompt);
+                        globalMessage = $"Code approved! Command #{command.Id} queued for testing.";
+                    }
+                    else
+                    {
+                        CommandQueue.QueueInteractiveCode(command.Id, entry.ExecutionCode);
+                        globalMessage = $"Code approved! Command #{command.Id} queued for execution.";
+                    }
+                    globalMessageType = "success";
+                }
+            }
+
+            await LoadPendingCode();
+            await LoadHistory();
+        }
+        catch (Exception ex)
+        {
+            globalMessage = $"Failed to approve code: {ex.Message}";
+            globalMessageType = "error";
+            Console.WriteLine($"Failed to approve code: {ex.Message}");
+        }
+        StateHasChanged();
+
+        _ = Task.Delay(5000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            globalMessage = "";
+            StateHasChanged();
+        }));
+    }
+
+    private async Task DenyCode(int codeId)
+    {
+        try
+        {
+            var entry = CodeModerationService.DenyCode(codeId);
+            if (entry != null)
+            {
+                // Update the command status to Failed
+                if (entry.CommandId.HasValue)
+                {
+                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                    if (command != null)
+                    {
+                        command.Status = CommandStatus.Failed;
+                        command.ErrorMessage = "Code denied by moderator: " + entry.FilterReason;
+                        command.AiResponse = $"❌ Your command was denied by a moderator. Reason: {entry.FilterReason}";
+                    }
+                }
+
+                globalMessage = "Code denied";
+                globalMessageType = "success";
+                await LoadPendingCode();
+            }
+            else
+            {
+                globalMessage = "Failed to deny code";
+                globalMessageType = "error";
+            }
+        }
+        catch (Exception ex)
+        {
+            globalMessage = $"Failed to deny code: {ex.Message}";
+            globalMessageType = "error";
+            Console.WriteLine($"Failed to deny code: {ex.Message}");
+        }
+        StateHasChanged();
+
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            globalMessage = "";
+            StateHasChanged();
+        }));
+    }
+
+    private void ToggleAutoRefreshImages()
+    {
+        if (autoRefreshImages)
+        {
+            imageRefreshTimer = new System.Threading.Timer(async _ =>
             {
                 await InvokeAsync(async () =>
                 {
-                    await LoadPendingRefunds();
+                    await LoadPendingImages();
                 });
             }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
         }
         else
         {
-            refundRefreshTimer?.Dispose();
-            refundRefreshTimer = null;
+            imageRefreshTimer?.Dispose();
+            imageRefreshTimer = null;
+        }
+    }
+
+    private void ToggleAutoRefreshCode()
+    {
+        if (autoRefreshCode)
+        {
+            codeRefreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadPendingCode();
+                });
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            codeRefreshTimer?.Dispose();
+            codeRefreshTimer = null;
         }
     }
 
@@ -1104,9 +1269,29 @@ end";
         StateHasChanged();
     }
 
+    private void ToggleAutoRefreshRefunds()
+    {
+        if (autoRefreshRefunds)
+        {
+            refundRefreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadPendingRefunds();
+                });
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refundRefreshTimer?.Dispose();
+            refundRefreshTimer = null;
+        }
+    }
+
     public void Dispose()
     {
         imageRefreshTimer?.Dispose();
+        codeRefreshTimer?.Dispose();
         historyRefreshTimer?.Dispose();
         queueStatusRefreshTimer?.Dispose();
         streamStateRefreshTimer?.Dispose();

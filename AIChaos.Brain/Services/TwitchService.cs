@@ -160,7 +160,7 @@ public partial class TwitchService : IDisposable
         // Generate and queue the code
         try
         {
-            var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(filteredPrompt);
+            var (executionCode, undoCode, needsModeration, moderationReason) = await _codeGenerator.GenerateCodeAsync(filteredPrompt);
             
             // Check for dangerous code patterns
             if (ContainsDangerousPatterns(executionCode))

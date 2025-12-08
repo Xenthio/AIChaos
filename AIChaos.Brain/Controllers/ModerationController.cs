@@ -166,7 +166,7 @@ public class ModerationController : ControllerBase
                 _logger.LogInformation("[MODERATION] Generating code for regular (non-interactive) mode");
                 
                 // Generate code with image context now that it's approved
-                var (executionCode, undoCode) = await _codeGenerator.GenerateCodeAsync(
+                var (executionCode, undoCode, needsModeration, moderationReason) = await _codeGenerator.GenerateCodeAsync(
                     entry.UserPrompt,
                     imageContext: $"Image URL: {entry.ImageUrl}");
                 
@@ -229,7 +229,7 @@ public class ModerationController : ControllerBase
         _logger.LogWarning("[MODERATION] FALLBACK: Creating new command for image #{ImageId}", request.ImageId);
         
         // Generate code with image context now that it's approved
-        var (execCode, undoCodeNew) = await _codeGenerator.GenerateCodeAsync(
+        var (execCode, undoCodeNew, needsModerationFallback, moderationReasonFallback) = await _codeGenerator.GenerateCodeAsync(
             entry.UserPrompt,
             imageContext: $"Image URL: {entry.ImageUrl}");
         
