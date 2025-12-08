@@ -530,15 +530,16 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
             StateHasChanged();
         });
 
-        _ = Task.Delay(5000).ContinueWith(async _ =>
+        _ = Task.Run(async () =>
         {
+            await Task.Delay(Constants.MessageDurations.Medium);
             await InvokeAsync(() =>
-    {
-    if (alertMessage == message) // Only clear if it hasn't changed
-    {
-        alertMessage = "";
-        StateHasChanged();
-    }
+            {
+                if (alertMessage == message) // Only clear if it hasn't changed
+                {
+                    alertMessage = "";
+                    StateHasChanged();
+                }
             });
         });
     }

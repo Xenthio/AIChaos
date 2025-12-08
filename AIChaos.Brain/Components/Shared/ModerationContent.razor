@@ -615,9 +615,10 @@
         alertType = type;
         StateHasChanged();
         
-        Task.Delay(3000).ContinueWith(_ =>
+        _ = Task.Run(async () =>
         {
-            InvokeAsync(() =>
+            await Task.Delay(Constants.MessageDurations.Short);
+            await InvokeAsync(() =>
             {
                 alertMessage = "";
                 StateHasChanged();
