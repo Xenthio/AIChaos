@@ -85,9 +85,6 @@ public class ChaosController : ControllerBase
         // Test client mode is disabled, use queue slot service
         var result = _queueSlots.PollNextCommand();
 
-        // Add ngrok bypass header in response (helps with some ngrok configurations)
-        Response.Headers.Append("ngrok-skip-browser-warning", "true");
-
         if (result.HasValue)
         {
             return new PollResponse

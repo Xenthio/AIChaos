@@ -338,26 +338,3 @@ public class AccountController : ControllerBase
         }
     }
 }
-
-public class RegisterRequest
-{
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public string? DisplayName { get; set; }
-}
-
-public class LoginRequest
-{
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-}
-
-public class SubmitRequest
-{
-    public string Prompt { get; set; } = "";
-}
-
-public class LinkGoogleRequest
-{
-    public string Credential { get; set; } = "";
-}

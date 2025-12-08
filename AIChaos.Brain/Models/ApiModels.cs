@@ -411,3 +411,65 @@ public class TestResultRequest
     [JsonPropertyName("is_test_client")]
     public bool IsTestClient { get; set; }
 }
+
+// ==========================================
+// ACCOUNT CONTROLLER REQUEST/RESPONSE MODELS
+// ==========================================
+
+/// <summary>
+/// Request to register a new account.
+/// </summary>
+public class RegisterRequest
+{
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string? DisplayName { get; set; }
+}
+
+/// <summary>
+/// Request to login to an existing account.
+/// </summary>
+public class LoginRequest
+{
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+}
+
+/// <summary>
+/// Request to submit a chaos command.
+/// </summary>
+public class SubmitRequest
+{
+    public string Prompt { get; set; } = "";
+}
+
+/// <summary>
+/// Request to link a YouTube channel via Google OAuth.
+/// </summary>
+public class LinkGoogleRequest
+{
+    public string Credential { get; set; } = "";
+}
+
+// ==========================================
+// MODERATION CONTROLLER REQUEST/RESPONSE MODELS
+// ==========================================
+
+/// <summary>
+/// Payload for submitting a refund request.
+/// </summary>
+public class RefundRequestPayload
+{
+    public string UserId { get; set; } = "";
+    public string? UserDisplayName { get; set; }
+    public int CommandId { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+/// <summary>
+/// Payload for approving or rejecting a refund.
+/// </summary>
+public class RefundActionPayload
+{
+    public string RequestId { get; set; } = "";
+}

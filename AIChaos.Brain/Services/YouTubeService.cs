@@ -259,7 +259,7 @@ public partial class YouTubeService : IDisposable
 
                 foreach (var message in response.Items ?? [])
                 {
-                    ProcessMessageAsync(message);
+                    _ = ProcessMessageAsync(message); // Fire-and-forget intentionally
                 }
 
                 // Wait before next poll - use the configured interval (in milliseconds)

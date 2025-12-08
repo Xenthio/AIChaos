@@ -68,6 +68,34 @@ public class ModerationController : ControllerBase
     }
     
     /// <summary>
+    /// Helper method to queue a command for execution, respecting test client mode.
+    /// </summary>
+    private void QueueCommandForExecution(int commandId, string executionCode, string userPrompt, string context)
+    {
+        var isTestClientModeEnabled = _settingsService.Settings.TestClient.Enabled;
+        
+        _logger.LogInformation("[MODERATION] Test client mode: {Enabled}. Queueing command #{CommandId}", 
+            isTestClientModeEnabled ? "ENABLED" : "DISABLED", commandId);
+        
+        if (isTestClientModeEnabled)
+        {
+            _testClientService.QueueForTesting(commandId, executionCode, userPrompt);
+            _logger.LogInformation("[MODERATION] {Context} command #{CommandId} queued for testing on test client", context, commandId);
+        }
+        else
+        {
+            var command = _commandQueue.GetCommand(commandId);
+            if (command != null)
+            {
+                _commandQueue.QueueCommand(command);
+                var queueCount = _commandQueue.GetQueueCount();
+                _logger.LogInformation("[MODERATION] {Context} command #{CommandId} queued for execution. Queue depth: {QueueCount}", 
+                    context, commandId, queueCount);
+            }
+        }
+    }
+    
+    /// <summary>
     /// Gets all pending images awaiting moderation.
     /// </summary>
     [HttpGet("pending")]
@@ -180,31 +208,14 @@ public class ModerationController : ControllerBase
                 command.AiResponse = null; // Clear the "waiting for moderation" message
                 command.Status = CommandStatus.Queued;
                 
-                // Check if test client mode is enabled
-                var isTestClientModeEnabled = _settingsService.Settings.TestClient.Enabled;
+                // Queue for execution using helper method
+                QueueCommandForExecution(command.Id, executionCode, entry.UserPrompt, "Image approved");
                 
-                _logger.LogInformation("[MODERATION] Test client mode: {Enabled}. Queueing command #{CommandId}", 
-                    isTestClientModeEnabled ? "ENABLED" : "DISABLED", command.Id);
-                
-                // Queue for execution (respect test client mode)
-                if (isTestClientModeEnabled)
-                {
-                    _testClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
-                    _logger.LogInformation("[MODERATION] ? Command #{CommandId} queued for testing on test client", command.Id);
-                }
-                else
-                {
-                    // Add to execution queue
-                    _commandQueue.QueueCommand(command);
-                    var queueCount = _commandQueue.GetQueueCount();
-                    _logger.LogInformation("[MODERATION] ? Command #{CommandId} queued for execution. Queue depth: {QueueCount}", 
-                        command.Id, queueCount);
-                }
-                
+                var isTestClientEnabled = _settingsService.Settings.TestClient.Enabled;
                 return Ok(new ApiResponse
                 {
                     Status = "success",
-                    Message = isTestClientModeEnabled 
+                    Message = isTestClientEnabled 
                         ? "Image approved and command queued for testing" 
                         : "Image approved and command queued for execution",
                     CommandId = command.Id
@@ -248,15 +259,10 @@ public class ModerationController : ControllerBase
             null,
             queueForExecution: !testClientEnabled);
         
-        // If test client mode is enabled, queue for testing
+        // Queue for execution using helper method
         if (testClientEnabled)
         {
             _testClientService.QueueForTesting(command.Id, execCode, entry.UserPrompt);
-            _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for testing", command.Id);
-        }
-        else
-        {
-            _logger.LogInformation("[MODERATION] Approved image command #{CommandId} queued for execution", command.Id);
         }
         
         return Ok(new ApiResponse
@@ -360,6 +366,14 @@ public class ModerationController : ControllerBase
             Constants.CommandCost
         );
         
+        if (refundRequest == null)
+        {
+            return BadRequest(new { 
+                status = "error", 
+                message = "Could not create refund request. This command may have already been refunded." 
+            });
+        }
+        
         return Ok(new { 
             status = "success", 
             message = "Your refund request has been submitted for review.",
@@ -420,23 +434,4 @@ public class ModerationController : ControllerBase
         
         return NotFound(new { status = "error", message = "Refund request not found or already processed" });
     }
-}
-
-/// <summary>
-/// Payload for submitting a refund request.
-/// </summary>
-public class RefundRequestPayload
-{
-    public string UserId { get; set; } = "";
-    public string? UserDisplayName { get; set; }
-    public int CommandId { get; set; }
-    public string Reason { get; set; } = "";
-}
-
-/// <summary>
-/// Payload for approving or rejecting a refund.
-/// </summary>
-public class RefundActionPayload
-{
-    public string RequestId { get; set; } = "";
 }
