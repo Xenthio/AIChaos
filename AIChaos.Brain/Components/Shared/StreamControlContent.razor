@@ -15,6 +15,7 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 
+@using AIChaos.Brain.Helpers
 <!-- Global Status Message -->
 @if (!string.IsNullOrEmpty(globalMessage))
 {
@@ -249,7 +250,7 @@
                                     <span class="history-source">@cmd.Source</span>
                                 </div>
                                 <div class="history-prompt">👤 @cmd.Author: @cmd.UserPrompt</div>
-                                <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                                <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
                             </div>
                             <div class="history-actions-compact">
                                 <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
@@ -1082,18 +1083,6 @@
             historyRefreshTimer = null;
         }
     }
-
-    private string GetStatusClass(CommandStatus status) => status switch
-    {
-        CommandStatus.Executed => "executed",
-        CommandStatus.Failed => "failed",
-        CommandStatus.Queued => "queued",
-        CommandStatus.Undone => "undone",
-        CommandStatus.PendingModeration => "pendingmoderation",
-        _ => "pending"
-    };
-
-    private string GetStatusText(CommandStatus status) => status.ToString();
 
     private void UndoCommand(int commandId)
     {

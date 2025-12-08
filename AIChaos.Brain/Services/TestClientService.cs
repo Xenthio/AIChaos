@@ -231,14 +231,6 @@ public class TestClientService
     }
     
     /// <summary>
-    /// Synchronous wrapper for backward compatibility.
-    /// </summary>
-    public TestResultAction ReportTestResult(int commandId, bool success, string? error)
-    {
-        return ReportTestResultAsync(commandId, success, error).GetAwaiter().GetResult();
-    }
-    
-    /// <summary>
     /// Asks AI to fix the code based on the error.
     /// </summary>
     private async Task<string?> AskAiToFixCodeAsync(string currentCode, string error, string originalPrompt)

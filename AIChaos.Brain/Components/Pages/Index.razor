@@ -15,6 +15,7 @@
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
 @using System.Net.Http.Json
+@using AIChaos.Brain.Helpers
 @implements IDisposable
 
 <PageTitle>Chaos - Viewer Control</PageTitle>
@@ -151,7 +152,7 @@ else
                     <div style="flex: 1;">
                         <div class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</div>
                         <div class="history-prompt">@cmd.UserPrompt</div>
-                        <div class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</div>
+                        <div class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</div>
                     </div>
                     <div class="history-actions">
                         <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁 Redo</button>
@@ -748,18 +749,6 @@ else
     }
 
     
-    private string GetStatusClass(CommandStatus status) => status switch
-    {
-        CommandStatus.Executed => "executed",
-        CommandStatus.Failed => "failed",
-        CommandStatus.Queued => "queued",
-        CommandStatus.Undone => "undone",
-        CommandStatus.PendingModeration => "pendingmoderation",
-        _ => "pending"
-    };
-    
-    private string GetStatusText(CommandStatus status) => status.ToString();
-
     private void DismissInteractiveStatus()
     {
         activeInteractiveSession = null;

@@ -11,6 +11,7 @@
 @inject HttpClient Http
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
+@using AIChaos.Brain.Helpers
 
 <PageTitle>Chaos Dashboard</PageTitle>
 
@@ -169,7 +170,7 @@ else
                                 }
                             </div>
                             <span class="history-source">@cmd.Source</span>
-                            <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                            <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
                             <div class="history-actions">
                                 <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
                                 <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
@@ -397,17 +398,6 @@ else
             Console.WriteLine($"Manual blast failed: {ex.Message}");
         }
     }
-
-    private string GetStatusClass(CommandStatus status) => status switch
-    {
-        CommandStatus.Executed => "executed",
-        CommandStatus.Failed => "failed",
-        CommandStatus.Queued => "queued",
-        CommandStatus.Undone => "undone",
-        _ => "pending"
-    };
-
-    private string GetStatusText(CommandStatus status) => status.ToString();
 
     private async Task Login()
     {

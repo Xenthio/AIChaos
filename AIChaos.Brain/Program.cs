@@ -74,7 +74,6 @@ app.Use(async (context, next) =>
     var forwardedPrefix = context.Request.Headers["X-Forwarded-Prefix"].FirstOrDefault();
     if (!string.IsNullOrEmpty(forwardedPrefix))
     {
-        //Console.WriteLine($"[DEBUG] Received X-Forwarded-Prefix: {forwardedPrefix}");
         context.Request.PathBase = forwardedPrefix;
         
         // Also need to strip the prefix from the path if nginx didn't
@@ -82,8 +81,6 @@ app.Use(async (context, next) =>
         {
             context.Request.Path = remainder;
         }
-        
-        //Console.WriteLine($"[DEBUG] PathBase: {context.Request.PathBase}, Path: {context.Request.Path}");
     }
     await next();
 });

@@ -5,6 +5,7 @@
 @implements IDisposable
 
 <div class="card">
+@using AIChaos.Brain.Helpers
     <h2>📜 Command History</h2>
     
     <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -59,7 +60,7 @@
                             }
                         }
                     </div>
-                    <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                    <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
                     <div class="history-actions">
                         <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
@@ -372,18 +373,6 @@
             Console.WriteLine($"Clear history failed: {ex.Message}");
         }
     }
-
-    private string GetStatusClass(CommandStatus status) => status switch
-    {
-        CommandStatus.Executed => "executed",
-        CommandStatus.Failed => "failed",
-        CommandStatus.Queued => "queued",
-        CommandStatus.Undone => "undone",
-        CommandStatus.PendingModeration => "pendingmoderation",
-        _ => "pending"
-    };
-
-    private string GetStatusText(CommandStatus status) => status.ToString();
 
     public void Dispose()
     {

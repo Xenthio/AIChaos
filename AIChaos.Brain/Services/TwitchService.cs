@@ -114,6 +114,18 @@ public partial class TwitchService : IDisposable
     
     private async void OnMessageReceived(object? sender, OnMessageReceivedArgs e)
     {
+        try
+        {
+            await OnMessageReceivedAsync(e);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Twitch] Unhandled error in message handler");
+        }
+    }
+    
+    private async Task OnMessageReceivedAsync(OnMessageReceivedArgs e)
+    {
         var settings = _settingsService.Settings.Twitch;
         var message = e.ChatMessage;
         
@@ -158,31 +170,24 @@ public partial class TwitchService : IDisposable
         var filteredPrompt = FilterUrls(prompt, isMod, _settingsService.Settings.Safety);
         
         // Generate and queue the code
-        try
+        var (executionCode, undoCode, needsModeration, moderationReason) = await _codeGenerator.GenerateCodeAsync(filteredPrompt);
+        
+        // Check for dangerous code patterns
+        if (ContainsDangerousPatterns(executionCode))
         {
-            var (executionCode, undoCode, needsModeration, moderationReason) = await _codeGenerator.GenerateCodeAsync(filteredPrompt);
-            
-            // Check for dangerous code patterns
-            if (ContainsDangerousPatterns(executionCode))
-            {
-                _logger.LogWarning("[Twitch] Blocked dangerous code from {Username}", username);
-                return;
-            }
-            
-            _commandQueue.AddCommand(
-                filteredPrompt, 
-                executionCode, 
-                undoCode, 
-                "twitch", 
-                username);
-            
-            SetCooldown(username);
-            _logger.LogInformation("[Twitch] Command queued from {Username}: {Prompt}", username, filteredPrompt);
+            _logger.LogWarning("[Twitch] Blocked dangerous code from {Username}", username);
+            return;
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[Twitch] Failed to process command from {Username}", username);
-        }
+        
+        _commandQueue.AddCommand(
+            filteredPrompt, 
+            executionCode, 
+            undoCode, 
+            "twitch", 
+            username);
+        
+        SetCooldown(username);
+        _logger.LogInformation("[Twitch] Command queued from {Username}: {Prompt}", username, filteredPrompt);
     }
     
     private void OnError(object? sender, TwitchLib.Communication.Events.OnErrorEventArgs e)

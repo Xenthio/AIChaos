@@ -454,7 +454,10 @@ public partial class TunnelService : IDisposable
                 return;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get public IP from api.ipify.org");
+        }
         
         try
         {
@@ -464,7 +467,10 @@ public partial class TunnelService : IDisposable
                 PublicIp = (await response.Content.ReadAsStringAsync()).Trim();
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get public IP from icanhazip.com");
+        }
     }
     
     private async Task UpdateLuaFileAsync(string url)
