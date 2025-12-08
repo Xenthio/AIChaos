@@ -262,7 +262,7 @@ public class ModerationController : ControllerBase
         // Queue for execution using helper method
         if (testClientEnabled)
         {
-            _testClientService.QueueForTesting(command.Id, execCode, entry.UserPrompt);
+            QueueCommandForExecution(command.Id, execCode, entry.UserPrompt, "Approved image (fallback)");
         }
         
         return Ok(new ApiResponse
