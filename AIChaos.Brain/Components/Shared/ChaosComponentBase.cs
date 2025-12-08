@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Components.Shared;
@@ -10,9 +11,11 @@ public abstract class ChaosComponentBase : ComponentBase, IDisposable
 {
     private bool _disposed;
     private readonly List<IDisposable> _disposables = new();
+    private readonly SemaphoreSlim _messageSemaphore = new(1, 1);
     
     /// <summary>
     /// Shows a temporary status message that auto-dismisses.
+    /// Thread-safe with semaphore to prevent race conditions.
     /// </summary>
     protected async Task ShowTemporaryMessageAsync(
         Action<string, string> setMessage, 
@@ -20,13 +23,21 @@ public abstract class ChaosComponentBase : ComponentBase, IDisposable
         string type, 
         int durationMs = Constants.MessageDurations.Short)
     {
-        setMessage(message, type);
-        StateHasChanged();
-        
-        await Task.Delay(durationMs);
-        
-        setMessage(string.Empty, type);
-        StateHasChanged();
+        await _messageSemaphore.WaitAsync();
+        try
+        {
+            setMessage(message, type);
+            StateHasChanged();
+            
+            await Task.Delay(durationMs);
+            
+            setMessage(string.Empty, type);
+            StateHasChanged();
+        }
+        finally
+        {
+            _messageSemaphore.Release();
+        }
     }
     
     /// <summary>
@@ -68,15 +79,22 @@ public abstract class ChaosComponentBase : ComponentBase, IDisposable
     {
         if (_disposed) return;
         
+        _messageSemaphore?.Dispose();
+        
         foreach (var disposable in _disposables)
         {
             try
             {
                 disposable?.Dispose();
             }
-            catch
+            catch (ObjectDisposedException)
             {
-                // Ignore disposal errors
+                // Expected when component is being torn down
+            }
+            catch (Exception ex)
+            {
+                // Log disposal errors in development
+                System.Diagnostics.Debug.WriteLine($"Error disposing resource: {ex.Message}");
             }
         }
         

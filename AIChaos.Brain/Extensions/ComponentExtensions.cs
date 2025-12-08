@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Extensions;
 
@@ -14,7 +15,7 @@ public static class ComponentExtensions
     public static Task ShowTemporaryMessageAsync(
         Action setMessage,
         Action clearMessage,
-        int durationMs = 3000)
+        int durationMs = Constants.MessageDurations.Short)
     {
         return Task.Run(async () =>
         {
