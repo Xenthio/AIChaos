@@ -277,8 +277,8 @@ public class AiCodeGeneratorService
                 // Validate the generated code for dangerous patterns
                 if (ContainsDangerousPatterns(executionCode))
                 {
-                    _logger.LogWarning("AI generated code containing dangerous patterns (changelevel/map change). Rejecting.");
-                    return ("print(\"[BLOCKED] This command would change the map, which is not allowed.\")", 
+                    _logger.LogWarning("AI generated code containing dangerous patterns (map change/disconnect/kill). Rejecting.");
+                    return ("print(\"[BLOCKED] This command would break the game (map change, disconnect, or kill player).\")", 
                             "print(\"No undo needed - command was blocked\")");
                 }
                 
@@ -288,8 +288,8 @@ public class AiCodeGeneratorService
             // Single code block without undo separator
             if (ContainsDangerousPatterns(code))
             {
-                _logger.LogWarning("AI generated code containing dangerous patterns (changelevel/map change). Rejecting.");
-                return ("print(\"[BLOCKED] This command would change the map, which is not allowed.\")", 
+                _logger.LogWarning("AI generated code containing dangerous patterns (map change/disconnect/kill). Rejecting.");
+                return ("print(\"[BLOCKED] This command would break the game (map change, disconnect, or kill player).\")", 
                         "print(\"No undo needed - command was blocked\")");
             }
 
@@ -309,9 +309,29 @@ public class AiCodeGeneratorService
     {
         var dangerousPatterns = new[]
         {
+            // Map changes
             "changelevel",
             @"RunConsoleCommand.*[""']map[""']",
-            @"game\.ConsoleCommand.*map"
+            @"game\.ConsoleCommand.*map",
+            
+            // Disconnect commands
+            @"RunConsoleCommand.*[""']disconnect[""']",
+            @"game\.ConsoleCommand.*disconnect",
+            @":\s*Kick\s*\(",
+            @"player\.Kick",
+            
+            // Player killing via console
+            @"RunConsoleCommand.*[""']kill[""']",
+            @"game\.ConsoleCommand.*kill",
+            @"RunConsoleCommand.*[""']suicide[""']",
+            @"game\.ConsoleCommand.*suicide",
+            
+            // Direct health manipulation to 0 or negative (more aggressive patterns)
+            @"SetHealth\s*\(\s*0\s*\)",
+            @"SetHealth\s*\(\s*-",
+            @":Kill\s*\(\s*\)",
+            @"TakeDamage\s*\(\s*9999",
+            @"TakeDamage\s*\(\s*999999"
         };
 
         return dangerousPatterns.Any(pattern =>
