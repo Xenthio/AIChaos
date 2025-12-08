@@ -1,3 +1,4 @@
+@* Example panel component demonstrating component splitting pattern *@
 @using AIChaos.Brain.Models
 @using AIChaos.Brain.Services
 @inject QueueSlotService QueueSlots
@@ -15,7 +16,6 @@
         </button>
     </div>
     
-    <!-- Queue Status -->
     <div class="queue-stats">
         <div class="stat-item">
             <span class="stat-label">Active Slots:</span>
@@ -23,7 +23,7 @@
         </div>
     </div>
     
-    <button @onclick="LoadQueueStatus" class="btn-secondary" style="width: 100%; margin-top: 10px;">
+    <button @onclick="async () => await OnStatusChanged.InvokeAsync()" class="btn-secondary" style="width: 100%; margin-top: 10px;">
         🔄 Refresh Status
     </button>
     
@@ -52,34 +52,22 @@
     {
         try
         {
-            var blasted = 0;
-            for (int i = 0; i < blastCount; i++)
-            {
-                var cmd = CommandQueue.PollNextCommand();
-                if (cmd == null) break;
-                
-                blasted++;
-            }
+            var count = Math.Max(1, Math.Min(blastCount, 10));
+            var commands = QueueSlots.ManualBlast(count);
             
-            ShowStatus($"✅ Blasted {blasted} commands from queue!", "success");
-            await OnStatusChanged.InvokeAsync();
+            if (commands != null)
+            {
+                ShowStatus($"💥 Blasted {commands.Count} command(s)!", "success");
+                await OnStatusChanged.InvokeAsync();
+            }
+            else
+            {
+                ShowStatus("Failed to blast queue", "error");
+            }
         }
         catch (Exception ex)
         {
-            ShowStatus($"❌ Blast failed: {ex.Message}", "error");
-        }
-    }
-
-    private async Task LoadQueueStatus()
-    {
-        try
-        {
-            await OnStatusChanged.InvokeAsync();
-            ShowStatus("✅ Status refreshed", "success");
-        }
-        catch (Exception ex)
-        {
-            ShowStatus($"❌ Failed to refresh: {ex.Message}", "error");
+            ShowStatus($"❌ Error: {ex.Message}", "error");
         }
     }
 
