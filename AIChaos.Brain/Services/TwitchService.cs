@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AIChaos.Brain.Models;
+using AIChaos.Brain.Helpers;
 using TwitchLib.Client;
 using TwitchLib.Client.Events;
 using TwitchLib.Client.Models;
@@ -167,13 +168,13 @@ public partial class TwitchService : IDisposable
         
         // Filter URLs if not moderator
         var isMod = message.IsModerator || message.IsBroadcaster;
-        var filteredPrompt = FilterUrls(prompt, isMod, _settingsService.Settings.Safety);
+        var filteredPrompt = SafetyHelper.FilterUrls(prompt, isMod, _settingsService.Settings.Safety);
         
         // Generate and queue the code
         var (executionCode, undoCode, needsModeration, moderationReason) = await _codeGenerator.GenerateCodeAsync(filteredPrompt);
         
         // Check for dangerous code patterns
-        if (ContainsDangerousPatterns(executionCode))
+        if (SafetyHelper.ContainsDangerousPatterns(executionCode))
         {
             _logger.LogWarning("[Twitch] Blocked dangerous code from {Username}", username);
             return;
@@ -208,59 +209,6 @@ public partial class TwitchService : IDisposable
     {
         _cooldowns[username.ToLowerInvariant()] = DateTime.UtcNow;
     }
-    
-    private static string FilterUrls(string message, bool isMod, SafetySettings safety)
-    {
-        if (!safety.BlockUrls || isMod)
-        {
-            return message;
-        }
-        
-        var urlPattern = UrlRegex();
-        var matches = urlPattern.Matches(message);
-        var filtered = message;
-        
-        foreach (Match match in matches)
-        {
-            var url = match.Value;
-            try
-            {
-                var uri = new Uri(url);
-                var domain = uri.Host.ToLowerInvariant();
-                
-                var isAllowed = safety.AllowedDomains.Any(d => 
-                    domain.Contains(d, StringComparison.OrdinalIgnoreCase));
-                
-                if (!isAllowed)
-                {
-                    filtered = filtered.Replace(url, "[URL REMOVED]");
-                }
-            }
-            catch
-            {
-                filtered = filtered.Replace(url, "[URL REMOVED]");
-            }
-        }
-        
-        return filtered;
-    }
-    
-    private static bool ContainsDangerousPatterns(string code)
-    {
-        var dangerousPatterns = new[]
-        {
-            "changelevel",
-            @"RunConsoleCommand.*""map""",
-            @"RunConsoleCommand.*'map'",
-            @"game\.ConsoleCommand.*map"
-        };
-        
-        return dangerousPatterns.Any(pattern => 
-            Regex.IsMatch(code, pattern, RegexOptions.IgnoreCase));
-    }
-    
-    [GeneratedRegex(@"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+")]
-    private static partial Regex UrlRegex();
     
     public void Dispose()
     {

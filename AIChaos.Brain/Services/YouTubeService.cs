@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AIChaos.Brain.Models;
+using AIChaos.Brain.Helpers;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Google.Apis.YouTube.v3;
@@ -381,59 +382,6 @@ public partial class YouTubeService : IDisposable
     {
         _cooldowns[username.ToLowerInvariant()] = DateTime.UtcNow;
     }
-
-    private static string FilterUrls(string message, bool isMod, SafetySettings safety)
-    {
-        if (!safety.BlockUrls || isMod)
-        {
-            return message;
-        }
-
-        var urlPattern = UrlRegex();
-        var matches = urlPattern.Matches(message);
-        var filtered = message;
-
-        foreach (Match match in matches)
-        {
-            var url = match.Value;
-            try
-            {
-                var uri = new Uri(url);
-                var domain = uri.Host.ToLowerInvariant();
-
-                var isAllowed = safety.AllowedDomains.Any(d =>
-                    domain.Contains(d, StringComparison.OrdinalIgnoreCase));
-
-                if (!isAllowed)
-                {
-                    filtered = filtered.Replace(url, "[URL REMOVED]");
-                }
-            }
-            catch
-            {
-                filtered = filtered.Replace(url, "[URL REMOVED]");
-            }
-        }
-
-        return filtered;
-    }
-
-    private static bool ContainsDangerousPatterns(string code)
-    {
-        var dangerousPatterns = new[]
-        {
-            "changelevel",
-            @"RunConsoleCommand.*""map""",
-            @"RunConsoleCommand.*'map'",
-            @"game\.ConsoleCommand.*map"
-        };
-
-        return dangerousPatterns.Any(pattern =>
-            Regex.IsMatch(code, pattern, RegexOptions.IgnoreCase));
-    }
-
-    [GeneratedRegex(@"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+")]
-    private static partial Regex UrlRegex();
 
     public void Dispose()
     {
