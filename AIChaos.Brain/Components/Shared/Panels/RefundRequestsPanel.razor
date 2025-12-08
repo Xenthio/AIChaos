@@ -1,0 +1,118 @@
+@using AIChaos.Brain.Services
+@using AIChaos.Brain.Models
+@implements IDisposable
+@inject RefundService RefundService
+
+<!-- Pending Refunds -->
+<div class="card moderation-section">
+    <h2>💰 Refund Requests <span class="badge">@PendingCount</span></h2>
+    <div style="margin-bottom: 15px;">
+        <button @onclick="RefreshRefunds" class="btn-secondary">🔄 Refresh</button>
+        <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+            <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
+        </label>
+    </div>
+    
+    @if (pendingRefunds == null || !pendingRefunds.Any())
+    {
+        <div class="empty-state">✅ No refund requests</div>
+    }
+    else
+    {
+        <div class="refund-list">
+            @foreach (var refund in pendingRefunds)
+            {
+                <div class="refund-card-compact">
+                    <div class="refund-info">
+                        <span class="refund-id">#@refund.Id</span>
+                        <span class="refund-user">👤 @refund.UserDisplayName</span>
+                        <span class="refund-amount">$@refund.Amount.ToString("F2")</span>
+                    </div>
+                    <div class="refund-reason"><strong>Reason:</strong> @refund.Reason</div>
+                    <div class="refund-actions">
+                        <button @onclick="() => ApproveRefund(refund.Id.ToString())" class="btn-success btn-small">✅ Refund</button>
+                        <button @onclick="() => DenyRefund(refund.Id.ToString())" class="btn-danger btn-small">❌ Deny</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int PendingCount { get; set; }
+    [Parameter] public EventCallback OnRefundProcessed { get; set; }
+    
+    private List<RefundRequest>? pendingRefunds;
+    private bool autoRefresh = false;
+    private System.Threading.Timer? refreshTimer;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshRefunds();
+    }
+    
+    private async Task RefreshRefunds()
+    {
+        try
+        {
+            pendingRefunds = RefundService.GetPendingRequests();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending refunds: {ex.Message}");
+        }
+    }
+    
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () => await RefreshRefunds());
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+    
+    private async Task ApproveRefund(string refundId)
+    {
+        try
+        {
+            RefundService.ApproveRefund(refundId);
+            await RefreshRefunds();
+            await OnRefundProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to approve refund: {ex.Message}");
+        }
+    }
+    
+    private async Task DenyRefund(string refundId)
+    {
+        try
+        {
+            RefundService.RejectRefund(refundId);
+            await RefreshRefunds();
+            await OnRefundProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to deny refund: {ex.Message}");
+        }
+    }
+    
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+}

@@ -1,0 +1,122 @@
+@using AIChaos.Brain.Services
+@using AIChaos.Brain.Models
+@implements IDisposable
+@inject CodeModerationService CodeModerationService
+
+<!-- Pending Code -->
+<div class="card moderation-section">
+    <h2>⚠️ Filtered Code <span class="badge">@PendingCount</span></h2>
+    <div style="margin-bottom: 15px;">
+        <button @onclick="RefreshCode" class="btn-secondary">🔄 Refresh</button>
+        <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+            <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
+        </label>
+    </div>
+    
+    @if (pendingCode == null || !pendingCode.Any())
+    {
+        <div class="empty-state">✅ No filtered code pending</div>
+    }
+    else
+    {
+        <div class="image-list">
+            @foreach (var codereq in pendingCode)
+            {
+                <div class="image-card-compact" style="flex-direction: column; align-items: stretch;">
+                    <div class="image-info">
+                        <span class="image-id">#@codereq.Id</span>
+                        <span class="image-author">👤 @codereq.Author</span>
+                        <span style="color: var(--warning);">⚠️ @codereq.FilterReason</span>
+                    </div>
+                    <div class="image-prompt" style="margin-bottom: 5px;"><strong>Prompt:</strong> @codereq.UserPrompt</div>
+                    <details style="margin-bottom: 10px;">
+                        <summary style="cursor: pointer; color: var(--info); font-size: 12px;">View Code</summary>
+                        <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 5px;"><code>@codereq.ExecutionCode</code></pre>
+                    </details>
+                    <div class="image-actions">
+                        <button @onclick="() => ApproveCode(codereq.Id)" class="btn-success btn-small">✅ Approve</button>
+                        <button @onclick="() => DenyCode(codereq.Id)" class="btn-danger btn-small">❌ Deny</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int PendingCount { get; set; }
+    [Parameter] public EventCallback OnCodeProcessed { get; set; }
+    
+    private List<PendingCodeEntry>? pendingCode;
+    private bool autoRefresh = false;
+    private System.Threading.Timer? refreshTimer;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshCode();
+    }
+    
+    private async Task RefreshCode()
+    {
+        try
+        {
+            pendingCode = CodeModerationService.GetPendingCode();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending code: {ex.Message}");
+        }
+    }
+    
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () => await RefreshCode());
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+    
+    private async Task ApproveCode(int codeId)
+    {
+        try
+        {
+            CodeModerationService.ApproveCode(codeId);
+            await RefreshCode();
+            await OnCodeProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to approve code: {ex.Message}");
+        }
+    }
+    
+    private async Task DenyCode(int codeId)
+    {
+        try
+        {
+            CodeModerationService.DenyCode(codeId);
+            await RefreshCode();
+            await OnCodeProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to deny code: {ex.Message}");
+        }
+    }
+    
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+}

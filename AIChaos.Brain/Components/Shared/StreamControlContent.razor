@@ -2,20 +2,14 @@
 @using AIChaos.Brain.Services
 @implements IDisposable
 
+@inject QueueSlotService QueueSlots
+@inject YouTubeService YouTubeService
 @inject ImageModerationService ModerationService
 @inject RefundService RefundService
 @inject CodeModerationService CodeModerationService
 @inject CommandQueueService CommandQueue
-@inject QueueSlotService QueueSlots
-@inject SettingsService SettingsService
-@inject YouTubeService YouTubeService
-@inject AiCodeGeneratorService CodeGenerator
-@inject TestClientService TestClientService
 @inject NavigationManager Navigation
-@inject HttpClient Http
-@inject IJSRuntime JS
 
-@using AIChaos.Brain.Helpers
 <!-- Global Status Message -->
 @if (!string.IsNullOrEmpty(globalMessage))
 {
@@ -25,399 +19,44 @@
 <div class="stream-control-grid">
     @if (CurrentAccount?.Role == UserRole.Admin)
     {
-        <!-- Manual Blast Controls -->
-        <div class="card control-panel">
-            <h2>💥 Queue Control</h2>
-            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
-                <input type="number" @bind="blastCount" min="1" max="10" 
-                       style="width: 80px; padding: 10px; text-align: center; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);" 
-                       title="Number of commands to blast" />
-                <button @onclick="ManualBlast" class="btn-warning" style="flex: 1;">
-                    💥 BLAST QUEUE
-                </button>
-            </div>
-            
-            <!-- Queue Status -->
-            <div class="queue-stats">
-                <div class="stat-item">
-                    <span class="stat-label">Active Slots:</span>
-                    <span class="stat-value">@activeSlots / @totalSlots</span>
-                </div>
-            </div>
-            
-            <button @onclick="LoadQueueStatus" class="btn-secondary" style="width: 100%; margin-top: 10px;">
-                🔄 Refresh Status
-            </button>
-            
-            <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
-                <button @onclick="TestBarrels" class="btn-primary" style="width: 100%;">
-                    🛢️ Test: Spawn 10 Barrels
-                </button>
-            </div>
-            
-            @if (!string.IsNullOrEmpty(blastMessage))
-            {
-                <div class="alert alert-@blastMessageType" style="margin-top: 10px;">@blastMessage</div>
-            }
-        </div>
-
-        <!-- YouTube Video ID Setting -->
-        <div class="card control-panel">
-            <h2>
-                📺 Stream Settings
-                <span class="status-badge @(isStreamActive ? "status-connected" : "status-disconnected")">
-                    @(isStreamActive ? "🔴 LIVE" : "⚫ OFFLINE")
-                </span>
-            </h2>
-            <div class="form-group">
-                <label>Live Stream Video ID</label>
-                <input type="text" @bind="videoId" placeholder="e.g., dQw4w9WgXcQ" 
-                       disabled="@isStreamActive"
-                       style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
-                <small style="color: var(--text-dim);">The video ID from your YouTube live stream URL</small>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                @if (!isStreamActive)
-                {
-                    <button @onclick="StartStream" class="btn-success" style="flex: 1;" disabled="@string.IsNullOrEmpty(videoId)">
-                        ▶️ Start Stream
-                    </button>
-                }
-                else
-                {
-                    <button @onclick="StopStream" class="btn-danger" style="flex: 1;">
-                        ⏹️ Stop Stream
-                    </button>
-                }
-                <button @onclick="LoginWithYouTube" class="btn-secondary" style="flex: 1;">
-                    🔗 Login with YouTube
-                </button>
-            </div>
-            @if (!string.IsNullOrEmpty(videoMessage))
-            {
-                <div class="alert alert-@videoMessageType" style="margin-top: 10px;">@videoMessage</div>
-            }
-        </div>
+        <!-- Queue Control Panel -->
+        <QueueControlPanel 
+            ActiveSlots="@activeSlots" 
+            TotalSlots="@totalSlots" 
+            OnStatusChanged="@LoadQueueStatus" />
+        
+        <!-- Stream Settings Panel -->
+        <StreamSettingsPanel 
+            IsStreamActive="@isStreamActive" 
+            OnStreamStateChanged="@LoadStreamState" />
+        
+        <!-- Image Moderation Panel -->
+        <ImageModerationPanel 
+            PendingCount="@pendingImageCount" 
+            OnImageProcessed="@LoadPendingImageCount" />
+        
+        <!-- Refund Requests Panel -->
+        <RefundRequestsPanel 
+            PendingCount="@pendingRefundCount" 
+            OnRefundProcessed="@LoadPendingRefundCount" />
+        
+        <!-- Code Moderation Panel -->
+        <CodeModerationPanel 
+            PendingCount="@pendingCodeCount" 
+            OnCodeProcessed="@LoadPendingCodeCount" />
+        
+        <!-- Global History Panel -->
+        <GlobalHistoryPanel 
+            OnStatusMessage="@HandleStatusMessage" 
+            OnHistoryChanged="@StateHasChanged" />
     }
-
-    <!-- Pending Links -->
-    <div class="card moderation-section">
-        <h2>🔗 Incoming Links <span class="badge">@pendingImageCount</span></h2>
-        <div style="margin-bottom: 15px;">
-            <button @onclick="LoadPendingImages" class="btn-secondary">🔄 Refresh</button>
-            <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
-                <input type="checkbox" @bind="autoRefreshImages" @bind:after="ToggleAutoRefreshImages">
-                <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
-            </label>
-        </div>
-        
-        @if (pendingImages == null || !pendingImages.Any())
-        {
-            <div class="empty-state">✅ No links pending</div>
-        }
-        else
-        {
-            <div class="image-list">
-                @foreach (var img in pendingImages)
-                {
-                    <div class="image-card-compact">
-                        <div class="image-info">
-                            <span class="image-id">#@img.Id</span>
-                            <span class="image-author">👤 @img.Author</span>
-                        </div>
-                        <div class="image-prompt">@img.UserPrompt</div>
-                        <div class="link-url" style="word-break: break-all; font-size: 12px; margin-bottom: 10px;">
-                            🔗 <a href="@img.ImageUrl" target="_blank" rel="noopener noreferrer" style="color: var(--info); text-decoration: underline;">@img.ImageUrl</a>
-                        </div>
-                        <div class="image-actions">
-                            <button @onclick="() => ApproveImage(img.Id)" class="btn-success btn-small">✅</button>
-                            <button @onclick="() => DenyImage(img.Id)" class="btn-danger btn-small">❌</button>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
-
-    <!-- Pending Refunds -->
-    <div class="card moderation-section">
-        <h2>💰 Refund Requests <span class="badge">@pendingRefundCount</span></h2>
-        <div style="margin-bottom: 15px;">
-            <button @onclick="LoadPendingRefunds" class="btn-secondary">🔄 Refresh</button>
-            <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
-                <input type="checkbox" @bind="autoRefreshRefunds" @bind:after="ToggleAutoRefreshRefunds">
-                <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
-            </label>
-        </div>
-        
-        @if (pendingRefunds == null || !pendingRefunds.Any())
-        {
-            <div class="empty-state">✅ No refund requests</div>
-        }
-        else
-        {
-            <div class="refund-list">
-                @foreach (var refund in pendingRefunds)
-                {
-                    <div class="refund-card-compact">
-                        <div class="refund-info">
-                            <span class="refund-id">#@refund.Id</span>
-                            <span class="refund-user">👤 @refund.UserDisplayName</span>
-                            <span class="refund-amount">$@refund.Amount.ToString("F2")</span>
-                        </div>
-                        <div class="refund-reason"><strong>Reason:</strong> @refund.Reason</div>
-                        <div class="refund-actions">
-                            <button @onclick="() => ApproveRefund(refund.Id)" class="btn-success btn-small">✅ Refund</button>
-                            <button @onclick="() => DenyRefund(refund.Id)" class="btn-danger btn-small">❌ Deny</button>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
-
-    <!-- Pending Code -->
-    <div class="card moderation-section">
-        <h2>⚠️ Filtered Code <span class="badge">@pendingCodeCount</span></h2>
-        <div style="margin-bottom: 15px;">
-            <button @onclick="LoadPendingCode" class="btn-secondary">🔄 Refresh</button>
-            <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
-                <input type="checkbox" @bind="autoRefreshCode" @bind:after="ToggleAutoRefreshCode">
-                <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
-            </label>
-        </div>
-        
-        @if (pendingCode == null || !pendingCode.Any())
-        {
-            <div class="empty-state">✅ No filtered code pending</div>
-        }
-        else
-        {
-            <div class="image-list">
-                @foreach (var codereq in pendingCode)
-                {
-                    <div class="image-card-compact" style="flex-direction: column; align-items: stretch;">
-                        <div class="image-info">
-                            <span class="image-id">#@codereq.Id</span>
-                            <span class="image-author">👤 @codereq.Author</span>
-                            <span style="color: var(--warning);">⚠️ @codereq.FilterReason</span>
-                        </div>
-                        <div class="image-prompt" style="margin-bottom: 5px;"><strong>Prompt:</strong> @codereq.UserPrompt</div>
-                        <details style="margin-bottom: 10px;">
-                            <summary style="cursor: pointer; color: var(--info); font-size: 12px;">View Code</summary>
-                            <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 5px;"><code>@codereq.ExecutionCode</code></pre>
-                        </details>
-                        <div class="image-actions">
-                            <button @onclick="() => ApproveCode(codereq.Id)" class="btn-success btn-small">✅ Approve</button>
-                            <button @onclick="() => DenyCode(codereq.Id)" class="btn-danger btn-small">❌ Deny</button>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-    </div>
-
-    <!-- Global History (with spoiler dropdown) -->
-    <div class="card history-section">
-        <h2>📜 Global History</h2>
-        <div style="margin-bottom: 15px;">
-            <button @onclick="LoadHistory" class="btn-secondary">🔄 Refresh</button>
-            <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
-                <input type="checkbox" @bind="autoRefreshHistory" @bind:after="ToggleAutoRefreshHistory">
-                <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
-            </label>
-        </div>
-        
-        <details class="history-spoiler">
-            <summary style="cursor: pointer; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; margin-bottom: 10px;">
-                ⚠️ Click to reveal history (may spoil effects)
-            </summary>
-            
-            @if (history == null || !history.Any())
-            {
-                <div class="empty-state">No commands in history yet.</div>
-            }
-            else
-            {
-                <div class="history-list">
-                    @foreach (var cmd in history.Take(20))
-                    {
-                        <div class="history-item-compact">
-                            <div style="flex: 1;">
-                                <div class="history-meta">
-                                    <span class="history-id">#@cmd.Id</span>
-                                    <span class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                                    <span class="history-source">@cmd.Source</span>
-                                </div>
-                                <div class="history-prompt">👤 @cmd.Author: @cmd.UserPrompt</div>
-                                <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
-                            </div>
-                            <div class="history-actions-compact">
-                                <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
-                                <button @onclick="async () => await ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (Auto-generated)">🔧</button>
-                                <button @onclick="() => OpenSavePayloadModal(cmd.Id)" class="btn-success btn-small" title="Save Payload">💾</button>
-                            </div>
-                        </div>
-                    }
-                    @if (history.Count > 20)
-                    {
-                        <div class="empty-state">Showing 20 most recent. View full history in History tab.</div>
-                    }
-                </div>
-            }
-        </details>
-    </div>
 </div>
-
-<!-- Save Payload Modal -->
-@if (showSavePayloadModal)
-{
-    <div class="modal active">
-        <div class="modal-content">
-            <h3>💾 Save Payload</h3>
-            <p>Enter a name for this saved payload:</p>
-            <div class="form-group">
-                <input type="text" @bind="payloadName" placeholder="Payload name..." style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
-            </div>
-            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
-                <button @onclick="CloseSavePayloadModal" class="btn-secondary">Cancel</button>
-                <button @onclick="SavePayload" class="btn-primary">💾 Save</button>
-            </div>
-        </div>
-    </div>
-}
 
 <style>
     .stream-control-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         gap: 20px;
-    }
-
-    .control-panel {
-        min-height: 200px;
-    }
-
-    .moderation-section,
-    .history-section {
-        grid-column: span 1;
-    }
-
-    .queue-stats {
-        display: flex;
-        gap: 20px;
-        padding: 15px;
-        background: rgba(255,255,255,0.05);
-        border-radius: 8px;
-    }
-
-    .stat-item {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
-
-    .stat-label {
-        font-size: 12px;
-        color: var(--text-dim);
-    }
-
-    .stat-value {
-        font-size: 24px;
-        font-weight: bold;
-        color: var(--accent);
-    }
-
-    .badge {
-        background: var(--accent);
-        color: #000;
-        padding: 2px 8px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: bold;
-        margin-left: 8px;
-    }
-
-    .image-list,
-    .refund-list,
-    .history-list {
-        max-height: 400px;
-        overflow-y: auto;
-    }
-
-    .image-card-compact,
-    .refund-card-compact,
-    .history-item-compact {
-        padding: 10px;
-        background: rgba(255,255,255,0.05);
-        border-radius: 5px;
-        margin-bottom: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .image-info,
-    .refund-info,
-    .history-meta {
-        display: flex;
-        gap: 10px;
-        font-size: 12px;
-        color: var(--text-dim);
-        margin-bottom: 5px;
-    }
-
-    .image-prompt,
-    .refund-reason {
-        font-size: 14px;
-        margin-bottom: 10px;
-        color: var(--text);
-    }
-
-    .image-preview-small {
-        max-width: 100%;
-        max-height: 150px;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
-
-    .image-actions,
-    .refund-actions,
-    .history-actions-compact {
-        display: flex;
-        gap: 5px;
-    }
-
-    .history-spoiler summary {
-        font-weight: bold;
-        color: var(--warning);
-    }
-
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        z-index: 1000;
-        justify-content: center;
-        align-items: center;
-    }
-
-    .modal.active {
-        display: flex;
-    }
-
-    .modal-content {
-        background: #1a1a1a;
-        padding: 25px;
-        border-radius: 10px;
-        width: 90%;
-        max-width: 500px;
-        border: 1px solid var(--border);
     }
 </style>
 
@@ -429,49 +68,19 @@
     private string globalMessage = "";
     private string globalMessageType = "info";
     
-    // Blast controls
-    private int blastCount = 1;
-    private string blastMessage = "";
-    private string blastMessageType = "info";
+    // Queue status
     private int activeSlots = 0;
     private int totalSlots = 0;
-    private CancellationTokenSource? blastMessageCts;
-
-    // Video ID
-    private string videoId = "";
-    private bool isStreamActive = false;
-    private string videoMessage = "";
-    private string videoMessageType = "info";
-    private CancellationTokenSource? videoMessageCts;
-
-    // Images
-    private List<PendingImageEntry>? pendingImages;
-    private int pendingImageCount = 0;
-    private bool autoRefreshImages = false;
-    private System.Threading.Timer? imageRefreshTimer;
-
-    // Code Moderation
-    private List<PendingCodeEntry>? pendingCode;
-    private int pendingCodeCount = 0;
-    private bool autoRefreshCode = false;
-    private System.Threading.Timer? codeRefreshTimer;
-
-    // Refunds
-    private List<RefundRequest>? pendingRefunds;
-    private int pendingRefundCount = 0;
-    private bool autoRefreshRefunds = false;
-    private System.Threading.Timer? refundRefreshTimer;
-
-    // History
-    private List<CommandEntry>? history;
-    private bool autoRefreshHistory = false;
-    private System.Threading.Timer? historyRefreshTimer;
-
-    // Queue Status
     private System.Threading.Timer? queueStatusRefreshTimer;
     
-    // Stream state refresh
+    // Stream state
+    private bool isStreamActive = false;
     private System.Threading.Timer? streamStateRefreshTimer;
+    
+    // Pending counts
+    private int pendingImageCount = 0;
+    private int pendingRefundCount = 0;
+    private int pendingCodeCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -492,7 +101,7 @@
         
         await LoadAll();
         
-        // Start auto-refresh for queue status by default
+        // Start auto-refresh for queue status
         StartAutoRefreshQueueStatus();
         
         // Start auto-refresh for stream state
@@ -501,62 +110,11 @@
 
     private async Task LoadAll()
     {
-        await LoadPendingImages();
-        await LoadPendingCode();
-        await LoadPendingRefunds();
-        await LoadHistory();
         await LoadQueueStatus();
-        LoadVideoId();
-    }
-
-    private async Task ManualBlast()
-    {
-        try
-        {
-            var count = Math.Max(1, Math.Min(blastCount, 10));
-            var commands = QueueSlots.ManualBlast(count);
-            
-            if (commands != null)
-            {
-                blastMessage = $"💥 Blasted {commands.Count} command(s)!";
-                blastMessageType = "success";
-                await LoadQueueStatus();
-            }
-            else
-            {
-                blastMessage = "Failed to blast queue";
-                blastMessageType = "error";
-            }
-        }
-        catch (Exception ex)
-        {
-            blastMessage = $"Error: {ex.Message}";
-            blastMessageType = "error";
-        }
-        StateHasChanged();
-        
-        // Clear message after 3 seconds with cancellation support
-        blastMessageCts?.Cancel();
-        blastMessageCts = new CancellationTokenSource();
-        var cts = blastMessageCts;
-        
-        try
-        {
-            await Task.Delay(3000, cts.Token);
-            await InvokeAsync(() =>
-            {
-                if (!cts.IsCancellationRequested)
-                {
-                    blastMessage = "";
-                    StateHasChanged();
-                }
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            // Cancellation is expected when the user triggers a new blast or navigates away.
-            // No action needed.
-        }
+        LoadStreamState();
+        await LoadPendingImageCount();
+        await LoadPendingRefundCount();
+        await LoadPendingCodeCount();
     }
 
     private async Task LoadQueueStatus()
@@ -577,24 +135,70 @@
         StateHasChanged();
     }
 
+    private void LoadStreamState()
+    {
+        try
+        {
+            isStreamActive = YouTubeService.IsListening;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load stream state: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadPendingImageCount()
+    {
+        try
+        {
+            var images = ModerationService.GetPendingImages();
+            pendingImageCount = images?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending image count: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadPendingRefundCount()
+    {
+        try
+        {
+            var refunds = RefundService.GetPendingRequests();
+            pendingRefundCount = refunds?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending refund count: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadPendingCodeCount()
+    {
+        try
+        {
+            var code = CodeModerationService.GetPendingCode();
+            pendingCodeCount = code?.Count ?? 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending code count: {ex.Message}");
+        }
+        StateHasChanged();
+    }
+
     private void StartAutoRefreshQueueStatus()
     {
         if (queueStatusRefreshTimer == null)
         {
             queueStatusRefreshTimer = new System.Threading.Timer(async _ =>
             {
-                await InvokeAsync(async () =>
-                {
-                    await LoadQueueStatus();
-                });
+                await InvokeAsync(async () => await LoadQueueStatus());
             }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
         }
-    }
-
-    private void StopAutoRefreshQueueStatus()
-    {
-        queueStatusRefreshTimer?.Dispose();
-        queueStatusRefreshTimer = null;
     }
 
     private void StartStreamStateRefresh()
@@ -623,544 +227,25 @@
         }
     }
 
-    private void StopStreamStateRefresh()
+    private async Task HandleStatusMessage(string message)
     {
-        streamStateRefreshTimer?.Dispose();
-        streamStateRefreshTimer = null;
-    }
-
-    private void LoadVideoId()
-    {
-        try
-        {
-            var settings = SettingsService.Settings;
-            videoId = settings.YouTube.VideoId ?? "";
-            isStreamActive = YouTubeService.IsListening;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load video ID: {ex.Message}");
-        }
-    }
-
-    private async Task StartStream()
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(videoId))
-            {
-                videoMessage = "Please enter a video ID";
-                videoMessageType = "error";
-                StateHasChanged();
-                return;
-            }
-
-            var settings = SettingsService.Settings;
-            settings.YouTube.VideoId = videoId;
-            SettingsService.SaveSettings();
-            
-            var started = await YouTubeService.StartListeningAsync(videoId);
-            if (started)
-            {
-                isStreamActive = true;
-                videoMessage = "✓ Stream started - now listening to chat!";
-                videoMessageType = "success";
-            }
-            else
-            {
-                videoMessage = "✗ Failed to start stream (check YouTube setup)";
-                videoMessageType = "error";
-            }
-        }
-        catch (Exception ex)
-        {
-            videoMessage = $"Error: {ex.Message}";
-            videoMessageType = "error";
-        }
-        StateHasChanged();
+        if (string.IsNullOrEmpty(message)) return;
         
-        ClearVideoMessageAfterDelay();
-    }
-
-    private async Task StopStream()
-    {
-        try
+        var parts = message.Split(':', 2);
+        if (parts.Length == 2)
         {
-            YouTubeService.StopListening();
-            isStreamActive = false;
-            videoMessage = "Stream stopped";
-            videoMessageType = "info";
-        }
-        catch (Exception ex)
-        {
-            videoMessage = $"Error: {ex.Message}";
-            videoMessageType = "error";
-        }
-        StateHasChanged();
-        
-        ClearVideoMessageAfterDelay();
-    }
-
-    private void ClearVideoMessageAfterDelay()
-    {
-        // Clear message after 5 seconds to give user time to read the message
-        videoMessageCts?.Cancel();
-        videoMessageCts = new CancellationTokenSource();
-        var cts = videoMessageCts;
-        
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(5000, cts.Token);
-                if (!cts.IsCancellationRequested)
-                {
-                    await InvokeAsync(() =>
-                    {
-                        videoMessage = "";
-                        StateHasChanged();
-                    });
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected if the user navigates away or cancels the operation; no action needed.
-            }
-        });
-    }
-
-    private void LoginWithYouTube()
-    {
-        try
-        {
-            // Build the full callback URL including any path base from reverse proxy
-            var baseUrl = Navigation.BaseUri.TrimEnd('/');
-            var redirectUri = $"{baseUrl}/api/setup/youtube/callback";
-            
-            Console.WriteLine($"[YouTube OAuth] Redirect URI: {redirectUri}");
-            
-            var authUrl = YouTubeService.GetAuthorizationUrl(redirectUri);
-
-            if (!string.IsNullOrEmpty(authUrl))
-            {
-                Navigation.NavigateTo(authUrl, true);
-            }
-            else
-            {
-                videoMessage = "Failed to get authorization URL - check YouTube setup";
-                videoMessageType = "error";
-                StateHasChanged();
-            }
-        }
-        catch (Exception ex)
-        {
-            videoMessage = $"Error: {ex.Message}";
-            videoMessageType = "error";
-            StateHasChanged();
-        }
-    }
-
-    private async Task LoadPendingImages()
-    {
-        try
-        {
-            pendingImages = ModerationService.GetPendingImages();
-            pendingImageCount = pendingImages?.Count ?? 0;
-        }
-        catch (Exception ex)
-        {
-            videoMessage = $"Error loading pending images: {ex.Message}";
-            videoMessageType = "error";
-            StateHasChanged();
-        }
-        StateHasChanged();
-    }
-
-    private async Task ApproveImage(int imageId)
-    {
-        try
-        {
-            // Create request with moderation password header
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/approve");
-            request.Headers.Add("X-Moderation-Password", SettingsService.ModerationPassword);
-            request.Content = JsonContent.Create(new { ImageId = imageId });
-            
-            var response = await Http.SendAsync(request);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var result = await response.Content.ReadFromJsonAsync<ApiResponse>();
-                globalMessage = result?.Message ?? "Image approved and command queued";
-                globalMessageType = "success";
-                
-                await LoadPendingImages();
-                await LoadHistory(); // Refresh history to show the new command
-            }
-            else
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                globalMessage = $"Failed to approve image: {response.StatusCode}";
-                globalMessageType = "error";
-                Console.WriteLine($"Approval failed: {errorContent}");
-            }
-        }
-        catch (Exception ex)
-        {
-            globalMessage = $"Failed to approve image: {ex.Message}";
-            globalMessageType = "error";
-            Console.WriteLine($"Failed to approve image: {ex.Message}");
-        }
-        StateHasChanged();
-        
-        // Clear message after 5 seconds
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(Constants.MessageDurations.Medium);
-            await InvokeAsync(() =>
-            {
-                globalMessage = "";
-                StateHasChanged();
-            });
-        });
-    }
-
-    private async Task DenyImage(int imageId)
-    {
-        try
-        {
-            // Create request with moderation password header
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/moderation/deny");
-            request.Headers.Add("X-Moderation-Password", SettingsService.ModerationPassword);
-            request.Content = JsonContent.Create(new { ImageId = imageId });
-            
-            var response = await Http.SendAsync(request);
-            
-            if (response.IsSuccessStatusCode)
-            {
-                globalMessage = "Image denied";
-                globalMessageType = "success";
-                await LoadPendingImages();
-            }
-            else
-            {
-                globalMessage = $"Failed to deny image: {response.StatusCode}";
-                globalMessageType = "error";
-            }
-        }
-        catch (Exception ex)
-        {
-            globalMessage = $"Failed to deny image: {ex.Message}";
-            globalMessageType = "error";
-            Console.WriteLine($"Failed to deny image: {ex.Message}");
-        }
-        StateHasChanged();
-        
-        // Clear message after 3 seconds
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(Constants.MessageDurations.Short);
-            await InvokeAsync(() =>
-            {
-                globalMessage = "";
-                StateHasChanged();
-            });
-        });
-    }
-
-    private async Task LoadPendingRefunds()
-    {
-        try
-        {
-            pendingRefunds = RefundService.GetPendingRequests();
-            pendingRefundCount = pendingRefunds?.Count ?? 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load pending refunds: {ex.Message}");
-        }
-        StateHasChanged();
-    }
-
-    private void ApproveRefund(string refundId)
-    {
-        try
-        {
-            RefundService.ApproveRefund(refundId);
-            Task.Run(async () => await LoadPendingRefunds()).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to approve refund: {ex.Message}");
-        }
-    }
-
-    private void DenyRefund(string refundId)
-    {
-        try
-        {
-            RefundService.RejectRefund(refundId);
-            Task.Run(async () => await LoadPendingRefunds()).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to deny refund: {ex.Message}");
-        }
-    }
-
-    private async Task LoadPendingCode()
-    {
-        try
-        {
-            pendingCode = CodeModerationService.GetPendingCode();
-            pendingCodeCount = pendingCode?.Count ?? 0;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load pending code: {ex.Message}");
-        }
-        StateHasChanged();
-    }
-
-    private async Task ApproveCode(int codeId)
-    {
-        try
-        {
-            var entry = CodeModerationService.ApproveCode(codeId);
-            if (entry == null)
-            {
-                globalMessage = "Failed to approve code - code not found";
-                globalMessageType = "error";
-                StateHasChanged();
-                return;
-            }
-
-            // Update the linked command if it exists
-            if (entry.CommandId.HasValue)
-            {
-                var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                if (command != null)
-                {
-                    command.ExecutionCode = entry.ExecutionCode;
-                    command.UndoCode = entry.UndoCode;
-                    command.Status = CommandStatus.Queued;
-                    command.AiResponse = null;
-
-                    // Queue for execution
-                    if (TestClientService.IsEnabled)
-                    {
-                        TestClientService.QueueForTesting(command.Id, entry.ExecutionCode, entry.UserPrompt);
-                        globalMessage = $"Code approved! Command #{command.Id} queued for testing.";
-                    }
-                    else
-                    {
-                        CommandQueue.QueueInteractiveCode(command.Id, entry.ExecutionCode);
-                        globalMessage = $"Code approved! Command #{command.Id} queued for execution.";
-                    }
-                    globalMessageType = "success";
-                }
-            }
-
-            await LoadPendingCode();
-            await LoadHistory();
-        }
-        catch (Exception ex)
-        {
-            globalMessage = $"Failed to approve code: {ex.Message}";
-            globalMessageType = "error";
-            Console.WriteLine($"Failed to approve code: {ex.Message}");
-        }
-        StateHasChanged();
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(Constants.MessageDurations.Medium);
-            await InvokeAsync(() =>
-            {
-                globalMessage = "";
-                StateHasChanged();
-            });
-        });
-    }
-
-    private async Task DenyCode(int codeId)
-    {
-        try
-        {
-            var entry = CodeModerationService.DenyCode(codeId);
-            if (entry != null)
-            {
-                // Update the command status to Failed
-                if (entry.CommandId.HasValue)
-                {
-                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                    if (command != null)
-                    {
-                        command.Status = CommandStatus.Failed;
-                        command.ErrorMessage = "Code denied by moderator: " + entry.FilterReason;
-                        command.AiResponse = $"❌ Your command was denied by a moderator. Reason: {entry.FilterReason}";
-                    }
-                }
-
-                globalMessage = "Code denied";
-                globalMessageType = "success";
-                await LoadPendingCode();
-            }
-            else
-            {
-                globalMessage = "Failed to deny code";
-                globalMessageType = "error";
-            }
-        }
-        catch (Exception ex)
-        {
-            globalMessage = $"Failed to deny code: {ex.Message}";
-            globalMessageType = "error";
-            Console.WriteLine($"Failed to deny code: {ex.Message}");
-        }
-        StateHasChanged();
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(Constants.MessageDurations.Short);
-            await InvokeAsync(() =>
-            {
-                globalMessage = "";
-                StateHasChanged();
-            });
-        });
-    }
-
-    private void ToggleAutoRefreshImages()
-    {
-        if (autoRefreshImages)
-        {
-            imageRefreshTimer = new System.Threading.Timer(async _ =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadPendingImages();
-                });
-            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+            globalMessageType = parts[0];
+            globalMessage = parts[1];
         }
         else
         {
-            imageRefreshTimer?.Dispose();
-            imageRefreshTimer = null;
-        }
-    }
-
-    private void ToggleAutoRefreshCode()
-    {
-        if (autoRefreshCode)
-        {
-            codeRefreshTimer = new System.Threading.Timer(async _ =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadPendingCode();
-                });
-            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
-        }
-        else
-        {
-            codeRefreshTimer?.Dispose();
-            codeRefreshTimer = null;
-        }
-    }
-
-    private async Task LoadHistory()
-    {
-        try
-        {
-            history = CommandQueue.GetHistory().OrderByDescending(c => c.Timestamp).ToList();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load history: {ex.Message}");
-        }
-        StateHasChanged();
-    }
-
-    private void ToggleAutoRefreshHistory()
-    {
-        if (autoRefreshHistory)
-        {
-            historyRefreshTimer = new System.Threading.Timer(async _ =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadHistory();
-                });
-            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
-        }
-        else
-        {
-            historyRefreshTimer?.Dispose();
-            historyRefreshTimer = null;
-        }
-    }
-
-    private void UndoCommand(int commandId)
-    {
-        try
-        {
-            CommandQueue.UndoCommand(commandId);
-            Task.Run(async () => await LoadHistory()).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Undo failed: {ex.Message}");
-        }
-    }
-
-    private async Task ForceUndoCommand(int commandId)
-    {
-        try
-        {
-            var command = CommandQueue.GetCommand(commandId);
-            if (command == null)
-            {
-                Console.WriteLine($"[FORCE UNDO] Command #{commandId} not found");
-                globalMessage = "Command not found";
-                globalMessageType = "error";
-                StateHasChanged();
-                return;
-            }
-
-            Console.WriteLine($"[FORCE UNDO] Generating AI-powered comprehensive undo for command #{commandId}: {command.UserPrompt}");
-            globalMessage = "🔧 Generating comprehensive undo code...";
             globalMessageType = "info";
-            StateHasChanged();
-
-            // Use the AI to generate a comprehensive force undo
-            var forceUndoCode = await CodeGenerator.GenerateForceUndoAsync(command);
-
-            if (!string.IsNullOrEmpty(forceUndoCode))
-            {
-                // Queue the AI-generated force undo code
-                CommandQueue.QueueCode(forceUndoCode);
-                Console.WriteLine($"[FORCE UNDO] AI-generated comprehensive undo queued for command #{commandId}");
-                globalMessage = "✓ Comprehensive undo code generated and queued";
-                globalMessageType = "success";
-                await LoadHistory();
-            }
-            else
-            {
-                Console.WriteLine($"[FORCE UNDO] Failed to generate undo code for command #{commandId}");
-                globalMessage = "✗ Failed to generate undo code";
-                globalMessageType = "error";
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Force undo failed: {ex.Message}");
-            globalMessage = $"Force undo error: {ex.Message}";
-            globalMessageType = "error";
+            globalMessage = message;
         }
         
         StateHasChanged();
         
-        // Clear message after 5 seconds
+        // Clear message after delay
         _ = Task.Run(async () =>
         {
             await Task.Delay(Constants.MessageDurations.Medium);
@@ -1170,120 +255,13 @@
                 StateHasChanged();
             });
         });
-    }
-
-    private bool showSavePayloadModal = false;
-    private int selectedCommandIdForPayload = 0;
-    private string payloadName = "";
-
-    private void OpenSavePayloadModal(int commandId)
-    {
-        selectedCommandIdForPayload = commandId;
-        var command = CommandQueue.GetCommand(commandId);
-        payloadName = command?.UserPrompt ?? "";
-        showSavePayloadModal = true;
-        StateHasChanged();
-    }
-
-    private void CloseSavePayloadModal()
-    {
-        showSavePayloadModal = false;
-        payloadName = "";
-        selectedCommandIdForPayload = 0;
-        StateHasChanged();
-    }
-
-    private async Task SavePayload()
-    {
-        try
-        {
-            var command = CommandQueue.GetCommand(selectedCommandIdForPayload);
-            if (command != null && !string.IsNullOrEmpty(payloadName))
-            {
-                var response = await Http.PostAsJsonAsync("/api/setup/payloads", new
-                {
-                    Name = payloadName,
-                    Prompt = command.UserPrompt,
-                    Code = command.ExecutionCode,
-                    UndoCode = command.UndoCode
-                });
-
-                if (response.IsSuccessStatusCode)
-                {
-                    Console.WriteLine($"Payload '{payloadName}' saved successfully");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Save payload failed: {ex.Message}");
-        }
-        finally
-        {
-            CloseSavePayloadModal();
-        }
-    }
-
-    private void TestBarrels()
-    {
-        var luaCode = @"
-for i=1,10 do
-    local ent = ents.Create(""prop_physics"")
-    ent:SetModel(""models/props_c17/oildrum001_explosive.mdl"")
-    local ply = player.GetAll()[1]
-    if IsValid(ply) then
-        local tr = ply:GetEyeTrace()
-        ent:SetPos(tr.HitPos + Vector(math.random(-50,50), math.random(-50,50), 50 + i*20))
-        ent:Spawn()
-    end
-end";
-        
-        CommandQueue.AddCommand(
-            "TEST: Spawn 10 Barrels", 
-            luaCode, 
-            "", 
-            "system", 
-            "System", 
-            null, 
-            null, 
-            "Spawning 10 barrels for testing."
-        );
-        
-        blastMessage = "Added barrel test command to queue!";
-        blastMessageType = "success";
-        StateHasChanged();
-    }
-
-    private void ToggleAutoRefreshRefunds()
-    {
-        if (autoRefreshRefunds)
-        {
-            refundRefreshTimer = new System.Threading.Timer(async _ =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadPendingRefunds();
-                });
-            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
-        }
-        else
-        {
-            refundRefreshTimer?.Dispose();
-            refundRefreshTimer = null;
-        }
     }
 
     public void Dispose()
     {
-        imageRefreshTimer?.Dispose();
-        codeRefreshTimer?.Dispose();
-        historyRefreshTimer?.Dispose();
         queueStatusRefreshTimer?.Dispose();
+        queueStatusRefreshTimer = null;
         streamStateRefreshTimer?.Dispose();
-        blastMessageCts?.Cancel();
-        blastMessageCts?.Dispose();
-        videoMessageCts?.Cancel();
-        videoMessageCts?.Dispose();
-        refundRefreshTimer?.Dispose();
+        streamStateRefreshTimer = null;
     }
 }
