@@ -58,7 +58,7 @@ public class AiCodeGeneratorService
            - If you need to spawn lots of props, you can make them no-collide with eachother for better performance.
            - If you are spawning many props over time (which is what you should do if you are spawning many), you should start cleaning up old ones as you spawn new ones in (though, make sure they have enough time to be seen).
 
-        10. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps!
+        10. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
            
         """;
     
