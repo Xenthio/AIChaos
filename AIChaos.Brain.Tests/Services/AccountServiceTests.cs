@@ -222,4 +222,93 @@ public class AccountServiceTests
         var remainingPending = service.GetPendingCreditsForChannel(channelId);
         Assert.Equal(0m, remainingPending);
     }
+
+    [Fact]
+    public void DeductCredits_WithSufficientBalance_DeductsCreditsAndReturnsTrue()
+    {
+        // Arrange
+        var mockLogger = new Mock<ILogger<AccountService>>();
+        var service = new AccountService(mockLogger.Object);
+        
+        var (_, _, account) = service.CreateAccount("testuser_" + Guid.NewGuid(), "password123", "Test User");
+        Assert.NotNull(account);
+        
+        // Add initial credits
+        service.AddCredits(account.Id, 10.00m);
+        var initialBalance = service.GetAccountById(account.Id)?.CreditBalance ?? 0;
+        
+        // Act
+        var deductSuccess = service.DeductCredits(account.Id, 1.00m);
+        
+        // Assert
+        Assert.True(deductSuccess);
+        var updatedAccount = service.GetAccountById(account.Id);
+        Assert.NotNull(updatedAccount);
+        Assert.Equal(initialBalance - 1.00m, updatedAccount.CreditBalance);
+        Assert.Equal(1.00m, updatedAccount.TotalSpent);
+    }
+
+    [Fact]
+    public void DeductCredits_WithInsufficientBalance_ReturnsFalseAndDoesNotDeduct()
+    {
+        // Arrange
+        var mockLogger = new Mock<ILogger<AccountService>>();
+        var service = new AccountService(mockLogger.Object);
+        
+        var (_, _, account) = service.CreateAccount("testuser_" + Guid.NewGuid(), "password123", "Test User");
+        Assert.NotNull(account);
+        
+        // Add only 0.50 credits
+        service.AddCredits(account.Id, 0.50m);
+        var initialBalance = service.GetAccountById(account.Id)?.CreditBalance ?? 0;
+        
+        // Act - Try to deduct 1.00 (more than available)
+        var deductSuccess = service.DeductCredits(account.Id, 1.00m);
+        
+        // Assert
+        Assert.False(deductSuccess);
+        var updatedAccount = service.GetAccountById(account.Id);
+        Assert.NotNull(updatedAccount);
+        Assert.Equal(initialBalance, updatedAccount.CreditBalance); // Balance unchanged
+        Assert.Equal(0m, updatedAccount.TotalSpent); // No spending recorded
+    }
+
+    [Fact]
+    public void DeductCredits_ForNonExistentAccount_ReturnsFalse()
+    {
+        // Arrange
+        var mockLogger = new Mock<ILogger<AccountService>>();
+        var service = new AccountService(mockLogger.Object);
+        
+        // Act - Try to deduct from non-existent account
+        var deductSuccess = service.DeductCredits("non-existent-id", 1.00m);
+        
+        // Assert
+        Assert.False(deductSuccess);
+    }
+
+    [Fact]
+    public void DeductCredits_MultipleDeductions_TracksCorrectTotalSpent()
+    {
+        // Arrange
+        var mockLogger = new Mock<ILogger<AccountService>>();
+        var service = new AccountService(mockLogger.Object);
+        
+        var (_, _, account) = service.CreateAccount("testuser_" + Guid.NewGuid(), "password123", "Test User");
+        Assert.NotNull(account);
+        
+        // Add initial credits
+        service.AddCredits(account.Id, 10.00m);
+        
+        // Act - Multiple deductions
+        service.DeductCredits(account.Id, 1.00m);
+        service.DeductCredits(account.Id, 2.00m);
+        service.DeductCredits(account.Id, 1.50m);
+        
+        // Assert
+        var updatedAccount = service.GetAccountById(account.Id);
+        Assert.NotNull(updatedAccount);
+        Assert.Equal(5.50m, updatedAccount.CreditBalance); // 10.00 - 4.50
+        Assert.Equal(4.50m, updatedAccount.TotalSpent); // 1.00 + 2.00 + 1.50
+    }
 }

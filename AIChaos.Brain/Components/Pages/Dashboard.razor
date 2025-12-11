@@ -190,7 +190,7 @@ else
     }
     else if (activeSubPage == "history")
     {
-        <HistoryContent />
+        <HistoryContent CurrentAccount="@currentAccount" />
     }
     else if (activeSubPage == "moderation")
     {
@@ -429,26 +429,56 @@ else
     {
         try
         {
-            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
-            if (command != null)
+            if (currentAccount == null)
             {
-                CommandQueue.AddCommand(
+                ShowStatus("✗ Please sign in to repeat commands", "error");
+                return Task.CompletedTask;
+            }
+
+            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
+            if (command == null)
+            {
+                ShowStatus("✗ Command not found", "error");
+                return Task.CompletedTask;
+            }
+
+            var isSingleUserMode = !Settings.Settings.General.StreamMode;
+
+            // Check and deduct credits in Stream Mode
+            if (!isSingleUserMode)
+            {
+                if (!AccountService.DeductCredits(currentAccount.Id, Constants.CommandCost))
+                {
+                    // Refresh to get current balance for error message
+                    var currentBalance = AccountService.GetAccountById(currentAccount.Id)?.CreditBalance ?? currentAccount.CreditBalance;
+                    ShowStatus($"✗ Insufficient credits. You have ${currentBalance:F2}, but need ${Constants.CommandCost:F2}", "error");
+                    return Task.CompletedTask;
+                }
+
+                // Refresh the account from the service
+                var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+                if (updatedAccount != null)
+                {
+                    currentAccount = updatedAccount;
+                }
+            }
+
+            CommandQueue.AddCommand(
                 userPrompt: command.UserPrompt,
                 executionCode: command.ExecutionCode,
                 undoCode: command.UndoCode,
                 source: "dashboard",
-                author: currentAccount?.DisplayName ?? "Admin",
+                author: currentAccount.DisplayName,
                 imageContext: command.ImageContext,
-                userId: currentAccount?.Id ?? "admin",
+                userId: currentAccount.Id,
                 aiResponse: null
-                );
-                ShowStatus("✓ Command repeated!", "success");
-                LoadRecentCommands();
-            }
-            else
-            {
-                ShowStatus("✗ Command not found", "error");
-            }
+            );
+
+            var message = isSingleUserMode 
+                ? "✓ Command repeated!" 
+                : $"✓ Command repeated! New balance: ${currentAccount.CreditBalance:F2}";
+            ShowStatus(message, "success");
+            LoadRecentCommands();
         }
         catch (Exception ex)
         {

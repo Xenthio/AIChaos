@@ -1,8 +1,10 @@
 @inject SettingsService Settings
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
+@inject AccountService AccountService
 @inject IJSRuntime JS
 @implements IDisposable
+@using AIChaos.Brain.Models
 
 <div class="card">
     <h2>📜 Command History</h2>
@@ -230,6 +232,9 @@
 </style>
 
 @code {
+    [Parameter]
+    public Account? CurrentAccount { get; set; }
+    
     private List<CommandEntry>? history;
     private bool includeHistoryInAi = true;
     private bool autoRefresh = false;
@@ -309,21 +314,53 @@
     {
         try
         {
-            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
-            if (command != null)
+            if (CurrentAccount == null)
             {
-                CommandQueue.AddCommand(
-                    userPrompt: command.UserPrompt,
-                    executionCode: command.ExecutionCode,
-                    undoCode: command.UndoCode,
-                    source: "history_repeat",
-                    author: "Admin",
-                    imageContext: command.ImageContext,
-                    userId: "admin_history",
-                    aiResponse: null
-                );
-                LoadHistory();
+                Console.WriteLine("RepeatCommand failed: No account available");
+                return;
             }
+
+            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
+            if (command == null)
+            {
+                Console.WriteLine($"RepeatCommand failed: Command #{commandId} not found");
+                return;
+            }
+
+            var isSingleUserMode = !Settings.Settings.General.StreamMode;
+
+            // Check and deduct credits in Stream Mode
+            if (!isSingleUserMode)
+            {
+                if (!AccountService.DeductCredits(CurrentAccount.Id, Constants.CommandCost))
+                {
+                    // Refresh to get current balance for error message
+                    var currentBalance = AccountService.GetAccountById(CurrentAccount.Id)?.CreditBalance ?? CurrentAccount.CreditBalance;
+                    Console.WriteLine($"RepeatCommand failed: Insufficient credits. Have ${currentBalance:F2}, need ${Constants.CommandCost:F2}");
+                    return;
+                }
+
+                // Refresh the account from the service
+                var updatedAccount = AccountService.GetAccountById(CurrentAccount.Id);
+                if (updatedAccount != null)
+                {
+                    CurrentAccount = updatedAccount;
+                    Console.WriteLine($"Credits deducted for repeat. New balance: ${CurrentAccount.CreditBalance:F2}");
+                }
+            }
+
+            CommandQueue.AddCommand(
+                userPrompt: command.UserPrompt,
+                executionCode: command.ExecutionCode,
+                undoCode: command.UndoCode,
+                source: "history_repeat",
+                author: CurrentAccount.DisplayName,
+                imageContext: command.ImageContext,
+                userId: CurrentAccount.Id,
+                aiResponse: null
+            );
+            LoadHistory();
+            Console.WriteLine($"Command #{commandId} repeated successfully");
         }
         catch (Exception ex)
         {
