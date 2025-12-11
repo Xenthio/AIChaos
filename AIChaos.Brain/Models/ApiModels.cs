@@ -412,41 +412,4 @@ public class TestResultRequest
     public bool IsTestClient { get; set; }
 }
 
-// ==========================================
-// ACCOUNT CONTROLLER REQUEST/RESPONSE MODELS
-// ==========================================
 
-/// <summary>
-/// Request to register a new account.
-/// </summary>
-public class RegisterRequest
-{
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public string? DisplayName { get; set; }
-}
-
-/// <summary>
-/// Request to login to an existing account.
-/// </summary>
-public class LoginRequest
-{
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-}
-
-/// <summary>
-/// Request to submit a chaos command.
-/// </summary>
-public class SubmitRequest
-{
-    public string Prompt { get; set; } = "";
-}
-
-/// <summary>
-/// Request to link a YouTube channel via Google OAuth.
-/// </summary>
-public class LinkGoogleRequest
-{
-    public string Credential { get; set; } = "";
-}
