@@ -121,7 +121,7 @@ else
             <button @onclick="CloseLinkYouTubeModal" style="background: var(--bg-light); color: var(--text);">Cancel</button>
         </div>
     }
-    else if (useOAuthMethod)
+	else if (useOAuthMethod && false) // Temporarily disable OAuth method due to Google Sign-In issues
     {
         @if (isOAuthConfigured)
         {
