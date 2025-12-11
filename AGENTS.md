@@ -20,7 +20,7 @@ This document provides AI agents with essential context about the AIChaos projec
 - **Multi-User Mode**: Full economy with $1 per Idea, YouTube Super Chat integration
 - **Slot-based Queue**: Dynamic pacing (3-10 concurrent slots based on demand)
 - **Moderation System**: Admin/moderator review of code and images
-- **Interactive Mode**: Real-time streaming with viewers
+- **Agentic Mode**: LLM agent with bidirectional communication between game and LLM during code generation
 
 ---
 
@@ -38,7 +38,7 @@ This document provides AI agents with essential context about the AIChaos projec
 ```
 AIChaos/
 ├── AIChaos.Brain/              # Main server application
-│   ├── Controllers/            # API endpoints
+│   ├── Controllers/            # API endpoints (only for GMod↔server communication)
 │   │   ├── AccountController.cs     # User auth, credits, YouTube linking
 │   │   ├── ChaosController.cs       # GMod polling, command submission
 │   │   ├── ModerationController.cs  # Code/image moderation
