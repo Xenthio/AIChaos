@@ -450,26 +450,3 @@ public class LinkGoogleRequest
 {
     public string Credential { get; set; } = "";
 }
-
-// ==========================================
-// MODERATION CONTROLLER REQUEST/RESPONSE MODELS
-// ==========================================
-
-/// <summary>
-/// Payload for submitting a refund request.
-/// </summary>
-public class RefundRequestPayload
-{
-    public string UserId { get; set; } = "";
-    public string? UserDisplayName { get; set; }
-    public int CommandId { get; set; }
-    public string Reason { get; set; } = "";
-}
-
-/// <summary>
-/// Payload for approving or rejecting a refund.
-/// </summary>
-public class RefundActionPayload
-{
-    public string RequestId { get; set; } = "";
-}
