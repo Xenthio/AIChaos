@@ -42,6 +42,7 @@ public class AiCodeGeneratorService
 
         4. **Humor:** If a request is malicious (e.g., "Dox the streamer"), do a fake version (but don't say it's fake). You can be really relaxed about the rules if the intent is comedic.
            - Example: RunOnClient([=[ chat.AddText(Color(255,0,0), "217.201.21.8") ]=])
+           - Do not allow political or divisive content.
 
         5. **POV Awareness:** Try to make sure things happen where the player can see them (unless otherwise stated for comedic effect). For example, spawning something in front of the player rather than behind them or at world origin.
 
@@ -346,18 +347,25 @@ public class AiCodeGeneratorService
     {
         var dangerousChecks = new Dictionary<string, string>
         {
-            [@"changelevel"] = "Map change command",
-            [@"RunConsoleCommand.*[""']map[""']"] = "Map change via console",
-            [@"game\.ConsoleCommand.*map"] = "Map change via console",
+            [@"changelevel"] = "Map change command (changelevel)",
+            [@"RunConsoleCommand.*[""']map[""']"] = "Map change via console (map)",
+            [@"game\.ConsoleCommand.*[""']map\s"] = "Map change via console (map)",
+            [@"game\.ConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
+            [@"RunConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
             [@"RunConsoleCommand.*[""']disconnect[""']"] = "Disconnect command",
-            [@"game\.ConsoleCommand.*disconnect"] = "Disconnect command",
+            [@"game\.ConsoleCommand.*[""']disconnect"] = "Disconnect command",
             [@":\s*Kick\s*\("] = "Player kick",
             [@"player\.Kick"] = "Player kick",
-            [@"RunConsoleCommand.*[""']kill[""']"] = "Kill command",
-            [@"game\.ConsoleCommand.*kill"] = "Kill command",
-            [@"RunConsoleCommand.*[""']suicide[""']"] = "Suicide command",
+            [@"RunConsoleCommand.*[""']kill[""']"] = "Kill command (RunConsoleCommand)",
+            [@"game\.ConsoleCommand.*[""']kill"] = "Kill command (game.ConsoleCommand)",
+            [@"ConCommand\s*\(\s*[""']kill[""']"] = "Kill command (ConCommand)",
+            [@"RunConsoleCommand.*[""']suicide[""']"] = "Suicide command (RunConsoleCommand)",
+            [@"game\.ConsoleCommand.*[""']suicide"] = "Suicide command (game.ConsoleCommand)",
+            [@"ConCommand\s*\(\s*[""']suicide[""']"] = "Suicide command (ConCommand)",
             [@"RunConsoleCommand.*[""']screenshot[""']"] = "Screenshot command (via screenshot concmd)",
             [@"RunConsoleCommand.*[""']jpeg[""']"] = "Screenshot command (via jpeg concmd)",
+            [@"RunConsoleCommand.*[""']unbindall[""']"] = "unbindall",
+            [@"game\.ConsoleCommand.*unbindall"] = "unbindall",
             [@"game\.ConsoleCommand.*suicide"] = "Suicide command",
             [@"SetHealth\s*\(\s*0\s*\)"] = "Instant death (SetHealth to 0)",
             [@"SetHealth\s*\(\s*-"] = "Instant death (negative health)",
@@ -385,13 +393,18 @@ public class AiCodeGeneratorService
     {
         var filteredChecks = new Dictionary<string, string>
         {
-            [@"http\.Fetch"] = "External HTTP request (http.Fetch)",
-            [@"HTTP\.Fetch"] = "External HTTP request (HTTP.Fetch)",
-            [@"html:?OpenURL"] = "External URL opening (html:OpenURL)",
-            [@"gui\.OpenURL"] = "External URL opening (gui.OpenURL)",
-            [@"steamworks\.OpenURL"] = "External URL opening (steamworks.OpenURL)",
+            // Check for specific URL opening functions first (more specific)
+            [@"http\.Fetch\s*\("] = "External HTTP request (http.Fetch)",
+            [@"HTTP\.Fetch\s*\("] = "External HTTP request (HTTP.Fetch)",
+            [@"html:?OpenURL\s*\("] = "External URL opening (html:OpenURL)",
+            [@"gui\.OpenURL\s*\("] = "External URL opening (gui.OpenURL)",
+            [@"steamworks\.OpenURL\s*\("] = "External URL opening (steamworks.OpenURL)",
+            
+            // Check for iframes with external sources
             [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
             [@"iframe.*src.*http"] = "External iframe detected",
+            
+            // Generic URL pattern (catches any http:// or https://)
             [@"https?://"] = "URL detected in code"
         };
 

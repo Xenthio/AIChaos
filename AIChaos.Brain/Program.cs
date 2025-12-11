@@ -39,6 +39,7 @@ builder.Services.AddRazorComponents()
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChaos"));
 
 // Register services as singletons
+builder.Services.AddSingleton<LogCaptureService>();
 builder.Services.AddSingleton<SettingsService>();
 builder.Services.AddSingleton<CommandQueueService>();
 builder.Services.AddSingleton<QueueSlotService>();
@@ -53,6 +54,10 @@ builder.Services.AddSingleton<ImageModerationService>();
 builder.Services.AddSingleton<CodeModerationService>();
 builder.Services.AddSingleton<TestClientService>();
 builder.Services.AddSingleton<AgenticGameService>();
+
+// Configure log capture for admin viewing - use a factory to avoid BuildServiceProvider warning
+builder.Services.AddSingleton<ILoggerProvider>(sp => 
+    new LogCaptureProvider(sp.GetRequiredService<LogCaptureService>()));
 
 // Configure CORS for local development
 builder.Services.AddCors(options =>

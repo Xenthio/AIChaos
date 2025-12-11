@@ -1,0 +1,256 @@
+@rendermode InteractiveServer
+@inject LogCaptureService LogCapture
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2>📜 Server Logs</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px;">
+                <input type="checkbox" @bind="autoRefresh" @bind:after="OnAutoRefreshChanged">
+                Auto-refresh
+            </label>
+            <button @onclick="RefreshLogs" class="btn-info btn-small">🔄 Refresh</button>
+            <button @onclick="ClearLogs" class="btn-warning btn-small">🗑️ Clear</button>
+        </div>
+    </div>
+    
+    <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+        <button class="filter-btn @(selectedLevel == null ? "active" : "")" @onclick='() => SetLogLevel(null)'>
+            All (@logs.Count())
+        </button>
+        <button class="filter-btn @(selectedLevel == LogLevel.Information ? "active" : "")" @onclick='() => SetLogLevel(LogLevel.Information)'>
+            ℹ️ Info (@logs.Count(l => l.Level == LogLevel.Information))
+        </button>
+        <button class="filter-btn @(selectedLevel == LogLevel.Warning ? "active" : "")" @onclick='() => SetLogLevel(LogLevel.Warning)'>
+            ⚠️ Warning (@logs.Count(l => l.Level == LogLevel.Warning))
+        </button>
+        <button class="filter-btn @(selectedLevel == LogLevel.Error ? "active" : "")" @onclick='() => SetLogLevel(LogLevel.Error)'>
+            ❌ Error (@logs.Count(l => l.Level == LogLevel.Error))
+        </button>
+    </div>
+
+    <div class="logs-container">
+        @if (filteredLogs.Any())
+        {
+            @foreach (var log in filteredLogs)
+            {
+                <div class="log-entry log-@log.Level.ToString().ToLower()">
+                    <div class="log-timestamp">@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff")</div>
+                    <div class="log-level">@GetLevelIcon(log.Level)</div>
+                    <div class="log-content">
+                        <div class="log-category">@log.Category</div>
+                        <div class="log-message">@log.Message</div>
+                        @if (!string.IsNullOrEmpty(log.Exception))
+                        {
+                            <details class="log-exception">
+                                <summary>Exception Details</summary>
+                                <pre>@log.Exception</pre>
+                            </details>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="empty-state">No logs available. Logs will appear here as the server operates.</div>
+        }
+    </div>
+</div>
+
+<style>
+    .logs-container {
+        max-height: 600px;
+        overflow-y: auto;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 10px;
+    }
+
+    .log-entry {
+        display: flex;
+        gap: 10px;
+        padding: 8px;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.05);
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .log-entry:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .log-timestamp {
+        color: var(--text-dim);
+        white-space: nowrap;
+        font-size: 11px;
+    }
+
+    .log-level {
+        white-space: nowrap;
+        font-size: 14px;
+    }
+
+    .log-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .log-category {
+        color: var(--text-dim);
+        font-size: 11px;
+        margin-bottom: 2px;
+    }
+
+    .log-message {
+        color: var(--text);
+        word-wrap: break-word;
+    }
+
+    .log-exception {
+        margin-top: 5px;
+        background: rgba(255, 0, 0, 0.1);
+        padding: 5px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .log-exception summary {
+        color: var(--error);
+        font-weight: bold;
+        user-select: none;
+    }
+
+    .log-exception pre {
+        margin: 5px 0 0 0;
+        color: var(--text-dim);
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .log-information {
+        border-left: 3px solid #5bc0de;
+    }
+
+    .log-warning {
+        border-left: 3px solid #f0ad4e;
+    }
+
+    .log-error,
+    .log-critical {
+        border-left: 3px solid #d9534f;
+    }
+
+    .log-debug,
+    .log-trace {
+        border-left: 3px solid #888;
+    }
+
+    .filter-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: var(--text-dim);
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 12px;
+        border-radius: 4px;
+        transition: all 0.2s;
+    }
+
+    .filter-btn:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: var(--text);
+    }
+
+    .filter-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+</style>
+
+@code {
+    private List<LogEntry> logs = new();
+    private IEnumerable<LogEntry> filteredLogs => selectedLevel == null 
+        ? logs 
+        : logs.Where(l => l.Level == selectedLevel);
+    
+    private LogLevel? selectedLevel = null;
+    private bool autoRefresh = true;
+    private Timer? refreshTimer;
+
+    protected override void OnInitialized()
+    {
+        RefreshLogs();
+        StartAutoRefresh();
+    }
+
+    private void RefreshLogs()
+    {
+        logs = LogCapture.GetLogs().ToList();
+        StateHasChanged();
+    }
+
+    private void ClearLogs()
+    {
+        LogCapture.ClearLogs();
+        RefreshLogs();
+    }
+
+    private void SetLogLevel(LogLevel? level)
+    {
+        selectedLevel = level;
+    }
+
+    private string GetLevelIcon(LogLevel level) => level switch
+    {
+        LogLevel.Trace => "🔍",
+        LogLevel.Debug => "🐛",
+        LogLevel.Information => "ℹ️",
+        LogLevel.Warning => "⚠️",
+        LogLevel.Error => "❌",
+        LogLevel.Critical => "🔥",
+        _ => "📝"
+    };
+
+    private void OnAutoRefreshChanged()
+    {
+        if (autoRefresh)
+        {
+            StartAutoRefresh();
+        }
+        else
+        {
+            StopAutoRefresh();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = new Timer(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                RefreshLogs();
+            });
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private void StopAutoRefresh()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+
+    public void Dispose()
+    {
+        StopAutoRefresh();
+    }
+}

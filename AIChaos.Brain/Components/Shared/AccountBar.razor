@@ -69,6 +69,26 @@ else
             @if (!string.IsNullOrEmpty(CurrentAccount.LinkedYouTubeChannelId))
             {
                 <p><strong>YouTube:</strong> ✓ Linked (@CurrentAccount.LinkedYouTubeChannelId)</p>
+                <button @onclick="UnlinkYouTube" 
+                        style="background: var(--warning); color: black; margin-top: 10px;"
+                        disabled="@unlinkingYouTube">
+                    @if (unlinkingYouTube)
+                    {
+                        <span>Unlinking...</span>
+                    }
+                    else
+                    {
+                        <span>🔗 Unlink YouTube Channel</span>
+                    }
+                </button>
+                @if (!string.IsNullOrEmpty(unlinkError))
+                {
+                    <div class="alert alert-error" style="margin-top: 10px;">@unlinkError</div>
+                }
+                @if (!string.IsNullOrEmpty(unlinkSuccess))
+                {
+                    <div class="alert alert-success" style="margin-top: 10px;">@unlinkSuccess</div>
+                }
             }
             else
             {
@@ -101,7 +121,7 @@ else
             <button @onclick="CloseLinkYouTubeModal" style="background: var(--bg-light); color: var(--text);">Cancel</button>
         </div>
     }
-    else if (useOAuthMethod)
+	else if (useOAuthMethod && false) // Temporarily disable OAuth method due to Google Sign-In issues
     {
         @if (isOAuthConfigured)
         {
@@ -204,6 +224,9 @@ else
     private string linkError = "";
     private string oauthError = "";
     private string oauthSuccess = "";
+    private bool unlinkingYouTube = false;
+    private string unlinkError = "";
+    private string unlinkSuccess = "";
 
     private bool youtubeLinkMethodSelected = false;
     private bool useOAuthMethod = false;
@@ -373,6 +396,54 @@ else
         catch (Exception ex)
         {
             oauthError = $"Error: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+    
+    private async Task UnlinkYouTube()
+    {
+        try
+        {
+            unlinkingYouTube = true;
+            unlinkError = "";
+            unlinkSuccess = "";
+            StateHasChanged();
+            
+            if (CurrentAccount == null)
+            {
+                unlinkError = "Not logged in";
+                unlinkingYouTube = false;
+                StateHasChanged();
+                return;
+            }
+            
+            // Call AccountService directly (server-side Blazor)
+            var success = AccountService.UnlinkYouTubeChannel(CurrentAccount.Id);
+            
+            if (success)
+            {
+                unlinkSuccess = "✓ YouTube channel unlinked successfully! You can now link a different channel.";
+                
+                // Refresh account data
+                await OnAccountChanged.InvokeAsync();
+                
+                // Close modal after a short delay
+                await Task.Delay(2000);
+                showProfileModal = false;
+                unlinkSuccess = "";
+            }
+            else
+            {
+                unlinkError = "Failed to unlink YouTube channel";
+            }
+            
+            unlinkingYouTube = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            unlinkError = $"Error: {ex.Message}";
+            unlinkingYouTube = false;
             StateHasChanged();
         }
     }

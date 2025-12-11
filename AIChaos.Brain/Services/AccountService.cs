@@ -43,6 +43,49 @@ public class AccountService
         _pendingCreditsPath = Path.Combine(AppContext.BaseDirectory, "pending_credits.json");
         LoadAccounts();
         LoadPendingCredits();
+        
+        // Automatically unlink accounts with incorrect YouTube IDs on startup
+        RunMigration();
+    }
+    
+    /// <summary>
+    /// Runs automatic migration to unlink accounts with incorrect YouTube IDs.
+    /// This is called automatically on service initialization.
+    /// </summary>
+    private void RunMigration()
+    {
+        try
+        {
+            var accountsToUnlink = GetAccountsWithIncorrectYouTubeIds();
+            
+            if (accountsToUnlink.Count > 0)
+            {
+                _logger.LogWarning("[MIGRATION] Found {Count} accounts with incorrect YouTube IDs (Google IDs instead of Channel IDs). Starting automatic migration...", 
+                    accountsToUnlink.Count);
+                
+                int unlinkedCount = 0;
+                foreach (var account in accountsToUnlink)
+                {
+                    if (UnlinkYouTubeChannel(account.Id))
+                    {
+                        unlinkedCount++;
+                        _logger.LogInformation("[MIGRATION] Unlinked incorrect YouTube ID from account {Username} ({AccountId}). User can now relink with correct channel ID.",
+                            account.Username, account.Id);
+                    }
+                }
+                
+                _logger.LogWarning("[MIGRATION] Successfully unlinked {UnlinkedCount} accounts. Users can now relink their YouTube channels to get correct channel IDs and access pending donations.",
+                    unlinkedCount);
+            }
+            else
+            {
+                _logger.LogInformation("[MIGRATION] No accounts with incorrect YouTube IDs found. Migration not needed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[MIGRATION] Error during automatic YouTube ID migration");
+        }
     }
 
     /// <summary>
@@ -1016,6 +1059,174 @@ public class AccountService
         }
         
         return null;
+    }
+
+    /// <summary>
+    /// Gets all pending credits (for admin to see who has pending donations).
+    /// </summary>
+    public List<PendingChannelCredits> GetAllPendingCredits()
+    {
+        return _pendingCredits.Values.ToList();
+    }
+    
+    /// <summary>
+    /// Manually links a pending channel's credits to an account.
+    /// Used when a user has pending credits but their YouTube OAuth gave us a Google ID instead of channel ID.
+    /// </summary>
+    public bool ManuallyLinkPendingCredits(string accountId, string youtubeChannelId)
+    {
+        if (!_accounts.TryGetValue(accountId, out var account))
+        {
+            _logger.LogWarning("[ACCOUNT] Cannot manually link - account {AccountId} not found", accountId);
+            return false;
+        }
+        
+        if (!_pendingCredits.TryGetValue(youtubeChannelId, out var pending))
+        {
+            _logger.LogWarning("[ACCOUNT] Cannot manually link - no pending credits for channel {ChannelId}", youtubeChannelId);
+            return false;
+        }
+        
+        // Check if this channel is already linked
+        if (_youtubeIndex.ContainsKey(youtubeChannelId))
+        {
+            var existingAccountId = _youtubeIndex[youtubeChannelId];
+            if (existingAccountId != accountId)
+            {
+                _logger.LogWarning("[ACCOUNT] Cannot manually link - channel {ChannelId} already linked to account {ExistingAccountId}", 
+                    youtubeChannelId, existingAccountId);
+                return false;
+            }
+        }
+        
+        // Transfer the pending credits
+        lock (account)
+        {
+            account.CreditBalance += pending.PendingBalance;
+            
+            // Update the account's linked channel if it's different
+            if (account.LinkedYouTubeChannelId != youtubeChannelId)
+            {
+                // Remove old channel from index if present
+                if (!string.IsNullOrEmpty(account.LinkedYouTubeChannelId))
+                {
+                    _youtubeIndex.TryRemove(account.LinkedYouTubeChannelId, out _);
+                }
+                
+                account.LinkedYouTubeChannelId = youtubeChannelId;
+                _youtubeIndex[youtubeChannelId] = account.Id;
+            }
+            
+            _logger.LogInformation("[ACCOUNT] Manually transferred ${Amount} pending credits from channel {ChannelId} to {Username}", 
+                pending.PendingBalance, youtubeChannelId, account.Username);
+        }
+        
+        // Remove from pending
+        _pendingCredits.TryRemove(youtubeChannelId, out _);
+        
+        SaveAccounts();
+        SavePendingCredits();
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Detects accounts that have Google IDs instead of YouTube Channel IDs.
+    /// YouTube Channel IDs typically start with "UC" and are 24 characters long.
+    /// Google IDs are numeric strings.
+    /// </summary>
+    public List<Account> GetAccountsWithIncorrectYouTubeIds()
+    {
+        var accountsWithIssues = new List<Account>();
+        
+        foreach (var account in _accounts.Values)
+        {
+            if (string.IsNullOrEmpty(account.LinkedYouTubeChannelId))
+                continue;
+                
+            var channelId = account.LinkedYouTubeChannelId;
+            
+            // YouTube Channel IDs typically:
+            // - Start with "UC" for user channels
+            // - Are exactly 24 characters long
+            // - Contain alphanumeric characters, hyphens, and underscores
+            //
+            // Google IDs (sub claim from JWT):
+            // - Are numeric strings (all digits)
+            // - Are typically 21 characters long
+            
+            bool looksLikeGoogleId = channelId.All(char.IsDigit);
+            bool looksLikeYouTubeChannelId = channelId.StartsWith("UC") && channelId.Length == 24;
+            
+            // Flag as incorrect if it looks like a Google ID AND doesn't look like a YouTube Channel ID
+            if (looksLikeGoogleId && !looksLikeYouTubeChannelId)
+            {
+                accountsWithIssues.Add(account);
+                _logger.LogInformation("[ACCOUNT] Account {Username} ({AccountId}) has incorrect YouTube ID: {ChannelId} (looks like Google ID)",
+                    account.Username, account.Id, channelId);
+            }
+        }
+        
+        return accountsWithIssues;
+    }
+    
+    /// <summary>
+    /// Unlinks YouTube channel from an account.
+    /// This allows the user to relink with the correct YouTube Channel ID.
+    /// </summary>
+    public bool UnlinkYouTubeChannel(string accountId)
+    {
+        if (!_accounts.TryGetValue(accountId, out var account))
+        {
+            return false;
+        }
+        
+        if (string.IsNullOrEmpty(account.LinkedYouTubeChannelId))
+        {
+            _logger.LogWarning("[ACCOUNT] Account {Username} has no linked YouTube channel to unlink", account.Username);
+            return false;
+        }
+        
+        var oldChannelId = account.LinkedYouTubeChannelId;
+        
+        lock (account)
+        {
+            // Remove from YouTube index
+            _youtubeIndex.TryRemove(oldChannelId, out _);
+            
+            // Clear the linked channel
+            account.LinkedYouTubeChannelId = null;
+            
+            _logger.LogInformation("[ACCOUNT] Unlinked YouTube channel {ChannelId} from account {Username}", 
+                oldChannelId, account.Username);
+        }
+        
+        SaveAccounts();
+        return true;
+    }
+    
+    /// <summary>
+    /// Unlinks all accounts that have incorrect YouTube IDs (Google IDs instead of YouTube Channel IDs).
+    /// This allows users to relink properly with the correct YouTube Channel IDs.
+    /// Returns the count of unlinked accounts.
+    /// </summary>
+    public int UnlinkAccountsWithIncorrectYouTubeIds()
+    {
+        var accountsToUnlink = GetAccountsWithIncorrectYouTubeIds();
+        
+        _logger.LogInformation("[ACCOUNT] Found {Count} accounts with incorrect YouTube IDs to unlink", accountsToUnlink.Count);
+        
+        int unlinkedCount = 0;
+        foreach (var account in accountsToUnlink)
+        {
+            if (UnlinkYouTubeChannel(account.Id))
+            {
+                unlinkedCount++;
+            }
+        }
+        
+        _logger.LogInformation("[ACCOUNT] Successfully unlinked {Count} accounts with incorrect YouTube IDs", unlinkedCount);
+        return unlinkedCount;
     }
 
     private static string HashPassword(string password)

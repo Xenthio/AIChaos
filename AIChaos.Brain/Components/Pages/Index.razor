@@ -647,20 +647,67 @@ else
         return Task.CompletedTask;
     }
 
-    private Task RepeatCommand(int commandId)
+    private async Task RepeatCommand(int commandId)
     {
         try
         {
-            var success = CommandQueue.RepeatCommand(commandId);
-            ShowStatus(success ? "Command repeated and queued" : "Failed to repeat command", success ? "success" : "error");
+            if (currentAccount == null)
+            {
+                ShowStatus("Please sign in to repeat commands", "error");
+                return;
+            }
+
+            var command = CommandQueue.GetHistory().FirstOrDefault(c => c.Id == commandId);
+            if (command == null)
+            {
+                ShowStatus("Command not found", "error");
+                return;
+            }
+
+            var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+
+            // Check and deduct credits in Stream Mode
+            if (!isSingleUserMode)
+            {
+                if (!AccountService.DeductCredits(currentAccount.Id, Constants.CommandCost))
+                {
+                    // Refresh to get current balance for error message
+                    var currentBalance = AccountService.GetAccountById(currentAccount.Id)?.CreditBalance ?? currentAccount.CreditBalance;
+                    ShowStatus($"Insufficient credits. You have ${currentBalance:F2}, but need ${Constants.CommandCost:F2}", "error");
+                    return;
+                }
+
+                // Refresh the account from the service
+                var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+                if (updatedAccount != null)
+                {
+                    currentAccount = updatedAccount;
+                }
+            }
+
+            // Add the command again as a new entry
+            CommandQueue.AddCommand(
+                userPrompt: command.UserPrompt,
+                executionCode: command.ExecutionCode,
+                undoCode: command.UndoCode,
+                source: "history_repeat",
+                author: currentAccount.DisplayName,
+                imageContext: command.ImageContext,
+                userId: currentAccount.Id,
+                aiResponse: null
+            );
+
+            var message = isSingleUserMode 
+                ? "Command repeated and queued" 
+                : $"Command repeated and queued. New balance: ${currentAccount.CreditBalance:F2}";
+            ShowStatus(message, "success");
+            await LoadHistory();
         }
         catch (Exception ex)
         {
             ShowStatus("Error repeating command", "error");
             Console.WriteLine($"Repeat failed: {ex.Message}");
         }
-        
-        return Task.CompletedTask;
     }
 
     private void OpenRefundModal(int commandId)
