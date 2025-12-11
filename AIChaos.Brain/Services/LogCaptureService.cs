@@ -27,19 +27,19 @@ public class LogCaptureService
 
         _logEntries.Enqueue(entry);
 
-        // Trim old entries if we exceed max
-        while (_logEntries.Count > MAX_LOG_ENTRIES)
+        // Trim old entries if we exceed max (with buffer to avoid excessive trimming)
+        while (_logEntries.Count > MAX_LOG_ENTRIES + 10)
         {
             _logEntries.TryDequeue(out _);
         }
     }
 
     /// <summary>
-    /// Gets all captured log entries.
+    /// Gets all captured log entries in reverse chronological order (newest first).
     /// </summary>
     public IEnumerable<LogEntry> GetLogs()
     {
-        return _logEntries.ToArray();
+        return _logEntries.Reverse();
     }
 
     /// <summary>

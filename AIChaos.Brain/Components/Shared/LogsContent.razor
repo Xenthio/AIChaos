@@ -193,7 +193,7 @@
 
     private void RefreshLogs()
     {
-        logs = LogCapture.GetLogs().OrderByDescending(l => l.Timestamp).ToList();
+        logs = LogCapture.GetLogs().ToList();
         StateHasChanged();
     }
 
