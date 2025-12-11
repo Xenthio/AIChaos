@@ -393,13 +393,18 @@ public class AiCodeGeneratorService
     {
         var filteredChecks = new Dictionary<string, string>
         {
-            [@"http\.Fetch"] = "External HTTP request (http.Fetch)",
-            [@"HTTP\.Fetch"] = "External HTTP request (HTTP.Fetch)",
-            [@"html:?OpenURL"] = "External URL opening (html:OpenURL)",
-            [@"gui\.OpenURL"] = "External URL opening (gui.OpenURL)",
-            [@"steamworks\.OpenURL"] = "External URL opening (steamworks.OpenURL)",
+            // Check for specific URL opening functions first (more specific)
+            [@"http\.Fetch\s*\("] = "External HTTP request (http.Fetch)",
+            [@"HTTP\.Fetch\s*\("] = "External HTTP request (HTTP.Fetch)",
+            [@"html:?OpenURL\s*\("] = "External URL opening (html:OpenURL)",
+            [@"gui\.OpenURL\s*\("] = "External URL opening (gui.OpenURL)",
+            [@"steamworks\.OpenURL\s*\("] = "External URL opening (steamworks.OpenURL)",
+            
+            // Check for iframes with external sources
             [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
             [@"iframe.*src.*http"] = "External iframe detected",
+            
+            // Generic URL pattern (catches any http:// or https://)
             [@"https?://"] = "URL detected in code"
         };
 
