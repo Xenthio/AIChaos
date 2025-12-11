@@ -794,38 +794,6 @@ public class AccountController : ControllerBase
             })
         });
     }
-    
-    /// <summary>
-    /// Admin endpoint: Unlinks all accounts with incorrect YouTube IDs so they can relink properly.
-    /// </summary>
-    [HttpPost("admin/unlink-incorrect-youtube-ids")]
-    public ActionResult UnlinkAccountsWithIncorrectYouTubeIds([FromHeader(Name = "X-Session-Token")] string? sessionToken)
-    {
-        if (string.IsNullOrEmpty(sessionToken))
-        {
-            return Unauthorized(new { status = "error", message = "Not logged in" });
-        }
-        
-        var account = _accountService.GetAccountBySession(sessionToken);
-        if (account == null)
-        {
-            return Unauthorized(new { status = "error", message = "Session expired" });
-        }
-        
-        if (account.Role != UserRole.Admin)
-        {
-            return Forbid();
-        }
-        
-        var unlinkedCount = _accountService.UnlinkAccountsWithIncorrectYouTubeIds();
-        
-        return Ok(new
-        {
-            status = "success",
-            message = $"Successfully unlinked {unlinkedCount} account(s) with incorrect YouTube IDs. Users can now relink properly.",
-            unlinkedCount
-        });
-    }
 }
 
 public class RegisterRequest

@@ -43,6 +43,49 @@ public class AccountService
         _pendingCreditsPath = Path.Combine(AppContext.BaseDirectory, "pending_credits.json");
         LoadAccounts();
         LoadPendingCredits();
+        
+        // Automatically unlink accounts with incorrect YouTube IDs on startup
+        RunMigration();
+    }
+    
+    /// <summary>
+    /// Runs automatic migration to unlink accounts with incorrect YouTube IDs.
+    /// This is called automatically on service initialization.
+    /// </summary>
+    private void RunMigration()
+    {
+        try
+        {
+            var accountsToUnlink = GetAccountsWithIncorrectYouTubeIds();
+            
+            if (accountsToUnlink.Count > 0)
+            {
+                _logger.LogWarning("[MIGRATION] Found {Count} accounts with incorrect YouTube IDs (Google IDs instead of Channel IDs). Starting automatic migration...", 
+                    accountsToUnlink.Count);
+                
+                int unlinkedCount = 0;
+                foreach (var account in accountsToUnlink)
+                {
+                    if (UnlinkYouTubeChannel(account.Id))
+                    {
+                        unlinkedCount++;
+                        _logger.LogInformation("[MIGRATION] Unlinked incorrect YouTube ID from account {Username} ({AccountId}). User can now relink with correct channel ID.",
+                            account.Username, account.Id);
+                    }
+                }
+                
+                _logger.LogWarning("[MIGRATION] Successfully unlinked {UnlinkedCount} accounts. Users can now relink their YouTube channels to get correct channel IDs and access pending donations.",
+                    unlinkedCount);
+            }
+            else
+            {
+                _logger.LogInformation("[MIGRATION] No accounts with incorrect YouTube IDs found. Migration not needed.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[MIGRATION] Error during automatic YouTube ID migration");
+        }
     }
 
     /// <summary>
