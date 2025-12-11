@@ -104,7 +104,7 @@ app.MapRazorComponents<App>()
 
 app.MapControllers();
 
-// Get the settings service to trigger initialization and show moderation password
+// Initialize settings service
 var settingsService = app.Services.GetRequiredService<SettingsService>();
 
 Console.WriteLine("========================================");
@@ -115,9 +115,6 @@ Console.WriteLine("  Dashboard: http://localhost:5000/dashboard");
 Console.WriteLine("  Setup: http://localhost:5000/dashboard/setup");
 Console.WriteLine("  History: http://localhost:5000/dashboard/history");
 Console.WriteLine("  Moderation: http://localhost:5000/dashboard/moderation");
-Console.WriteLine("========================================");
-Console.WriteLine($"  MODERATION PASSWORD: {settingsService.ModerationPassword} (OBSOLETE)");
-Console.WriteLine("  (Password changes each session)");
 Console.WriteLine("========================================");
 
 // Register shutdown handler to stop tunnels when server closes
