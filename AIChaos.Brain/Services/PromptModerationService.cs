@@ -96,7 +96,7 @@ public class PromptModerationService
     /// <summary>
     /// Adds content (URL, image, etc.) to the moderation queue.
     /// </summary>
-    public PendingPromptEntry AddPendingPrompt(string imageUrl, string userPrompt, string source, string author, string? userId, int? commandId = null, string? filterReason = null)
+    public PendingPromptEntry AddPendingPrompt(string contentUrl, string userPrompt, string source, string author, string? userId, int? commandId = null, string? filterReason = null)
     {
         lock (_lock)
         {
@@ -104,7 +104,7 @@ public class PromptModerationService
             {
                 Id = _nextId++,
                 CommandId = commandId,
-                ContentUrl = imageUrl,
+                ContentUrl = contentUrl,
                 UserPrompt = userPrompt,
                 Source = source,
                 Author = author,
@@ -116,7 +116,7 @@ public class PromptModerationService
             
             _pendingPrompts.Add(entry);
             _logger.LogInformation("[MODERATION] URL queued for review (Command #{CommandId}, Reason: {Reason}): {Url}", 
-                commandId, entry.FilterReason, imageUrl);
+                commandId, entry.FilterReason, contentUrl);
             
             OnPendingPromptsChanged();
             return entry;

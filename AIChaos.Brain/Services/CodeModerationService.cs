@@ -49,7 +49,6 @@ public class CodeModerationService
             [@"RunConsoleCommand.*[""']jpeg[""']"] = "Screenshot command (via jpeg concmd)",
             [@"RunConsoleCommand.*[""']unbindall[""']"] = "unbindall",
             [@"game\.ConsoleCommand.*unbindall"] = "unbindall",
-            [@"game\.ConsoleCommand.*suicide"] = "Suicide command",
             [@"SetHealth\s*\(\s*0\s*\)"] = "Instant death (SetHealth to 0)",
             [@"SetHealth\s*\(\s*-"] = "Instant death (negative health)",
             [@":Kill\s*\(\s*\)"] = "Instant death (Kill method)",

@@ -153,12 +153,12 @@
     {
         try
         {
-            var images = ModerationService.GetPendingPrompts();
-            pendingPromptCount = images?.Count ?? 0;
+            var prompts = ModerationService.GetPendingPrompts();
+            pendingPromptCount = prompts?.Count ?? 0;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load pending image count: {ex.Message}");
+            Console.WriteLine($"Failed to load pending prompt count: {ex.Message}");
         }
         StateHasChanged();
     }

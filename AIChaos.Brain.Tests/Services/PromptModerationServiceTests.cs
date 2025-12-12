@@ -207,4 +207,88 @@ public class PromptModerationServiceTests
         // Assert
         Assert.Equal(2, count);
     }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithHttpUrl_ReturnsUrlDetected()
+    {
+        // Arrange
+        var prompt = "Check out http://example.com/page";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.NotNull(reason);
+        Assert.Equal("URL detected in prompt", reason);
+    }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithHttpsUrl_ReturnsUrlDetected()
+    {
+        // Arrange
+        var prompt = "Check out https://example.com/page";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.NotNull(reason);
+        Assert.Equal("URL detected in prompt", reason);
+    }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithDiscordGgInvite_ReturnsDiscordInvite()
+    {
+        // Arrange
+        var prompt = "Join my server at discord.gg/abc123";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.NotNull(reason);
+        Assert.Equal("Discord invite link", reason);
+    }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithDiscordComInvite_ReturnsDiscordInvite()
+    {
+        // Arrange
+        var prompt = "Join at discord.com/invite/abc123";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.NotNull(reason);
+        Assert.Equal("Discord invite link", reason);
+    }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithNoFilteredContent_ReturnsNull()
+    {
+        // Arrange
+        var prompt = "This is a clean prompt with no filtered content";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.Null(reason);
+    }
+    
+    [Fact]
+    public void GetFilteredPatternReason_WithMultiplePatterns_ReturnsFirstMatch()
+    {
+        // Arrange
+        var prompt = "Check https://example.com and discord.gg/test";
+        
+        // Act
+        var reason = PromptModerationService.GetFilteredPatternReason(prompt);
+        
+        // Assert
+        Assert.NotNull(reason);
+        // Should match URL first since it appears first in the pattern dictionary
+        Assert.Equal("URL detected in prompt", reason);
+    }
 }

@@ -265,9 +265,9 @@
 
             var isSingleUserMode = !Settings.Settings.General.StreamMode;
 
-            // Check if command contains images that need moderation
-            var imageUrls = ModerationService.ExtractContentUrls(command.UserPrompt);
-            var needsImageModeration = imageUrls.Count > 0;
+            // Check if command contains content that needs moderation
+            var contentUrls = ModerationService.ExtractContentUrls(command.UserPrompt);
+            var needsModeration = contentUrls.Count > 0;
             
             // Check and deduct credits (for both image and non-image commands in Stream Mode)
             if (!isSingleUserMode)
@@ -295,9 +295,9 @@
                 }
             }
             
-            if (needsImageModeration)
+            if (needsModeration)
             {
-                // Command contains images - must go through moderation flow
+                // Command contains content - must go through moderation flow
                 // Create placeholder command with PendingModeration status
                 var placeholderCommand = CommandQueue.AddCommandWithStatus(
                     userPrompt: command.UserPrompt,
@@ -307,22 +307,22 @@
                     author: CurrentAccount.DisplayName,
                     imageContext: null, // Will be set after approval
                     userId: CurrentAccount.Id,
-                    aiResponse: "⏳ Waiting for image moderation approval...",
+                    aiResponse: "⏳ Waiting for content moderation approval...",
                     status: CommandStatus.PendingModeration,
                     queueForExecution: false); // Don't queue yet
 
-                // Queue images for moderation with link to new command
-                foreach (var url in imageUrls)
+                // Queue content for moderation with link to new command
+                foreach (var url in contentUrls)
                 {
                     ModerationService.AddPendingPrompt(url, command.UserPrompt, "history_repeat", CurrentAccount.DisplayName, CurrentAccount.Id, placeholderCommand.Id);
                 }
 
-                Console.WriteLine($"Command #{commandId} repeated with {imageUrls.Count} image(s) queued for moderation (new command #{placeholderCommand.Id})");
+                Console.WriteLine($"Command #{commandId} repeated with {contentUrls.Count} content URL(s) queued for moderation (new command #{placeholderCommand.Id})");
                 LoadHistory();
                 return;
             }
 
-            // No images - use original fast path
+            // No content requiring moderation - use original fast path
             CommandQueue.AddCommand(
                 userPrompt: command.UserPrompt,
                 executionCode: command.ExecutionCode,

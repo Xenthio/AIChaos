@@ -41,13 +41,13 @@
             </label>
         </div>
         <div>
-            @if (pendingImages == null || !pendingImages.Any())
+            @if (pendingPrompts == null || !pendingPrompts.Any())
             {
-                <div class="no-images">✅ No images pending moderation</div>
+                <div class="no-images">✅ No prompts pending moderation</div>
             }
             else
             {
-                @foreach (var img in pendingImages)
+                @foreach (var img in pendingPrompts)
                 {
                     <div class="image-card">
                         <div class="image-meta">
@@ -240,10 +240,10 @@
     private string activeTab = "images";
     private string alertMessage = "";
     private string alertType = "info";
-    private List<PendingPromptEntry>? pendingImages;
+    private List<PendingPromptEntry>? pendingPrompts;
     private List<PendingCodeEntry>? pendingCode;
     private List<RefundRequest>? pendingRefunds;
-    private int pendingImageCount => pendingImages?.Count ?? 0;
+    private int pendingImageCount => pendingPrompts?.Count ?? 0;
     private int pendingCodeCount => pendingCode?.Count ?? 0;
     private int pendingRefundCount => pendingRefunds?.Count ?? 0;
     private bool autoRefresh = false;
@@ -292,12 +292,12 @@
     {
         try
         {
-            pendingImages = ModerationService.GetPendingPrompts();
+            pendingPrompts = ModerationService.GetPendingPrompts();
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Load pending images failed: {ex.Message}");
+            Console.WriteLine($"Load pending prompts failed: {ex.Message}");
             ShowAlert("Failed to load pending images", "error");
         }
     }
