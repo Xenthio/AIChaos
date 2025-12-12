@@ -37,6 +37,36 @@ public class PromptModerationService
     }
     
     /// <summary>
+    /// Checks if a prompt contains filtered patterns that require moderation.
+    /// Returns the reason if filtered content is found, null otherwise.
+    /// </summary>
+    public static string? GetFilteredPatternReason(string prompt)
+    {
+        var filteredChecks = new Dictionary<string, string>
+        {
+            // URL patterns - any external link in prompt
+            [@"https?://"] = "URL detected in prompt",
+            
+            // Discord invite patterns
+            [@"discord\.gg/"] = "Discord invite link",
+            [@"discord\.com/invite/"] = "Discord invite link",
+            
+            // Other suspicious patterns in prompts could be added here
+            // For example: email addresses, phone numbers, etc.
+        };
+
+        foreach (var (pattern, reason) in filteredChecks)
+        {
+            if (Regex.IsMatch(prompt, pattern, RegexOptions.IgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        return null;
+    }
+    
+    /// <summary>
     /// Extracts ALL URLs from a prompt.
     /// </summary>
     public List<string> ExtractContentUrls(string prompt)
@@ -55,6 +85,7 @@ public class PromptModerationService
     
     /// <summary>
     /// Checks if a prompt contains URLs that need moderation.
+    /// Uses ExtractContentUrls to find URLs in the prompt.
     /// </summary>
     public bool NeedsModeration(string prompt)
     {

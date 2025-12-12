@@ -533,7 +533,7 @@ public class AgenticGameService
                 
                 // Apply post-code generation filters (same as regular code generation)
                 // Check for dangerous patterns first (always block these)
-                var dangerousReason = AiCodeGeneratorService.CheckDangerousPatterns(codeToQueue);
+                var dangerousReason = CodeModerationService.GetDangerousPatternReason(codeToQueue);
                 if (dangerousReason != null)
                 {
                     _logger.LogWarning("[AGENT] Session #{SessionId} generated dangerous code: {Reason}. Blocking.", 
@@ -562,7 +562,7 @@ public class AgenticGameService
                 string? moderationReason = null;
                 if (settings.General.BlockLinksInGeneratedCode)
                 {
-                    moderationReason = AiCodeGeneratorService.CheckFilteredPatterns(codeToQueue);
+                    moderationReason = CodeModerationService.GetFilteredPatternReason(codeToQueue);
                     if (moderationReason != null)
                     {
                         _logger.LogInformation("[AGENT] Session #{SessionId} generated filtered code: {Reason}. Sending to moderation.", 
