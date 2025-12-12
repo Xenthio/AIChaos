@@ -37,15 +37,26 @@ Features:
 - Aggressively removes timers, entities, UI elements
 - Use when regular undo isn't working
 
-### 4. **Repeat Functionality** 🔁
+### 4. **Re-Execute Functionality** 🔁
 Perfect for:
-- **"Streamer didn't see my donation"** - Repeat without wasting money on regeneration
+- **"Streamer didn't see my donation"** - Re-execute without wasting money on regeneration
 - **"It got drowned out"** - Re-execute the same effect
-- **Testing** - Quickly repeat an effect
+- **Testing** - Quickly re-execute an effect
 
-The repeat button re-queues the **exact same code** (no AI regeneration needed).
+The re-execute button re-queues the **exact same code** (no AI regeneration needed).
 
-### 5. **User Preferences**
+### 5. **Redo with Feedback** 🔄
+Perfect for:
+- **"It didn't work as expected"** - Regenerate code with AI using your feedback
+- **"The effect was wrong"** - Explain what went wrong and get improved code
+- **First redo is FREE** - Subsequent redos cost credits
+
+The redo feature:
+1. Takes your feedback explaining what went wrong
+2. Sends it to the AI with the original prompt
+3. Generates improved code based on your feedback
+
+### 6. **User Preferences**
 
 #### **Feed history to AI context**
 - When enabled, the last 5 commands are sent to the AI

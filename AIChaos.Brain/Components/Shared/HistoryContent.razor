@@ -65,7 +65,7 @@
                     </div>
                     <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
                     <div class="history-actions">
-                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁</button>
+                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Re-execute the same code">🔁</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
                         <button @onclick="() => ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (Auto-generated)">🔧</button>
                         <button @onclick="() => ToggleCodeView(cmd.Id)" class="btn-secondary btn-small" title="Show/Hide Code">👁️</button>

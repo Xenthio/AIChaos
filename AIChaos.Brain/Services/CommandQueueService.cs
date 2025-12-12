@@ -5,6 +5,7 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for managing the command queue and history.
+/// Queue state is persisted to JSON to survive application restarts.
 /// </summary>
 public class CommandQueueService
 {
@@ -14,24 +15,51 @@ public class CommandQueueService
     private readonly object _lock = new();
     private int _nextId = 1;
     private int _nextPayloadId = 1;
+    private readonly bool _enablePersistence;
     
     private static readonly string SavedPayloadsDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "saved_payloads");
     private static readonly string SavedPayloadsFile = Path.Combine(SavedPayloadsDirectory, "payloads.json");
+    
+    // Queue persistence paths
+    private static readonly string QueuePersistenceDirectory = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "..", "queue_state");
+    private static readonly string QueueStateFile = Path.Combine(QueuePersistenceDirectory, "queue.json");
+    private static readonly string HistoryStateFile = Path.Combine(QueuePersistenceDirectory, "history.json");
     
     public UserPreferences Preferences { get; } = new();
     
     // Event for when history changes
     public event EventHandler? HistoryChanged;
     
-    public CommandQueueService()
+    /// <summary>
+    /// Creates a new CommandQueueService with persistence enabled by default.
+    /// </summary>
+    public CommandQueueService() : this(enablePersistence: true)
     {
-        LoadSavedPayloads();
+    }
+    
+    /// <summary>
+    /// Creates a new CommandQueueService with optional persistence.
+    /// </summary>
+    /// <param name="enablePersistence">When false, skips loading and saving state to disk (useful for testing).</param>
+    public CommandQueueService(bool enablePersistence)
+    {
+        _enablePersistence = enablePersistence;
+        if (_enablePersistence)
+        {
+            LoadSavedPayloads();
+            LoadQueueState();
+        }
     }
     
     private void OnHistoryChanged()
     {
         HistoryChanged?.Invoke(this, EventArgs.Empty);
+        if (_enablePersistence)
+        {
+            PersistQueueState();
+        }
     }
     
     /// <summary>
@@ -416,5 +444,83 @@ public class CommandQueueService
         {
             // Silently ignore persistence errors
         }
+    }
+    
+    /// <summary>
+    /// Loads queue and history state from disk on startup.
+    /// Ensures queued requests are not lost if application restarts.
+    /// </summary>
+    private void LoadQueueState()
+    {
+        try
+        {
+            // Load history first
+            if (File.Exists(HistoryStateFile))
+            {
+                var historyJson = File.ReadAllText(HistoryStateFile);
+                var history = JsonSerializer.Deserialize<List<CommandEntry>>(historyJson);
+                if (history != null)
+                {
+                    _history.AddRange(history);
+                    if (_history.Any())
+                    {
+                        _nextId = _history.Max(h => h.Id) + 1;
+                    }
+                }
+            }
+            
+            // Load queue
+            if (File.Exists(QueueStateFile))
+            {
+                var queueJson = File.ReadAllText(QueueStateFile);
+                var queueItems = JsonSerializer.Deserialize<List<QueueItem>>(queueJson);
+                if (queueItems != null)
+                {
+                    foreach (var item in queueItems)
+                    {
+                        _queue.Add((item.CommandId, item.Code));
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // If loading fails, start fresh
+        }
+    }
+    
+    /// <summary>
+    /// Persists queue and history state to disk.
+    /// Called whenever the queue or history changes.
+    /// </summary>
+    private void PersistQueueState()
+    {
+        try
+        {
+            // Ensure directory exists
+            Directory.CreateDirectory(QueuePersistenceDirectory);
+            
+            // Save queue
+            var queueItems = _queue.Select(q => new QueueItem { CommandId = q.CommandId, Code = q.Code }).ToList();
+            var queueJson = JsonSerializer.Serialize(queueItems, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(QueueStateFile, queueJson);
+            
+            // Save history
+            var historyJson = JsonSerializer.Serialize(_history, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(HistoryStateFile, historyJson);
+        }
+        catch
+        {
+            // Silently ignore persistence errors
+        }
+    }
+    
+    /// <summary>
+    /// Helper class for queue serialization.
+    /// </summary>
+    private class QueueItem
+    {
+        public int CommandId { get; set; }
+        public string Code { get; set; } = "";
     }
 }

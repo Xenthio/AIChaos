@@ -154,6 +154,26 @@ AIChaos/
    - Filtered patterns (URLs, external content) go to code moderation queue
    - Maintains security consistency across all code generation paths
 
+### New Features (December 2024)
+1. ✅ **Command Consumption Logic**: Commands are only considered "consumed" after playing uninterrupted for 20 seconds
+   - If interrupted by level change or save load, commands re-run after 5 seconds
+   - Prevents wasted donations due to timing issues
+
+2. ✅ **Free First Redo**: Users get their first redo free, subsequent redos cost credits
+   - Redo regenerates code with AI using user feedback about what went wrong
+   - Re-Execute (formerly "Redo") still available for re-running same code
+
+3. ✅ **Queue Persistence**: Queued requests persist to JSON file
+   - Requests not lost if application restarts
+   - History also persisted for recovery
+
+4. ✅ **Stream State Recovery**: Stream status persisted for auto-reconnect
+   - If app restarts, can reconnect to YouTube/Twitch automatically
+
+5. ✅ **Enhanced Safety Rules**: 
+   - Movement blocking limited to max 10 seconds
+   - UI elements that take cursor control must include Close button
+
 ### Anti-Patterns Fixed in Recent Cleanup
 - ✅ `Task.Delay().ContinueWith()` → Use `Task.Run()` + `InvokeAsync()`
 - ✅ `async void` → Always return `Task` with proper error handling

@@ -227,4 +227,40 @@ public class ChaosController : ControllerBase
             CommandId = request.CommandId
         });
     }
+
+    /// <summary>
+    /// Notifies the server of a level change or save load in GMod.
+    /// Used to handle command consumption tracking and re-runs.
+    /// </summary>
+    [HttpPost("levelchange")]
+    public ActionResult<LevelChangeResponse> ReportLevelChange([FromBody] LevelChangeRequest request)
+    {
+        _logger.LogInformation("[LEVEL] {ChangeType} detected: {Map}", 
+            request.IsSaveLoad ? "Save load" : "Level change", request.MapName);
+
+        var consumptionService = HttpContext.RequestServices.GetRequiredService<CommandConsumptionService>();
+        var response = consumptionService.HandleLevelChange(request.MapName, request.IsSaveLoad);
+        
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Gets any commands pending re-run after a level change.
+    /// Called by GMod after the level finishes loading.
+    /// </summary>
+    [HttpGet("pending-reruns")]
+    [HttpPost("pending-reruns")]
+    public ActionResult<LevelChangeResponse> GetPendingReruns()
+    {
+        Response.Headers.Append("ngrok-skip-browser-warning", "true");
+        
+        var consumptionService = HttpContext.RequestServices.GetRequiredService<CommandConsumptionService>();
+        var reruns = consumptionService.GetPendingReruns();
+        
+        return Ok(new LevelChangeResponse
+        {
+            Status = "success",
+            PendingReruns = reruns
+        });
+    }
 }

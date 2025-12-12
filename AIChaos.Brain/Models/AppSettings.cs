@@ -13,6 +13,7 @@ public class AppSettings
     public TunnelSettings Tunnel { get; set; } = new();
     public TestClientSettings TestClient { get; set; } = new();
     public GeneralSettings General { get; set; } = new();
+    public StreamStateSettings StreamState { get; set; } = new();
 }
 
 public class OpenRouterSettings
@@ -154,4 +155,40 @@ public class SavedPayload
     public string ExecutionCode { get; set; } = "";
     public string UndoCode { get; set; } = "";
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Settings for persisting stream state to allow auto-reconnect after restart.
+/// </summary>
+public class StreamStateSettings
+{
+    /// <summary>
+    /// Whether the stream was live when the app last closed.
+    /// </summary>
+    public bool WasStreamLive { get; set; } = false;
+    
+    /// <summary>
+    /// Whether YouTube was listening when the app last closed.
+    /// </summary>
+    public bool WasYouTubeListening { get; set; } = false;
+    
+    /// <summary>
+    /// Whether Twitch was listening when the app last closed.
+    /// </summary>
+    public bool WasTwitchListening { get; set; } = false;
+    
+    /// <summary>
+    /// The last known YouTube video ID.
+    /// </summary>
+    public string? LastYouTubeVideoId { get; set; }
+    
+    /// <summary>
+    /// The last known Twitch channel.
+    /// </summary>
+    public string? LastTwitchChannel { get; set; }
+    
+    /// <summary>
+    /// Timestamp when the stream state was last updated.
+    /// </summary>
+    public DateTime? LastUpdated { get; set; }
 }

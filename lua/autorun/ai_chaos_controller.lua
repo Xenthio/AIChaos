@@ -50,6 +50,10 @@ if SERVER then
         print("[AI Chaos] Server Initialized!")
         print("[AI Chaos] Polling endpoint: " .. SERVER_URL)
 
+    -- Track current map for level change detection
+    local currentMap = game.GetMap()
+    local isLevelChanging = false
+
     -- 1. Helper Function: Send code to client
     function RunOnClient(codeString)
         net.Start("AI_RunClientCode")
@@ -85,6 +89,67 @@ if SERVER then
             end,
             failed = function(err)
                 print("[AI Chaos] Failed to report result: " .. tostring(err))
+            end
+        })
+    end
+    
+    -- Helper Function: Report level change to server
+    local function ReportLevelChange(mapName, isSaveLoad)
+        local levelChangeUrl = BASE_URL .. "/levelchange"
+        local body = {
+            map_name = mapName,
+            is_save_load = isSaveLoad,
+            timestamp = os.time()
+        }
+        
+        HTTP({
+            method = "POST",
+            url = levelChangeUrl,
+            body = util.TableToJSON(body),
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, responseBody, headers)
+                if code == 200 then
+                    print("[AI Chaos] Level change reported: " .. mapName)
+                    -- Server will queue any commands that need to be re-run
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] Failed to report level change: " .. tostring(err))
+            end
+        })
+    end
+    
+    -- Helper Function: Check for and execute pending re-runs after level load
+    local function CheckPendingReruns()
+        local rerunsUrl = BASE_URL .. "/pending-reruns"
+        
+        HTTP({
+            method = "GET",
+            url = rerunsUrl,
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, responseBody, headers)
+                if code == 200 then
+                    local data = util.JSONToTable(responseBody)
+                    if data and data.PendingReruns and #data.PendingReruns > 0 then
+                        print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
+                        for _, rerun in ipairs(data.PendingReruns) do
+                            -- Schedule the re-run with the specified delay
+                            timer.Simple(rerun.DelaySeconds or 5, function()
+                                print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
+                                ExecuteAICode(rerun.Code, rerun.CommandId)
+                            end)
+                        end
+                    end
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
             end
         })
     end
@@ -139,12 +204,49 @@ if SERVER then
             ReportResult(commandId, false, errorMsg, capturedData)
         end
     end
+    
+    -- Hook for detecting level/map changes
+    hook.Add("ShutDown", "AI_Chaos_LevelChange", function()
+        isLevelChanging = true
+        ReportLevelChange(game.GetMap(), false)
+    end)
+    
+    -- Hook for detecting when level finishes loading
+    hook.Add("InitPostEntity", "AI_Chaos_LevelLoaded", function()
+        local newMap = game.GetMap()
+        if currentMap ~= newMap then
+            print("[AI Chaos] Map changed from " .. currentMap .. " to " .. newMap)
+            currentMap = newMap
+        end
+        
+        -- Check for pending re-runs after a short delay to ensure everything is loaded
+        timer.Simple(2, function()
+            CheckPendingReruns()
+        end)
+    end)
+    
+    -- Hook for detecting save/load (game restore)
+    hook.Add("Restored", "AI_Chaos_SaveLoaded", function()
+        print("[AI Chaos] Save game loaded - checking for pending re-runs")
+        ReportLevelChange(game.GetMap(), true)
+        
+        -- Check for pending re-runs after delay
+        timer.Simple(5, function()
+            CheckPendingReruns()
+        end)
+    end)
 
     -- Forward declaration
     local PollServer 
 
     -- 3. The Polling Logic
     PollServer = function()
+        -- Skip polling during level changes
+        if isLevelChanging then
+            timer.Simple(POLL_INTERVAL, PollServer)
+            return
+        end
+        
         -- print("[AI Chaos] Polling...") -- Uncomment to see spam in console
         
         local body = { map = game.GetMap() }
