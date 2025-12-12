@@ -87,7 +87,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            //await UpdateLuaFileAsync(url);
+            await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
@@ -156,7 +156,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            //await UpdateLuaFileAsync(url);
+            await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
@@ -222,7 +222,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            //await UpdateLuaFileAsync(url);
+            await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
@@ -454,7 +454,10 @@ public partial class TunnelService : IDisposable
                 return;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get public IP from api.ipify.org");
+        }
         
         try
         {
@@ -464,7 +467,10 @@ public partial class TunnelService : IDisposable
                 PublicIp = (await response.Content.ReadAsStringAsync()).Trim();
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get public IP from icanhazip.com");
+        }
     }
     
     private async Task UpdateLuaFileAsync(string url)
@@ -474,7 +480,9 @@ public partial class TunnelService : IDisposable
         // Write to tunnel_url.txt - write the BASE URL (without /poll) because
         // the Lua script appends /poll itself when reading from this file
         await WriteTunnelUrlFileAsync(url);
-        
+
+        return; // we don't need to update the Lua file anymore, just the tunnel_url.txt
+
         // Try multiple possible paths to find the Lua file
         var possiblePaths = new[]
         {
