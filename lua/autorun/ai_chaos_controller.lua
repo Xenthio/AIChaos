@@ -93,24 +93,47 @@ if SERVER then
         })
     end
     
-    -- Helper Function: Report level change to server
-    -- Note: During ShutDown, the HTTP request is sent but callbacks won't fire (Lua exits first)
-    -- We still send it because the request itself may complete before the process exits
-    local function ReportLevelChange(mapName, isSaveLoad)
-        print("[AI Chaos] Sending level change report for: " .. tostring(mapName) .. " (isSaveLoad: " .. tostring(isSaveLoad) .. ")")
+    -- Helper Function: Write shutdown timestamp to file
+    -- This is called during ShutDown - file writes are synchronous so they complete
+    local function WriteShutdownTimestamp()
+        local timestamp = os.time()
+        file.Write("ai_chaos_shutdown.txt", tostring(timestamp))
+        print("[AI Chaos] Shutdown timestamp written: " .. tostring(timestamp))
+    end
+    
+    -- Helper Function: Read and clear shutdown timestamp file
+    -- Returns the timestamp if found, nil otherwise
+    local function ReadAndClearShutdownTimestamp()
+        if file.Exists("ai_chaos_shutdown.txt", "DATA") then
+            local content = file.Read("ai_chaos_shutdown.txt", "DATA")
+            file.Delete("ai_chaos_shutdown.txt")
+            if content and content ~= "" then
+                local timestamp = tonumber(content)
+                if timestamp then
+                    print("[AI Chaos] Found shutdown timestamp: " .. tostring(timestamp))
+                    return timestamp
+                end
+            end
+        end
+        return nil
+    end
+    
+    -- Helper Function: Check for and execute pending re-runs after level load
+    local function CheckPendingReruns()
+        -- Check if there was a shutdown before this load
+        local shutdownTimestamp = ReadAndClearShutdownTimestamp()
         
-        local levelChangeUrl = BASE_URL .. "/levelchange"
-        local body = {
-            map_name = mapName,
-            is_save_load = isSaveLoad,
-            timestamp = os.time()
-        }
+        local rerunsUrl = BASE_URL .. "/pending-reruns"
+        local body = {}
         
-        -- Send the HTTP request - during ShutDown this may or may not complete
-        -- but we try anyway since the network packet might be sent before process exits
+        if shutdownTimestamp then
+            body.shutdown_timestamp = shutdownTimestamp
+            print("[AI Chaos] Sending shutdown timestamp to server: " .. tostring(shutdownTimestamp))
+        end
+        
         HTTP({
             method = "POST",
-            url = levelChangeUrl,
+            url = rerunsUrl,
             body = util.TableToJSON(body),
             headers = { 
                 ["Content-Type"] = "application/json",
@@ -118,100 +141,25 @@ if SERVER then
             },
             success = function(code, responseBody, headers)
                 if code == 200 then
-                    print("[AI Chaos] Level change reported successfully: " .. mapName)
+                    local data = util.JSONToTable(responseBody)
+                    if data and data.PendingReruns and #data.PendingReruns > 0 then
+                        print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
+                        for _, rerun in ipairs(data.PendingReruns) do
+                            -- Schedule the re-run with the specified delay
+                            timer.Simple(rerun.DelaySeconds or 5, function()
+                                print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
+                                ExecuteAICode(rerun.Code, rerun.CommandId)
+                            end)
+                        end
+                    else
+                        print("[AI Chaos] No pending re-runs")
+                    end
                 end
             end,
             failed = function(err)
-                print("[AI Chaos] Failed to report level change: " .. tostring(err))
+                print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
             end
         })
-        
-        -- Also write to a file as backup - server can check this file
-        -- This is more reliable during ShutDown since file writes are synchronous
-        local levelChangeData = util.TableToJSON({
-            map_name = mapName,
-            is_save_load = isSaveLoad,
-            timestamp = os.time(),
-            previous_map = game.GetMap()
-        })
-        file.Write("ai_chaos_levelchange.txt", levelChangeData)
-        print("[AI Chaos] Level change data written to file as backup")
-    end
-    
-    -- Helper Function: Check for level change file and send to server if found
-    -- This handles cases where the HTTP during ShutDown didn't complete
-    local function CheckAndReportPendingLevelChange()
-        if file.Exists("ai_chaos_levelchange.txt", "DATA") then
-            local content = file.Read("ai_chaos_levelchange.txt", "DATA")
-            if content and content ~= "" then
-                local data = util.JSONToTable(content)
-                if data then
-                    print("[AI Chaos] Found pending level change from file, reporting to server...")
-                    
-                    -- Send the level change that happened during shutdown
-                    local levelChangeUrl = BASE_URL .. "/levelchange"
-                    HTTP({
-                        method = "POST",
-                        url = levelChangeUrl,
-                        body = content,
-                        headers = { 
-                            ["Content-Type"] = "application/json",
-                            ["ngrok-skip-browser-warning"] = "true"
-                        },
-                        success = function(code, responseBody, headers)
-                            if code == 200 then
-                                print("[AI Chaos] Pending level change reported successfully")
-                                -- Delete the file after successful report
-                                file.Delete("ai_chaos_levelchange.txt")
-                            end
-                        end,
-                        failed = function(err)
-                            print("[AI Chaos] Failed to report pending level change: " .. tostring(err))
-                        end
-                    })
-                end
-            end
-        end
-    end
-    
-    -- Helper Function: Check for and execute pending re-runs after level load
-    local function CheckPendingReruns()
-        -- First, check if there's a pending level change from the previous shutdown
-        CheckAndReportPendingLevelChange()
-        
-        -- Small delay to let the level change report complete
-        timer.Simple(0.5, function()
-            local rerunsUrl = BASE_URL .. "/pending-reruns"
-            
-            HTTP({
-                method = "GET",
-                url = rerunsUrl,
-                headers = { 
-                    ["Content-Type"] = "application/json",
-                    ["ngrok-skip-browser-warning"] = "true"
-                },
-                success = function(code, responseBody, headers)
-                    if code == 200 then
-                        local data = util.JSONToTable(responseBody)
-                        if data and data.PendingReruns and #data.PendingReruns > 0 then
-                            print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
-                            for _, rerun in ipairs(data.PendingReruns) do
-                                -- Schedule the re-run with the specified delay
-                                timer.Simple(rerun.DelaySeconds or 5, function()
-                                    print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
-                                    ExecuteAICode(rerun.Code, rerun.CommandId)
-                                end)
-                            end
-                        else
-                            print("[AI Chaos] No pending re-runs")
-                        end
-                    end
-                end,
-                failed = function(err)
-                    print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
-                end
-            })
-        end)
     end
 
     -- 2. Helper Function: Run the code safely using CompileString + pcall for proper error messages
@@ -266,34 +214,20 @@ if SERVER then
     end
     
     -- Hook for detecting level/map changes (fires when server is shutting down)
-    -- Note: HTTP requests during ShutDown may not complete in time
+    -- Just write timestamp to file - file writes are synchronous so they complete before exit
     hook.Add("ShutDown", "AI_Chaos_LevelChange", function()
-        print("[AI Chaos] ShutDown hook fired - attempting to report level change")
+        print("[AI Chaos] ShutDown hook fired - writing timestamp to file")
         isLevelChanging = true
-        ReportLevelChange(game.GetMap(), false)
+        WriteShutdownTimestamp()
     end)
     
-    -- Use Initialize hook which fires after map loads (this script runs on map load)
-    -- Note: This code is already running because the script loaded, so we check for reruns on startup
+    -- Check for pending re-runs when script loads (fires after map load/save load)
     timer.Simple(3, function()
         print("[AI Chaos] Checking for pending re-runs after load...")
         CheckPendingReruns()
     end)
     
-    -- Listen for game events to detect save loading
-    -- PlayerInitialSpawn can indicate a reload in singleplayer
-    hook.Add("PlayerInitialSpawn", "AI_Chaos_PlayerSpawn", function(ply)
-        -- In singleplayer, this fires after loading a save
-        if game.SinglePlayer() then
-            timer.Simple(2, function()
-                print("[AI Chaos] Player spawned (singleplayer) - checking for pending re-runs")
-                CheckPendingReruns()
-            end)
-        end
-    end)
-    
-    -- Also detect map changes by comparing maps in poll response handling
-    -- This is a fallback in case the hooks don't work as expected
+    -- Track map for detecting changes in poll loop (backup detection)
     local lastKnownMap = game.GetMap()
 
     -- Forward declaration
@@ -301,14 +235,10 @@ if SERVER then
 
     -- 3. The Polling Logic
     PollServer = function()
-        -- Check if map changed (backup detection - more reliable than ShutDown hook)
+        -- Check if map changed (backup detection)
         local currentMapNow = game.GetMap()
         if currentMapNow ~= lastKnownMap then
             print("[AI Chaos] Map change detected in poll: " .. tostring(lastKnownMap) .. " -> " .. tostring(currentMapNow))
-            
-            -- Report the level change to server (this is the reliable method)
-            ReportLevelChange(currentMapNow, false)
-            
             lastKnownMap = currentMapNow
             currentMap = currentMapNow
             isLevelChanging = false

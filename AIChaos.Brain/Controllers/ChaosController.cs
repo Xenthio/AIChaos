@@ -247,14 +247,24 @@ public class ChaosController : ControllerBase
     /// <summary>
     /// Gets any commands pending re-run after a level change.
     /// Called by GMod after the level finishes loading.
+    /// If shutdown_timestamp is provided, marks commands executing at that time as interrupted.
     /// </summary>
     [HttpGet("pending-reruns")]
     [HttpPost("pending-reruns")]
-    public ActionResult<LevelChangeResponse> GetPendingReruns()
+    public ActionResult<LevelChangeResponse> GetPendingReruns([FromBody] PendingRerunsRequest? request = null)
     {
         Response.Headers.Append("ngrok-skip-browser-warning", "true");
         
         var consumptionService = HttpContext.RequestServices.GetRequiredService<CommandConsumptionService>();
+        
+        // If we have a shutdown timestamp, process the level change first
+        if (request?.ShutdownTimestamp != null)
+        {
+            var shutdownTime = DateTimeOffset.FromUnixTimeSeconds(request.ShutdownTimestamp.Value).UtcDateTime;
+            _logger.LogInformation("[LEVEL] Processing shutdown timestamp: {Time}", shutdownTime);
+            consumptionService.HandleLevelChangeFromTimestamp(shutdownTime);
+        }
+        
         var reruns = consumptionService.GetPendingReruns();
         
         return Ok(new LevelChangeResponse

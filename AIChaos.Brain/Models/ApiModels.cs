@@ -487,6 +487,19 @@ public class LevelChangeRequest
 }
 
 /// <summary>
+/// Request for pending re-runs after level load.
+/// </summary>
+public class PendingRerunsRequest
+{
+    /// <summary>
+    /// Unix timestamp of when shutdown occurred.
+    /// If provided, server will mark commands executing at that time as interrupted.
+    /// </summary>
+    [JsonPropertyName("shutdown_timestamp")]
+    public long? ShutdownTimestamp { get; set; }
+}
+
+/// <summary>
 /// Response to level change notification.
 /// </summary>
 public class LevelChangeResponse

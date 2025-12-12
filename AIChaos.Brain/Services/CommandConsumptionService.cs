@@ -147,6 +147,63 @@ public class CommandConsumptionService
     }
     
     /// <summary>
+    /// Called when we receive a shutdown timestamp from GMod.
+    /// Marks commands that were executing at that time as interrupted.
+    /// </summary>
+    public void HandleLevelChangeFromTimestamp(DateTime shutdownTime)
+    {
+        lock (_lock)
+        {
+            // Get snapshot of command IDs to process (thread-safe)
+            var commandIds = _executingCommands.Keys.ToList();
+            
+            foreach (var commandId in commandIds)
+            {
+                // Try to get and remove the command atomically
+                if (!_executingCommands.TryRemove(commandId, out var executing))
+                {
+                    continue; // Command was already removed by another thread
+                }
+                
+                // Calculate how long the command ran before shutdown
+                var elapsed = shutdownTime - executing.StartedAt;
+                
+                // Only interrupt if not yet consumed at shutdown time
+                if (elapsed.TotalSeconds < Constants.Queue.ConsumptionTimeSeconds)
+                {
+                    // Update command entry
+                    var command = _commandQueue.GetCommand(executing.CommandId);
+                    if (command != null)
+                    {
+                        command.InterruptCount++;
+                        _logger.LogInformation(
+                            "[CONSUMPTION] Command #{CommandId} interrupted at shutdown after {Seconds:F1}s (interrupt #{Count})", 
+                            executing.CommandId, elapsed.TotalSeconds, command.InterruptCount);
+                    }
+                    
+                    // Queue for re-run after level loads
+                    var pendingRerun = new PendingRerunCommand
+                    {
+                        CommandId = executing.CommandId,
+                        Code = executing.Code,
+                        DelaySeconds = Constants.Queue.RerunDelayAfterLoadSeconds
+                    };
+                    
+                    _pendingReruns.Enqueue(pendingRerun);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "[CONSUMPTION] Command #{CommandId} was consumed before shutdown ({Seconds:F1}s)", 
+                        executing.CommandId, elapsed.TotalSeconds);
+                }
+            }
+            
+            _logger.LogInformation("[CONSUMPTION] Processed shutdown timestamp: {Time}", shutdownTime);
+        }
+    }
+    
+    /// <summary>
     /// Gets and clears all commands pending re-run.
     /// Called by GMod after level finishes loading.
     /// </summary>
