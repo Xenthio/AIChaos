@@ -17,7 +17,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | 
                                ForwardedHeaders.XForwardedProto | 
                                ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
 
@@ -79,7 +79,6 @@ app.Use(async (context, next) =>
     var forwardedPrefix = context.Request.Headers["X-Forwarded-Prefix"].FirstOrDefault();
     if (!string.IsNullOrEmpty(forwardedPrefix))
     {
-        //Console.WriteLine($"[DEBUG] Received X-Forwarded-Prefix: {forwardedPrefix}");
         context.Request.PathBase = forwardedPrefix;
         
         // Also need to strip the prefix from the path if nginx didn't
@@ -87,8 +86,6 @@ app.Use(async (context, next) =>
         {
             context.Request.Path = remainder;
         }
-        
-        //Console.WriteLine($"[DEBUG] PathBase: {context.Request.PathBase}, Path: {context.Request.Path}");
     }
     await next();
 });
@@ -112,7 +109,7 @@ app.MapRazorComponents<App>()
 
 app.MapControllers();
 
-// Get the settings service to trigger initialization and show moderation password
+// Initialize settings service
 var settingsService = app.Services.GetRequiredService<SettingsService>();
 
 Console.WriteLine("========================================");
@@ -123,9 +120,6 @@ Console.WriteLine("  Dashboard: http://localhost:5000/dashboard");
 Console.WriteLine("  Setup: http://localhost:5000/dashboard/setup");
 Console.WriteLine("  History: http://localhost:5000/dashboard/history");
 Console.WriteLine("  Moderation: http://localhost:5000/dashboard/moderation");
-Console.WriteLine("========================================");
-Console.WriteLine($"  MODERATION PASSWORD: {settingsService.ModerationPassword} (OBSOLETE)");
-Console.WriteLine("  (Password changes each session)");
 Console.WriteLine("========================================");
 
 // Register shutdown handler to stop tunnels when server closes

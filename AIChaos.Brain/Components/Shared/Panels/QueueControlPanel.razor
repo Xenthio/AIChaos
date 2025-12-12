@@ -1,0 +1,104 @@
+@* Example panel component demonstrating component splitting pattern *@
+@using AIChaos.Brain.Models
+@using AIChaos.Brain.Services
+@inject QueueSlotService QueueSlots
+@inject CommandQueueService CommandQueue
+@inject AiCodeGeneratorService CodeGenerator
+
+<div class="card control-panel">
+    <h2>💥 Queue Control</h2>
+    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+        <input type="number" @bind="blastCount" min="1" max="10" 
+               style="width: 80px; padding: 10px; text-align: center; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);" 
+               title="Number of commands to blast" />
+        <button @onclick="ManualBlast" class="btn-warning" style="flex: 1;">
+            💥 BLAST QUEUE
+        </button>
+    </div>
+    
+    <div class="queue-stats">
+        <div class="stat-item">
+            <span class="stat-label">Active Slots:</span>
+            <span class="stat-value">@ActiveSlots / @TotalSlots</span>
+        </div>
+    </div>
+    
+    <button @onclick="async () => await OnStatusChanged.InvokeAsync()" class="btn-secondary" style="width: 100%; margin-top: 10px;">
+        🔄 Refresh Status
+    </button>
+    
+    <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+        <button @onclick="TestBarrels" class="btn-primary" style="width: 100%;">
+            🛢️ Test: Spawn 10 Barrels
+        </button>
+    </div>
+    
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-@statusType" style="margin-top: 10px;">@statusMessage</div>
+    }
+</div>
+
+@code {
+    [Parameter] public int ActiveSlots { get; set; }
+    [Parameter] public int TotalSlots { get; set; }
+    [Parameter] public EventCallback OnStatusChanged { get; set; }
+
+    private int blastCount = 3;
+    private string statusMessage = "";
+    private string statusType = "info";
+
+    private async Task ManualBlast()
+    {
+        try
+        {
+            var count = Math.Max(1, Math.Min(blastCount, 10));
+            var commands = QueueSlots.ManualBlast(count);
+            
+            if (commands != null)
+            {
+                ShowStatus($"💥 Blasted {commands.Count} command(s)!", "success");
+                await OnStatusChanged.InvokeAsync();
+            }
+            else
+            {
+                ShowStatus("Failed to blast queue", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"❌ Error: {ex.Message}", "error");
+        }
+    }
+
+    private async Task TestBarrels()
+    {
+        try
+        {
+            var (executionCode, undoCode, _, _) = await CodeGenerator.GenerateCodeAsync("Spawn 10 barrels");
+            CommandQueue.AddCommand("Spawn 10 barrels", executionCode, undoCode, Constants.Sources.Dashboard, Constants.Authors.Admin);
+            ShowStatus("✅ Barrel test queued!", "success");
+            await OnStatusChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"❌ Test failed: {ex.Message}", "error");
+        }
+    }
+
+    private void ShowStatus(string message, string type)
+    {
+        statusMessage = message;
+        statusType = type;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(Constants.MessageDurations.Short);
+            await InvokeAsync(() =>
+            {
+                statusMessage = "";
+                StateHasChanged();
+            });
+        });
+    }
+}

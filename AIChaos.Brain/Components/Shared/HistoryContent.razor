@@ -7,6 +7,7 @@
 @using AIChaos.Brain.Models
 
 <div class="card">
+@using AIChaos.Brain.Helpers
     <h2>📜 Command History</h2>
     
     <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -61,7 +62,7 @@
                             }
                         }
                     </div>
-                    <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
+                    <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
                     <div class="history-actions">
                         <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
@@ -94,17 +95,6 @@
 }
 
 <style>
-    .history-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        padding: 15px;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 8px;
-        margin-bottom: 10px;
-        gap: 10px;
-    }
-
     .history-meta {
         display: flex;
         gap: 10px;
@@ -118,51 +108,8 @@
         color: var(--info);
     }
 
-    .history-time {
-        color: var(--text-dim);
-    }
-
-    .history-source {
-        padding: 2px 8px;
-        border-radius: 4px;
-        background: rgba(255, 255, 255, 0.1);
-    }
-
     .history-author {
         color: var(--text-dim);
-    }
-
-    .history-prompt {
-        color: var(--text);
-        margin: 5px 0;
-    }
-
-    .history-response {
-        color: var(--info);
-        font-size: 12px;
-        margin-top: 5px;
-    }
-
-    .history-status {
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 11px;
-        white-space: nowrap;
-        flex-shrink: 0;
-        align-self: flex-start;
-    }
-
-    .status-pending { background: #888; }
-    .status-pendingmoderation { background: #ff9800; color: #000; }
-    .status-queued { background: #f0ad4e; }
-    .status-executed { background: #5cb85c; }
-    .status-undone { background: #5bc0de; }
-    .status-failed { background: #d9534f; }
-
-    .history-actions {
-        display: flex;
-        gap: 5px;
-        flex-shrink: 0;
     }
 
     .code-details {
@@ -190,18 +137,6 @@
         font-family: 'Courier New', monospace;
         font-size: 11px;
         color: var(--text);
-    }
-
-    .empty-state {
-        text-align: center;
-        padding: 40px;
-        color: var(--text-dim);
-    }
-
-    .checkbox-group {
-        display: flex;
-        align-items: center;
-        gap: 8px;
     }
 
     .modal {
@@ -475,18 +410,6 @@
             Console.WriteLine($"Clear history failed: {ex.Message}");
         }
     }
-
-    private string GetStatusClass(CommandStatus status) => status switch
-    {
-        CommandStatus.Executed => "executed",
-        CommandStatus.Failed => "failed",
-        CommandStatus.Queued => "queued",
-        CommandStatus.Undone => "undone",
-        CommandStatus.PendingModeration => "pendingmoderation",
-        _ => "pending"
-    };
-
-    private string GetStatusText(CommandStatus status) => status.ToString();
 
     public void Dispose()
     {

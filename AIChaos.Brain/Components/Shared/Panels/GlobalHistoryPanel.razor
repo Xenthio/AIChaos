@@ -1,0 +1,231 @@
+@using AIChaos.Brain.Services
+@using AIChaos.Brain.Models
+@using AIChaos.Brain.Helpers
+@implements IDisposable
+@inject CommandQueueService CommandQueue
+@inject AiCodeGeneratorService CodeGenerator
+@inject HttpClient Http
+
+<!-- Global History (with spoiler dropdown) -->
+<div class="card history-section">
+    <h2>📜 Global History</h2>
+    <div style="margin-bottom: 15px;">
+        <button @onclick="RefreshHistory" class="btn-secondary">🔄 Refresh</button>
+        <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+            <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
+        </label>
+    </div>
+    
+    <details class="history-spoiler">
+        <summary style="cursor: pointer; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; margin-bottom: 10px;">
+            ⚠️ Click to reveal history (may spoil effects)
+        </summary>
+        
+        @if (history == null || !history.Any())
+        {
+            <div class="empty-state">No commands in history yet.</div>
+        }
+        else
+        {
+            <div class="history-list">
+                @foreach (var cmd in history.Take(20))
+                {
+                    <div class="history-item-compact">
+                        <div style="flex: 1;">
+                            <div class="history-meta">
+                                <span class="history-id">#@cmd.Id</span>
+                                <span class="history-time">@cmd.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="history-source">@cmd.Source</span>
+                            </div>
+                            <div class="history-prompt">👤 @cmd.Author: @cmd.UserPrompt</div>
+                            <span class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</span>
+                        </div>
+                        <div class="history-actions-compact">
+                            <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
+                            <button @onclick="async () => await ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (Auto-generated)">🔧</button>
+                            <button @onclick="() => OpenSavePayloadModal(cmd.Id)" class="btn-success btn-small" title="Save Payload">💾</button>
+                        </div>
+                    </div>
+                }
+                @if (history.Count > 20)
+                {
+                    <div class="empty-state">Showing 20 most recent. View full history in History tab.</div>
+                }
+            </div>
+        }
+    </details>
+</div>
+
+<!-- Save Payload Modal -->
+@if (showSavePayloadModal)
+{
+    <div class="modal active">
+        <div class="modal-content">
+            <h3>💾 Save Payload</h3>
+            <p>Enter a name for this saved payload:</p>
+            <div class="form-group">
+                <input type="text" @bind="payloadName" placeholder="Payload name..." style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
+                <button @onclick="CloseSavePayloadModal" class="btn-secondary">Cancel</button>
+                <button @onclick="SavePayload" class="btn-primary">💾 Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback<string> OnStatusMessage { get; set; }
+    [Parameter] public EventCallback OnHistoryChanged { get; set; }
+    
+    private List<CommandEntry>? history;
+    private bool autoRefresh = false;
+    private System.Threading.Timer? refreshTimer;
+    
+    // Save payload modal
+    private bool showSavePayloadModal = false;
+    private int selectedCommandIdForPayload = 0;
+    private string payloadName = "";
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshHistory();
+    }
+    
+    private async Task RefreshHistory()
+    {
+        try
+        {
+            history = CommandQueue.GetHistory().OrderByDescending(c => c.Timestamp).ToList();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load history: {ex.Message}");
+        }
+    }
+    
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () => await RefreshHistory());
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+    
+    private void UndoCommand(int commandId)
+    {
+        try
+        {
+            CommandQueue.UndoCommand(commandId);
+            _ = Task.Run(async () => await RefreshHistory());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Undo failed: {ex.Message}");
+        }
+    }
+    
+    private async Task ForceUndoCommand(int commandId)
+    {
+        try
+        {
+            var command = CommandQueue.GetCommand(commandId);
+            if (command == null)
+            {
+                await OnStatusMessage.InvokeAsync("error:Command not found");
+                return;
+            }
+
+            await OnStatusMessage.InvokeAsync("info:🔧 Generating comprehensive undo code...");
+            
+            var forceUndoCode = await CodeGenerator.GenerateForceUndoAsync(command);
+            
+            if (!string.IsNullOrEmpty(forceUndoCode))
+            {
+                CommandQueue.QueueCode(forceUndoCode);
+                await OnStatusMessage.InvokeAsync("success:✓ Comprehensive undo code generated and queued");
+                await RefreshHistory();
+                await OnHistoryChanged.InvokeAsync();
+            }
+            else
+            {
+                await OnStatusMessage.InvokeAsync("error:✗ Failed to generate undo code");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Force undo failed: {ex.Message}");
+            await OnStatusMessage.InvokeAsync($"error:Force undo error: {ex.Message}");
+        }
+    }
+    
+    private void OpenSavePayloadModal(int commandId)
+    {
+        selectedCommandIdForPayload = commandId;
+        var command = CommandQueue.GetCommand(commandId);
+        payloadName = command?.UserPrompt ?? "";
+        showSavePayloadModal = true;
+        StateHasChanged();
+    }
+    
+    private void CloseSavePayloadModal()
+    {
+        showSavePayloadModal = false;
+        payloadName = "";
+        selectedCommandIdForPayload = 0;
+        StateHasChanged();
+    }
+    
+    private async Task SavePayload()
+    {
+        try
+        {
+            var command = CommandQueue.GetCommand(selectedCommandIdForPayload);
+            if (command != null && !string.IsNullOrEmpty(payloadName))
+            {
+                var response = await Http.PostAsJsonAsync("/api/setup/payloads", new
+                {
+                    Name = payloadName,
+                    Prompt = command.UserPrompt,
+                    Code = command.ExecutionCode,
+                    UndoCode = command.UndoCode
+                });
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Payload '{payloadName}' saved successfully");
+                    await OnStatusMessage.InvokeAsync("success:💾 Payload saved successfully");
+                }
+                else
+                {
+                    await OnStatusMessage.InvokeAsync("error:Failed to save payload");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Save payload failed: {ex.Message}");
+            await OnStatusMessage.InvokeAsync($"error:Save payload failed: {ex.Message}");
+        }
+        finally
+        {
+            CloseSavePayloadModal();
+        }
+    }
+    
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+}

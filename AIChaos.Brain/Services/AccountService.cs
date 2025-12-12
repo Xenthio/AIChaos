@@ -879,7 +879,7 @@ public class AccountService
                 placeholderCommand.Id, placeholderCommand.Status);
             
             // Add to code moderation queue
-            addPendingCode(prompt, executionCode, undoCode, moderationReason, "web", account.DisplayName, accountId, placeholderCommand.Id);
+            addPendingCode(prompt, executionCode, undoCode, moderationReason ?? "Unknown", "web", account.DisplayName ?? account.Username, accountId, placeholderCommand.Id);
             
             _logger.LogInformation("[CODE MODERATION] Command #{CommandId} queued for review from {Username} (Reason: {Reason})",
                 placeholderCommand.Id, account.Username, moderationReason);
@@ -1235,8 +1235,7 @@ public class AccountService
         var salt = new byte[16];
         RandomNumberGenerator.Fill(salt);
         
-        using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
-        var hash = pbkdf2.GetBytes(32);
+        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100000, HashAlgorithmName.SHA256, 32);
         
         // Combine salt + hash for storage
         var combined = new byte[salt.Length + hash.Length];
@@ -1258,8 +1257,7 @@ public class AccountService
             Array.Copy(combined, 0, salt, 0, 16);
             Array.Copy(combined, 16, storedHashBytes, 0, 32);
             
-            using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
-            var computedHash = pbkdf2.GetBytes(32);
+            var computedHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100000, HashAlgorithmName.SHA256, 32);
             
             return CryptographicOperations.FixedTimeEquals(computedHash, storedHashBytes);
         }

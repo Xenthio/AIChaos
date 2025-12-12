@@ -1,0 +1,156 @@
+@using AIChaos.Brain.Services
+@using AIChaos.Brain.Models
+@inject YouTubeService YouTubeService
+@inject SettingsService SettingsService
+@inject NavigationManager Navigation
+
+<!-- YouTube Video ID Setting -->
+<div class="card control-panel">
+    <h2>
+        📺 Stream Settings
+        <span class="status-badge @(IsStreamActive ? "status-connected" : "status-disconnected")">
+            @(IsStreamActive ? "🔴 LIVE" : "⚫ OFFLINE")
+        </span>
+    </h2>
+    <div class="form-group">
+        <label>Live Stream Video ID</label>
+        <input type="text" @bind="videoId" placeholder="e.g., dQw4w9WgXcQ" 
+               disabled="@IsStreamActive"
+               style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+        <small style="color: var(--text-dim);">The video ID from your YouTube live stream URL</small>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        @if (!IsStreamActive)
+        {
+            <button @onclick="StartStream" class="btn-success" style="flex: 1;" disabled="@string.IsNullOrEmpty(videoId)">
+                ▶️ Start Stream
+            </button>
+        }
+        else
+        {
+            <button @onclick="StopStream" class="btn-danger" style="flex: 1;">
+                ⏹️ Stop Stream
+            </button>
+        }
+        <button @onclick="LoginWithYouTube" class="btn-secondary" style="flex: 1;">
+            🔗 Login with YouTube
+        </button>
+    </div>
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-@statusMessageType" style="margin-top: 10px;">@statusMessage</div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsStreamActive { get; set; }
+    [Parameter] public EventCallback OnStreamStateChanged { get; set; }
+    
+    private string videoId = "";
+    private string statusMessage = "";
+    private string statusMessageType = "info";
+    private CancellationTokenSource? messageCts;
+    
+    protected override void OnInitialized()
+    {
+        LoadVideoId();
+    }
+    
+    private void LoadVideoId()
+    {
+        try
+        {
+            var settings = SettingsService.Settings;
+            videoId = settings.YouTube.VideoId ?? "";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load video ID: {ex.Message}");
+        }
+    }
+    
+    private async Task StartStream()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(videoId))
+            {
+                ShowMessage("Please enter a video ID", "error");
+                return;
+            }
+
+            var settings = SettingsService.Settings;
+            settings.YouTube.VideoId = videoId;
+            SettingsService.SaveSettings();
+            
+            var started = await YouTubeService.StartListeningAsync(videoId);
+            if (started)
+            {
+                ShowMessage("✓ Stream started - now listening to chat!", "success");
+                await OnStreamStateChanged.InvokeAsync();
+            }
+            else
+            {
+                ShowMessage("✗ Failed to start stream (check YouTube setup)", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error: {ex.Message}", "error");
+        }
+    }
+    
+    private async Task StopStream()
+    {
+        try
+        {
+            YouTubeService.StopListening();
+            ShowMessage("Stream stopped", "info");
+            await OnStreamStateChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error: {ex.Message}", "error");
+        }
+    }
+    
+    private void LoginWithYouTube()
+    {
+        Navigation.NavigateTo("/api/youtube/login");
+    }
+    
+    private void ShowMessage(string message, string type)
+    {
+        statusMessage = message;
+        statusMessageType = type;
+        StateHasChanged();
+        
+        // Clear message after delay
+        messageCts?.Cancel();
+        messageCts = new CancellationTokenSource();
+        var cts = messageCts;
+        
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(Constants.MessageDurations.Short, cts.Token);
+                await InvokeAsync(() =>
+                {
+                    if (!cts.IsCancellationRequested)
+                    {
+                        statusMessage = "";
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (OperationCanceledException) { }
+        });
+    }
+    
+    public void Dispose()
+    {
+        messageCts?.Cancel();
+        messageCts?.Dispose();
+    }
+}
