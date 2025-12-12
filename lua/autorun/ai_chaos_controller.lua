@@ -94,7 +94,11 @@ if SERVER then
     end
     
     -- Helper Function: Report level change to server
+    -- Note: During ShutDown, the HTTP request is sent but callbacks won't fire (Lua exits first)
+    -- We still send it because the request itself may complete before the process exits
     local function ReportLevelChange(mapName, isSaveLoad)
+        print("[AI Chaos] Sending level change report for: " .. tostring(mapName) .. " (isSaveLoad: " .. tostring(isSaveLoad) .. ")")
+        
         local levelChangeUrl = BASE_URL .. "/levelchange"
         local body = {
             map_name = mapName,
@@ -102,6 +106,8 @@ if SERVER then
             timestamp = os.time()
         }
         
+        -- Send the HTTP request - during ShutDown this may or may not complete
+        -- but we try anyway since the network packet might be sent before process exits
         HTTP({
             method = "POST",
             url = levelChangeUrl,
@@ -112,46 +118,100 @@ if SERVER then
             },
             success = function(code, responseBody, headers)
                 if code == 200 then
-                    print("[AI Chaos] Level change reported: " .. mapName)
-                    -- Server will queue any commands that need to be re-run
+                    print("[AI Chaos] Level change reported successfully: " .. mapName)
                 end
             end,
             failed = function(err)
                 print("[AI Chaos] Failed to report level change: " .. tostring(err))
             end
         })
+        
+        -- Also write to a file as backup - server can check this file
+        -- This is more reliable during ShutDown since file writes are synchronous
+        local levelChangeData = util.TableToJSON({
+            map_name = mapName,
+            is_save_load = isSaveLoad,
+            timestamp = os.time(),
+            previous_map = game.GetMap()
+        })
+        file.Write("ai_chaos_levelchange.txt", levelChangeData)
+        print("[AI Chaos] Level change data written to file as backup")
+    end
+    
+    -- Helper Function: Check for level change file and send to server if found
+    -- This handles cases where the HTTP during ShutDown didn't complete
+    local function CheckAndReportPendingLevelChange()
+        if file.Exists("ai_chaos_levelchange.txt", "DATA") then
+            local content = file.Read("ai_chaos_levelchange.txt", "DATA")
+            if content and content ~= "" then
+                local data = util.JSONToTable(content)
+                if data then
+                    print("[AI Chaos] Found pending level change from file, reporting to server...")
+                    
+                    -- Send the level change that happened during shutdown
+                    local levelChangeUrl = BASE_URL .. "/levelchange"
+                    HTTP({
+                        method = "POST",
+                        url = levelChangeUrl,
+                        body = content,
+                        headers = { 
+                            ["Content-Type"] = "application/json",
+                            ["ngrok-skip-browser-warning"] = "true"
+                        },
+                        success = function(code, responseBody, headers)
+                            if code == 200 then
+                                print("[AI Chaos] Pending level change reported successfully")
+                                -- Delete the file after successful report
+                                file.Delete("ai_chaos_levelchange.txt")
+                            end
+                        end,
+                        failed = function(err)
+                            print("[AI Chaos] Failed to report pending level change: " .. tostring(err))
+                        end
+                    })
+                end
+            end
+        end
     end
     
     -- Helper Function: Check for and execute pending re-runs after level load
     local function CheckPendingReruns()
-        local rerunsUrl = BASE_URL .. "/pending-reruns"
+        -- First, check if there's a pending level change from the previous shutdown
+        CheckAndReportPendingLevelChange()
         
-        HTTP({
-            method = "GET",
-            url = rerunsUrl,
-            headers = { 
-                ["Content-Type"] = "application/json",
-                ["ngrok-skip-browser-warning"] = "true"
-            },
-            success = function(code, responseBody, headers)
-                if code == 200 then
-                    local data = util.JSONToTable(responseBody)
-                    if data and data.PendingReruns and #data.PendingReruns > 0 then
-                        print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
-                        for _, rerun in ipairs(data.PendingReruns) do
-                            -- Schedule the re-run with the specified delay
-                            timer.Simple(rerun.DelaySeconds or 5, function()
-                                print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
-                                ExecuteAICode(rerun.Code, rerun.CommandId)
-                            end)
+        -- Small delay to let the level change report complete
+        timer.Simple(0.5, function()
+            local rerunsUrl = BASE_URL .. "/pending-reruns"
+            
+            HTTP({
+                method = "GET",
+                url = rerunsUrl,
+                headers = { 
+                    ["Content-Type"] = "application/json",
+                    ["ngrok-skip-browser-warning"] = "true"
+                },
+                success = function(code, responseBody, headers)
+                    if code == 200 then
+                        local data = util.JSONToTable(responseBody)
+                        if data and data.PendingReruns and #data.PendingReruns > 0 then
+                            print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
+                            for _, rerun in ipairs(data.PendingReruns) do
+                                -- Schedule the re-run with the specified delay
+                                timer.Simple(rerun.DelaySeconds or 5, function()
+                                    print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
+                                    ExecuteAICode(rerun.Code, rerun.CommandId)
+                                end)
+                            end
+                        else
+                            print("[AI Chaos] No pending re-runs")
                         end
                     end
+                end,
+                failed = function(err)
+                    print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
                 end
-            end,
-            failed = function(err)
-                print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
-            end
-        })
+            })
+        end)
     end
 
     -- 2. Helper Function: Run the code safely using CompileString + pcall for proper error messages
