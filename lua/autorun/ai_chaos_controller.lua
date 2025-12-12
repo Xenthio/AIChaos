@@ -222,10 +222,10 @@ if SERVER then
     end)
     
     -- Check for pending re-runs when script loads (fires after map load/save load)
-    timer.Simple(3, function()
+    --timer.Simple(3, function()
         print("[AI Chaos] Checking for pending re-runs after load...")
         CheckPendingReruns()
-    end)
+    --end)
     
     -- Track map for detecting changes in poll loop (backup detection)
     local lastKnownMap = game.GetMap()
@@ -235,26 +235,6 @@ if SERVER then
 
     -- 3. The Polling Logic
     PollServer = function()
-        -- Check if map changed (backup detection)
-        local currentMapNow = game.GetMap()
-        if currentMapNow ~= lastKnownMap then
-            print("[AI Chaos] Map change detected in poll: " .. tostring(lastKnownMap) .. " -> " .. tostring(currentMapNow))
-            lastKnownMap = currentMapNow
-            currentMap = currentMapNow
-            isLevelChanging = false
-            
-            -- Check for pending re-runs after level change
-            timer.Simple(5, function()
-                CheckPendingReruns()
-            end)
-        end
-        
-        -- Skip polling during level changes
-        if isLevelChanging then
-            timer.Simple(POLL_INTERVAL, PollServer)
-            return
-        end
-        
         -- print("[AI Chaos] Polling...") -- Uncomment to see spam in console
         
         local body = { map = game.GetMap() }
