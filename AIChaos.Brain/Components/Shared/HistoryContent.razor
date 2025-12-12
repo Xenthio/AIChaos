@@ -2,6 +2,7 @@
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
+@inject ImageModerationService ModerationService
 @inject IJSRuntime JS
 @implements IDisposable
 @using AIChaos.Brain.Models
@@ -264,6 +265,64 @@
 
             var isSingleUserMode = !Settings.Settings.General.StreamMode;
 
+            // Check if command contains images that need moderation
+            var needsImageModeration = ModerationService.NeedsModeration(command.UserPrompt);
+            
+            if (needsImageModeration)
+            {
+                // Command contains images - must go through moderation flow
+                // First check credits (moderation flow will deduct them)
+                if (!isSingleUserMode && CurrentAccount.CreditBalance < Constants.CommandCost)
+                {
+                    Console.WriteLine($"RepeatCommand failed: Insufficient credits for image moderation. Have ${CurrentAccount.CreditBalance:F2}, need ${Constants.CommandCost:F2}");
+                    return;
+                }
+
+                // Deduct credits NOW before moderation (will be refunded if denied)
+                if (!isSingleUserMode)
+                {
+                    if (!AccountService.DeductCredits(CurrentAccount.Id, Constants.CommandCost))
+                    {
+                        var currentBalance = AccountService.GetAccountById(CurrentAccount.Id)?.CreditBalance ?? CurrentAccount.CreditBalance;
+                        Console.WriteLine($"RepeatCommand failed: Failed to deduct credits. Balance: ${currentBalance:F2}");
+                        return;
+                    }
+
+                    // Refresh the account from the service
+                    var updatedAccount = AccountService.GetAccountById(CurrentAccount.Id);
+                    if (updatedAccount != null)
+                    {
+                        CurrentAccount = updatedAccount;
+                        Console.WriteLine($"Credits deducted for repeat with images. New balance: ${CurrentAccount.CreditBalance:F2}");
+                    }
+                }
+
+                // Create placeholder command with PendingModeration status
+                var placeholderCommand = CommandQueue.AddCommandWithStatus(
+                    userPrompt: command.UserPrompt,
+                    executionCode: "", // Will be set after approval
+                    undoCode: "", // Will be set after approval
+                    source: "history_repeat",
+                    author: CurrentAccount.DisplayName,
+                    imageContext: null, // Will be set after approval
+                    userId: CurrentAccount.Id,
+                    aiResponse: "⏳ Waiting for image moderation approval...",
+                    status: CommandStatus.PendingModeration,
+                    queueForExecution: false); // Don't queue yet
+
+                // Queue images for moderation with link to new command
+                var imageUrls = ModerationService.ExtractImageUrls(command.UserPrompt);
+                foreach (var url in imageUrls)
+                {
+                    ModerationService.AddPendingImage(url, command.UserPrompt, "history_repeat", CurrentAccount.DisplayName, CurrentAccount.Id, placeholderCommand.Id);
+                }
+
+                Console.WriteLine($"Command #{commandId} repeated with {imageUrls.Count} image(s) queued for moderation (new command #{placeholderCommand.Id})");
+                LoadHistory();
+                return;
+            }
+
+            // No images - use original fast path
             // Check and deduct credits in Stream Mode
             if (!isSingleUserMode)
             {
