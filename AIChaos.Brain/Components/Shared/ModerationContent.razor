@@ -43,7 +43,7 @@
         <div>
             @if (pendingPrompts == null || !pendingPrompts.Any())
             {
-                <div class="no-images">✅ No prompts pending moderation</div>
+                <div class="no-content">✅ No prompts pending moderation</div>
             }
             else
             {
@@ -184,7 +184,7 @@
         font-weight: bold;
     }
 
-    .no-images {
+    .no-images, .no-content {
         text-align: center;
         padding: 40px;
         color: var(--text-dim);
@@ -298,7 +298,7 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Load pending prompts failed: {ex.Message}");
-            ShowAlert("Failed to load pending images", "error");
+            ShowAlert("Failed to load pending prompts", "error");
         }
     }
 
