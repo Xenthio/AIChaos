@@ -426,6 +426,24 @@ public class AiCodeGeneratorService
     {
         return GetDangerousPatternReason(code) != null;
     }
+    
+    /// <summary>
+    /// Public method to check for dangerous patterns in code.
+    /// Returns the reason if dangerous content is found, null otherwise.
+    /// </summary>
+    public static string? CheckDangerousPatterns(string code)
+    {
+        return GetDangerousPatternReason(code);
+    }
+    
+    /// <summary>
+    /// Public method to check for filtered patterns in code.
+    /// Returns the reason if filtered content is found, null otherwise.
+    /// </summary>
+    public static string? CheckFilteredPatterns(string code)
+    {
+        return GetFilteredPatternReason(code);
+    }
     /// <summary>
     /// Generates force undo code for a stuck command.
     /// </summary>
