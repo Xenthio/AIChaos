@@ -215,7 +215,7 @@ if SERVER then
     hook.Add("InitPostEntity", "AI_Chaos_LevelLoaded", function()
         local newMap = game.GetMap()
         if currentMap ~= newMap then
-            print("[AI Chaos] Map changed from " .. currentMap .. " to " .. newMap)
+            print("[AI Chaos] Map changed from " .. tostring(currentMap) .. " to " .. tostring(newMap))
             currentMap = newMap
         end
         

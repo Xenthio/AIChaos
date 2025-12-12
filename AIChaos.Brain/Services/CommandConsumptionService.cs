@@ -42,7 +42,8 @@ public class CommandConsumptionService
             StartedAt = DateTime.UtcNow
         };
         
-        _executingCommands[commandId] = executingCommand;
+        // Use AddOrUpdate for thread-safe insertion
+        _executingCommands.AddOrUpdate(commandId, executingCommand, (_, _) => executingCommand);
         
         // Update command entry
         var command = _commandQueue.GetCommand(commandId);
@@ -97,11 +98,17 @@ public class CommandConsumptionService
         {
             _currentMap = newMapName;
             
-            // Find all commands that haven't been consumed yet
-            var interruptedCommands = _executingCommands.Values.ToList();
+            // Get snapshot of command IDs to process (thread-safe)
+            var commandIds = _executingCommands.Keys.ToList();
             
-            foreach (var executing in interruptedCommands)
+            foreach (var commandId in commandIds)
             {
+                // Try to get and remove the command atomically
+                if (!_executingCommands.TryRemove(commandId, out var executing))
+                {
+                    continue; // Command was already removed by another thread
+                }
+                
                 var elapsed = DateTime.UtcNow - executing.StartedAt;
                 
                 // Only interrupt if not yet consumed
@@ -127,9 +134,8 @@ public class CommandConsumptionService
                     
                     _pendingReruns.Enqueue(pendingRerun);
                     response.PendingReruns.Add(pendingRerun);
-                    
-                    _executingCommands.TryRemove(executing.CommandId, out _);
                 }
+                // If already consumed (elapsed >= threshold), just remove without re-queuing
             }
             
             var changeType = isSaveLoad ? "save load" : "level change";

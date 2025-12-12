@@ -50,7 +50,14 @@ public class AiCodeGeneratorService
            - **MANDATORY:** If a UI element takes control of the cursor (MakePopup, SetKeyboardInputEnabled, SetMouseInputEnabled), you MUST include a visible Close button.
            - The Close button must be clearly visible and functional - position it at the top-right corner with text "X" or "Close".
            - Make sure UI can be undone if it causes issues, always try to clean up large screen real estate UI!
-           - Example close button: `local closeBtn = vgui.Create("DButton", panel) closeBtn:SetText("X") closeBtn:SetSize(30, 30) closeBtn:Dock(TOP) closeBtn:DockMargin(panel:GetWide()-30, 0, 0, 0) closeBtn.DoClick = function() panel:Remove() end`
+           - Example close button pattern:
+             ```
+             local closeBtn = vgui.Create("DButton", panel)
+             closeBtn:SetText("X")
+             closeBtn:SetSize(30, 30)
+             closeBtn:SetPos(panel:GetWide() - 35, 5)
+             closeBtn.DoClick = function() panel:Remove() end
+             ```
 
         7. **Input Blocking - STRICT LIMIT:**
            - NEVER block player movement controls (WASD, mouse look) for more than 10 seconds.
