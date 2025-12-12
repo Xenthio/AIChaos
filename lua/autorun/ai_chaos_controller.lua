@@ -206,7 +206,9 @@ if SERVER then
     end
     
     -- Hook for detecting level/map changes (fires when server is shutting down)
+    -- Note: HTTP requests during ShutDown may not complete in time
     hook.Add("ShutDown", "AI_Chaos_LevelChange", function()
+        print("[AI Chaos] ShutDown hook fired - attempting to report level change")
         isLevelChanging = true
         ReportLevelChange(game.GetMap(), false)
     end)
@@ -239,10 +241,14 @@ if SERVER then
 
     -- 3. The Polling Logic
     PollServer = function()
-        -- Check if map changed (backup detection)
+        -- Check if map changed (backup detection - more reliable than ShutDown hook)
         local currentMapNow = game.GetMap()
         if currentMapNow ~= lastKnownMap then
-            print("[AI Chaos] Map change detected: " .. tostring(lastKnownMap) .. " -> " .. tostring(currentMapNow))
+            print("[AI Chaos] Map change detected in poll: " .. tostring(lastKnownMap) .. " -> " .. tostring(currentMapNow))
+            
+            -- Report the level change to server (this is the reliable method)
+            ReportLevelChange(currentMapNow, false)
+            
             lastKnownMap = currentMapNow
             currentMap = currentMapNow
             isLevelChanging = false
