@@ -4,7 +4,7 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for managing code that requires moderation before execution.
-/// Similar to ImageModerationService but for filtered code patterns.
+/// Similar to PromptModerationService but for filtered code patterns.
 /// </summary>
 public class CodeModerationService
 {

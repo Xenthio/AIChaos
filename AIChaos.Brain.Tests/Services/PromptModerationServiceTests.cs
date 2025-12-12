@@ -5,20 +5,20 @@ using Moq;
 
 namespace AIChaos.Brain.Tests.Services;
 
-public class ImageModerationServiceTests
+public class PromptModerationServiceTests
 {
     [Fact]
-    public void ExtractImageUrls_WithSingleUrl_ReturnsUrl()
+    public void ExtractContentUrls_WithSingleUrl_ReturnsUrl()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Check out this image: https://example.com/image.png";
         
         // Act
-        var urls = service.ExtractImageUrls(prompt);
+        var urls = service.ExtractContentUrls(prompt);
         
         // Assert
         Assert.Single(urls);
@@ -26,17 +26,17 @@ public class ImageModerationServiceTests
     }
     
     [Fact]
-    public void ExtractImageUrls_WithMultipleUrls_ReturnsAllUrls()
+    public void ExtractContentUrls_WithMultipleUrls_ReturnsAllUrls()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Images: https://example.com/1.png and https://example.com/2.jpg";
         
         // Act
-        var urls = service.ExtractImageUrls(prompt);
+        var urls = service.ExtractContentUrls(prompt);
         
         // Assert
         Assert.Equal(2, urls.Count);
@@ -45,17 +45,17 @@ public class ImageModerationServiceTests
     }
     
     [Fact]
-    public void ExtractImageUrls_WithNoUrls_ReturnsEmptyList()
+    public void ExtractContentUrls_WithNoUrls_ReturnsEmptyList()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "No URLs here";
         
         // Act
-        var urls = service.ExtractImageUrls(prompt);
+        var urls = service.ExtractContentUrls(prompt);
         
         // Assert
         Assert.Empty(urls);
@@ -65,9 +65,9 @@ public class ImageModerationServiceTests
     public void NeedsModeration_WithUrls_ReturnsTrue()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Check https://example.com/image.png";
         
@@ -82,9 +82,9 @@ public class ImageModerationServiceTests
     public void NeedsModeration_WithoutUrls_ReturnsFalse()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "No URLs here";
         
@@ -96,12 +96,12 @@ public class ImageModerationServiceTests
     }
     
     [Fact]
-    public void AddPendingImage_CreatesEntryWithCorrectProperties()
+    public void AddPendingPrompt_CreatesEntryWithCorrectProperties()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var url = "https://example.com/image.png";
         var prompt = "Test prompt";
@@ -109,37 +109,39 @@ public class ImageModerationServiceTests
         var author = "testuser";
         var userId = "user123";
         var commandId = 42;
+        var filterReason = "External URL detected";
         
         // Act
-        var entry = service.AddPendingImage(url, prompt, source, author, userId, commandId);
+        var entry = service.AddPendingPrompt(url, prompt, source, author, userId, commandId, filterReason);
         
         // Assert
         Assert.NotNull(entry);
-        Assert.Equal(url, entry.ImageUrl);
+        Assert.Equal(url, entry.ContentUrl);
         Assert.Equal(prompt, entry.UserPrompt);
         Assert.Equal(source, entry.Source);
         Assert.Equal(author, entry.Author);
         Assert.Equal(userId, entry.UserId);
         Assert.Equal(commandId, entry.CommandId);
-        Assert.Equal(ImageModerationStatus.Pending, entry.Status);
+        Assert.Equal(filterReason, entry.FilterReason);
+        Assert.Equal(PromptModerationStatus.Pending, entry.Status);
     }
     
     [Fact]
-    public void GetPendingImages_ReturnsOnlyPendingImages()
+    public void GetPendingPrompts_ReturnsOnlyPendingImages()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
-        var entry1 = service.AddPendingImage("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);
-        var entry2 = service.AddPendingImage("https://example.com/2.png", "prompt2", "web", "user2", "uid2", 2);
+        var entry1 = service.AddPendingPrompt("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);
+        var entry2 = service.AddPendingPrompt("https://example.com/2.png", "prompt2", "web", "user2", "uid2", 2);
         
         // Approve one
-        service.ApproveImage(entry1.Id);
+        service.ApprovePrompt(entry1.Id);
         
         // Act
-        var pending = service.GetPendingImages();
+        var pending = service.GetPendingPrompts();
         
         // Assert
         Assert.Single(pending);
@@ -147,40 +149,40 @@ public class ImageModerationServiceTests
     }
     
     [Fact]
-    public void ApproveImage_UpdatesStatusAndTimestamp()
+    public void ApprovePrompt_UpdatesStatusAndTimestamp()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
-        var entry = service.AddPendingImage("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
+        var entry = service.AddPendingPrompt("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
         
         // Act
-        var approved = service.ApproveImage(entry.Id);
+        var approved = service.ApprovePrompt(entry.Id);
         
         // Assert
         Assert.NotNull(approved);
-        Assert.Equal(ImageModerationStatus.Approved, approved.Status);
+        Assert.Equal(PromptModerationStatus.Approved, approved.Status);
         Assert.NotNull(approved.ReviewedAt);
     }
     
     [Fact]
-    public void DenyImage_UpdatesStatusAndTimestamp()
+    public void DenyPrompt_UpdatesStatusAndTimestamp()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
-        var entry = service.AddPendingImage("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
+        var entry = service.AddPendingPrompt("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
         
         // Act
-        var denied = service.DenyImage(entry.Id);
+        var denied = service.DenyPrompt(entry.Id);
         
         // Assert
         Assert.NotNull(denied);
-        Assert.Equal(ImageModerationStatus.Denied, denied.Status);
+        Assert.Equal(PromptModerationStatus.Denied, denied.Status);
         Assert.NotNull(denied.ReviewedAt);
     }
     
@@ -188,16 +190,16 @@ public class ImageModerationServiceTests
     public void PendingCount_ReturnsCorrectCount()
     {
         // Arrange
-        var mockLogger = new Mock<ILogger<ImageModerationService>>();
+        var mockLogger = new Mock<ILogger<PromptModerationService>>();
         var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
-        var service = new ImageModerationService(mockSettings.Object, mockLogger.Object);
+        var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
-        service.AddPendingImage("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);
-        service.AddPendingImage("https://example.com/2.png", "prompt2", "web", "user2", "uid2", 2);
-        var entry3 = service.AddPendingImage("https://example.com/3.png", "prompt3", "web", "user3", "uid3", 3);
+        service.AddPendingPrompt("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);
+        service.AddPendingPrompt("https://example.com/2.png", "prompt2", "web", "user2", "uid2", 2);
+        var entry3 = service.AddPendingPrompt("https://example.com/3.png", "prompt3", "web", "user3", "uid3", 3);
         
         // Approve one
-        service.ApproveImage(entry3.Id);
+        service.ApprovePrompt(entry3.Id);
         
         // Act
         var count = service.PendingCount;

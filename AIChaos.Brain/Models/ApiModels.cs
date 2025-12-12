@@ -310,27 +310,28 @@ public class ChatMessage
 }
 
 /// <summary>
-/// Represents an image pending moderation review.
+/// Represents content (URLs, images, external links) pending moderation review.
 /// </summary>
-public class PendingImageEntry
+public class PendingPromptEntry
 {
     public int Id { get; set; }
     public int? CommandId { get; set; } // Link to the command entry in history
-    public string ImageUrl { get; set; } = "";
+    public string ContentUrl { get; set; } = ""; // URL or content that needs review
     public string UserPrompt { get; set; } = "";
     public string Source { get; set; } = "web";
     public string Author { get; set; } = "anonymous";
     public string? UserId { get; set; }
+    public string FilterReason { get; set; } = "URL detected"; // Why this needs moderation
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
-    public ImageModerationStatus Status { get; set; } = ImageModerationStatus.Pending;
+    public PromptModerationStatus Status { get; set; } = PromptModerationStatus.Pending;
     public DateTime? ReviewedAt { get; set; }
 }
 
 /// <summary>
-/// Status of an image in the moderation queue.
+/// Status of content in the moderation queue.
 /// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
-public enum ImageModerationStatus
+public enum PromptModerationStatus
 {
     Pending,
     Approved,
@@ -338,20 +339,20 @@ public enum ImageModerationStatus
 }
 
 /// <summary>
-/// Response for pending images list.
+/// Response for pending prompts list.
 /// </summary>
-public class PendingImagesResponse
+public class PendingPromptsResponse
 {
-    public List<PendingImageEntry> Images { get; set; } = new();
+    public List<PendingPromptEntry> Prompts { get; set; } = new();
     public int TotalPending { get; set; }
 }
 
 /// <summary>
-/// Request to review an image (approve/deny).
+/// Request to review content (approve/deny).
 /// </summary>
-public class ImageReviewRequest
+public class PromptReviewRequest
 {
-    public int ImageId { get; set; }
+    public int PromptId { get; set; }
     public bool Approved { get; set; }
 }
 

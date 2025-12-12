@@ -2,7 +2,7 @@
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
-@inject ImageModerationService ModerationService
+@inject PromptModerationService ModerationService
 @inject IJSRuntime JS
 @implements IDisposable
 @using AIChaos.Brain.Models
@@ -266,7 +266,7 @@
             var isSingleUserMode = !Settings.Settings.General.StreamMode;
 
             // Check if command contains images that need moderation
-            var imageUrls = ModerationService.ExtractImageUrls(command.UserPrompt);
+            var imageUrls = ModerationService.ExtractContentUrls(command.UserPrompt);
             var needsImageModeration = imageUrls.Count > 0;
             
             // Check and deduct credits (for both image and non-image commands in Stream Mode)
@@ -314,7 +314,7 @@
                 // Queue images for moderation with link to new command
                 foreach (var url in imageUrls)
                 {
-                    ModerationService.AddPendingImage(url, command.UserPrompt, "history_repeat", CurrentAccount.DisplayName, CurrentAccount.Id, placeholderCommand.Id);
+                    ModerationService.AddPendingPrompt(url, command.UserPrompt, "history_repeat", CurrentAccount.DisplayName, CurrentAccount.Id, placeholderCommand.Id);
                 }
 
                 Console.WriteLine($"Command #{commandId} repeated with {imageUrls.Count} image(s) queued for moderation (new command #{placeholderCommand.Id})");

@@ -3,7 +3,7 @@
 @using AIChaos.Brain.Services
 @implements IDisposable
 
-@inject ImageModerationService ModerationService
+@inject PromptModerationService ModerationService
 @inject RefundService RefundService
 @inject CodeModerationService CodeModerationService
 @inject CommandQueueService CommandQueue
@@ -55,7 +55,7 @@
                             <span>👤 @img.Author</span>
                         </div>
                         <div class="image-prompt"><strong>Prompt:</strong> @img.UserPrompt</div>
-                        <img src="@img.ImageUrl" class="image-preview" alt=@($"Pending image (If you can't see it, embedding might be blocked, please open it in a new tab)")>
+                        <img src="@img.ContentUrl" class="image-preview" alt=@($"Pending image (If you can't see it, embedding might be blocked, please open it in a new tab)")>
                         <div class="action-buttons">
                             <button @onclick="async () => await ApproveImage(img.Id)" class="btn-success">✅ APPROVE</button>
                             <button @onclick="() => DenyImage(img.Id)" class="btn-danger">❌ DENY</button>
@@ -240,7 +240,7 @@
     private string activeTab = "images";
     private string alertMessage = "";
     private string alertType = "info";
-    private List<PendingImageEntry>? pendingImages;
+    private List<PendingPromptEntry>? pendingImages;
     private List<PendingCodeEntry>? pendingCode;
     private List<RefundRequest>? pendingRefunds;
     private int pendingImageCount => pendingImages?.Count ?? 0;
@@ -256,12 +256,12 @@
         LoadPendingRefunds();
         
         // Subscribe to events for real-time updates
-        ModerationService.PendingImagesChanged += OnPendingImagesChanged;
+        ModerationService.PendingPromptsChanged += OnPendingPromptsChanged;
         CodeModerationService.PendingCodeChanged += OnPendingCodeChanged;
         CommandQueue.HistoryChanged += OnHistoryChanged;
     }
 
-    private async void OnPendingImagesChanged(object? sender, EventArgs e)
+    private async void OnPendingPromptsChanged(object? sender, EventArgs e)
     {
         await InvokeAsync(() =>
         {
@@ -292,7 +292,7 @@
     {
         try
         {
-            pendingImages = ModerationService.GetPendingImages();
+            pendingImages = ModerationService.GetPendingPrompts();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -374,7 +374,7 @@
                 return;
             }
             
-            var entry = ModerationService.ApproveImage(imageId);
+            var entry = ModerationService.ApprovePrompt(imageId);
             if (entry == null)
             {
                 ShowAlert("Failed to approve image - image not found", "error");
@@ -384,7 +384,7 @@
             // Generate code with image context
             var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
                 entry.UserPrompt,
-                imageContext: $"Image URL: {entry.ImageUrl}");
+                imageContext: $"Image URL: {entry.ContentUrl}");
             
             // Check if we have a linked command to update
             if (entry.CommandId.HasValue)
@@ -395,7 +395,7 @@
                 {
                     command.ExecutionCode = executionCode;
                     command.UndoCode = undoCode;
-                    command.ImageContext = entry.ImageUrl;
+                    command.ImageContext = entry.ContentUrl;
                     command.Status = CommandStatus.Queued;
                     command.AiResponse = null; // Clear the pending message
 
@@ -436,7 +436,7 @@
     {
         try
         {
-            var entry = ModerationService.DenyImage(imageId);
+            var entry = ModerationService.DenyPrompt(imageId);
             if (entry != null)
             {
                 // Refund credits if there's a linked command
@@ -631,7 +631,7 @@
         refreshTimer?.Dispose();
         
         // Unsubscribe from events
-        ModerationService.PendingImagesChanged -= OnPendingImagesChanged;
+        ModerationService.PendingPromptsChanged -= OnPendingPromptsChanged;
         CodeModerationService.PendingCodeChanged -= OnPendingCodeChanged;
         CommandQueue.HistoryChanged -= OnHistoryChanged;
     }

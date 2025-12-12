@@ -3,7 +3,7 @@
 @inject AccountService AccountService
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
-@inject ImageModerationService ModerationService
+@inject PromptModerationService ModerationService
 @inject CodeModerationService CodeModerationService
 @inject AgenticGameService AgenticService
 @inject SettingsService SettingsService
@@ -407,9 +407,9 @@ else
                 promptInput,
                 codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(prompt),
                 needsModeration: ModerationService.NeedsModeration,
-                extractImageUrls: ModerationService.ExtractImageUrls,
+                extractImageUrls: ModerationService.ExtractContentUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 
-                    ModerationService.AddPendingImage(url, prompt, source, author, userId, cmdId),
+                    ModerationService.AddPendingPrompt(url, prompt, source, author, userId, cmdId),
                 addPendingCode: (prompt, execCode, undoCode, reason, source, author, userId, cmdId) =>
                     CodeModerationService.AddPendingCode(prompt, execCode, undoCode, reason, source, author, userId, cmdId),
                 addCommandWithStatus: (prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue) =>
@@ -453,9 +453,9 @@ else
                 currentAccount!.Id,
                 promptInput,
                 needsModeration: ModerationService.NeedsModeration,
-                extractImageUrls: ModerationService.ExtractImageUrls,
+                extractImageUrls: ModerationService.ExtractContentUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 
-                    ModerationService.AddPendingImage(url, prompt, source, author, userId, cmdId),
+                    ModerationService.AddPendingPrompt(url, prompt, source, author, userId, cmdId),
                 addCommandWithStatus: (prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue) =>
                     CommandQueue.AddCommandWithStatus(prompt, execCode, undoCode, source, author, imgCtx, userId, aiResp, status, queue),
                 isPrivateDiscordMode: SettingsService.Settings.Safety.PrivateDiscordMode,
