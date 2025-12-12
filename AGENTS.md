@@ -141,10 +141,14 @@ AIChaos/
 4. **Concurrent execution**: Multiple commands can execute simultaneously in game
 
 ### Known Issues (As of Recent Comments)
-1. ⚠️ **Moderation bypass**: Users can bypass pending image moderation by hitting retry
-2. ⚠️ **Credit deduction**: Retry in user history doesn't cost credits (should charge)
-3. ⚠️ **Interactive mode**: Not subject to post-code generation filters
-4. ⚠️ **Google OAuth**: User-side OAuth broken (currently hidden in UI)
+1. ⚠️ **Interactive mode**: Not subject to post-code generation filters
+2. ⚠️ **Google OAuth**: User-side OAuth broken (currently hidden in UI)
+
+### Recently Fixed Issues
+1. ✅ **Moderation bypass**: Users could bypass pending image moderation by hitting retry - FIXED (December 2024)
+   - Commands with images now properly go through moderation flow on retry
+   - Credits are deducted upfront and refunded if images are denied
+   - Maintains backward compatibility for non-image commands
 
 ### Anti-Patterns Fixed in Recent Cleanup
 - ✅ `Task.Delay().ContinueWith()` → Use `Task.Run()` + `InvokeAsync()`
