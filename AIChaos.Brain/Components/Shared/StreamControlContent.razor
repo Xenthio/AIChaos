@@ -5,7 +5,7 @@
 
 @inject QueueSlotService QueueSlots
 @inject YouTubeService YouTubeService
-@inject ImageModerationService ModerationService
+@inject PromptModerationService ModerationService
 @inject RefundService RefundService
 @inject CodeModerationService CodeModerationService
 @inject CommandQueueService CommandQueue
@@ -32,9 +32,9 @@
             OnStreamStateChanged="@LoadStreamState" />
         
         <!-- Image Moderation Panel -->
-        <ImageModerationPanel 
-            PendingCount="@pendingImageCount" 
-            OnImageProcessed="@LoadPendingImageCount" />
+        <PromptModerationPanel 
+            PendingCount="@pendingPromptCount" 
+            OnPromptProcessed="@LoadPendingPromptCount" />
         
         <!-- Refund Requests Panel -->
         <RefundRequestsPanel 
@@ -79,7 +79,7 @@
     private System.Threading.Timer? streamStateRefreshTimer;
     
     // Pending counts
-    private int pendingImageCount = 0;
+    private int pendingPromptCount = 0;
     private int pendingRefundCount = 0;
     private int pendingCodeCount = 0;
 
@@ -113,7 +113,7 @@
     {
         await LoadQueueStatus();
         LoadStreamState();
-        await LoadPendingImageCount();
+        await LoadPendingPromptCount();
         await LoadPendingRefundCount();
         await LoadPendingCodeCount();
     }
@@ -149,16 +149,16 @@
         StateHasChanged();
     }
 
-    private async Task LoadPendingImageCount()
+    private async Task LoadPendingPromptCount()
     {
         try
         {
-            var images = ModerationService.GetPendingImages();
-            pendingImageCount = images?.Count ?? 0;
+            var prompts = ModerationService.GetPendingPrompts();
+            pendingPromptCount = prompts?.Count ?? 0;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load pending image count: {ex.Message}");
+            Console.WriteLine($"Failed to load pending prompt count: {ex.Message}");
         }
         StateHasChanged();
     }

@@ -18,6 +18,7 @@ public class AgenticGameService
 {
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
+    private readonly CodeModerationService _codeModerationService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AgenticGameService> _logger;
     
@@ -136,11 +137,13 @@ public class AgenticGameService
     public AgenticGameService(
         SettingsService settingsService,
         CommandQueueService commandQueue,
+        CodeModerationService codeModerationService,
         IHttpClientFactory httpClientFactory,
         ILogger<AgenticGameService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
+        _codeModerationService = codeModerationService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
@@ -525,10 +528,80 @@ public class AgenticGameService
                 session.FinalExecutionCode = response.Code;
                 session.FinalUndoCode = response.UndoCode;
                 
+                var codeToQueue = response.Code ?? "";
+                var undoToQueue = response.UndoCode ?? "print(\"Undo not available\")";
+                
+                // Apply post-code generation filters (same as regular code generation)
+                // Check for dangerous patterns first (always block these)
+                var dangerousReason = CodeModerationService.GetDangerousPatternReason(codeToQueue);
+                if (dangerousReason != null)
+                {
+                    _logger.LogWarning("[AGENT] Session #{SessionId} generated dangerous code: {Reason}. Blocking.", 
+                        session.Id, dangerousReason);
+                    
+                    codeToQueue = $"print(\"[BLOCKED] This command would break the game: {dangerousReason}\")";
+                    undoToQueue = "print(\"No undo needed - command was blocked\")";
+                    
+                    // Queue the blocked message
+                    var blockedEntry = _commandQueue.AddCommand(
+                        session.UserPrompt,
+                        codeToQueue,
+                        undoToQueue,
+                        session.Source,
+                        session.Author,
+                        null,
+                        session.UserId);
+                    
+                    session.PendingCommandId = blockedEntry.Id;
+                    CompleteSession(session, false);
+                    return;
+                }
+                
+                // Check for filtered patterns (send to moderation if BlockLinksInGeneratedCode is enabled)
+                var settings = _settingsService.Settings;
+                string? moderationReason = null;
+                if (settings.General.BlockLinksInGeneratedCode)
+                {
+                    moderationReason = CodeModerationService.GetFilteredPatternReason(codeToQueue);
+                    if (moderationReason != null)
+                    {
+                        _logger.LogInformation("[AGENT] Session #{SessionId} generated filtered code: {Reason}. Sending to moderation.", 
+                            session.Id, moderationReason);
+                        
+                        // Add to code moderation queue instead of direct execution
+                        _codeModerationService.AddPendingCode(
+                            session.UserPrompt,
+                            codeToQueue,
+                            undoToQueue,
+                            moderationReason,
+                            session.Source,
+                            session.Author,
+                            session.UserId,
+                            null); // No command ID yet - will be set when approved
+                        
+                        // Create placeholder command with PendingModeration status
+                        var placeholderEntry = _commandQueue.AddCommandWithStatus(
+                            session.UserPrompt,
+                            codeToQueue,
+                            undoToQueue,
+                            session.Source,
+                            session.Author,
+                            null,
+                            session.UserId,
+                            $"⚠️ Code contains filtered content: {moderationReason}. Waiting for moderator approval...",
+                            CommandStatus.PendingModeration,
+                            false); // Don't queue yet
+                        
+                        session.PendingCommandId = placeholderEntry.Id;
+                        CompleteSession(session, true); // Session succeeded but needs moderation
+                        return;
+                    }
+                }
+                
                 // For AgenticTest mode, queue to test client first
                 if (session.Mode == AgentMode.AgenticTest && IsTestClientEnabled)
                 {
-                    QueueForTesting(-session.Id, response.Code ?? "", session.UserPrompt);
+                    QueueForTesting(-session.Id, codeToQueue, session.UserPrompt);
                     session.PendingCommandId = -session.Id;
                     session.CurrentPhase = AgentPhase.Testing;
                     _logger.LogInformation("[AGENT] Session #{SessionId} sent final code to test client", session.Id);
@@ -537,15 +610,15 @@ public class AgenticGameService
                 {
                     var entry = _commandQueue.AddCommand(
                         session.UserPrompt,
-                        response.Code ?? "",
-                        response.UndoCode ?? "print(\"Undo not available\")",
+                        codeToQueue,
+                        undoToQueue,
                         session.Source,
                         session.Author,
                         null,
                         session.UserId);
                     
                     session.PendingCommandId = entry.Id;
-                    session.PendingCode = response.Code;
+                    session.PendingCode = codeToQueue;
                     session.CurrentPhase = AgentPhase.Testing;
                     
                     _logger.LogInformation("[AGENT] Session #{SessionId} queued final code as command #{CommandId}", 

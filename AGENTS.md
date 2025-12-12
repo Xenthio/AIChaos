@@ -50,7 +50,7 @@ AIChaos/
 │   │   ├── CodeModerationService.cs  # Code safety checks
 │   │   ├── CommandQueueService.cs    # Command queue management
 │   │   ├── CurrencyConversionService.cs # USD conversion
-│   │   ├── ImageModerationService.cs # Image URL validation
+│   │   ├── PromptModerationService.cs # Prompt content validation (URLs, external content)
 │   │   ├── QueueSlotService.cs      # Dynamic slot management
 │   │   ├── RefundService.cs         # Refund request handling
 │   │   ├── SettingsService.cs       # App configuration
@@ -141,10 +141,18 @@ AIChaos/
 4. **Concurrent execution**: Multiple commands can execute simultaneously in game
 
 ### Known Issues (As of Recent Comments)
-1. ⚠️ **Moderation bypass**: Users can bypass pending image moderation by hitting retry
-2. ⚠️ **Credit deduction**: Retry in user history doesn't cost credits (should charge)
-3. ⚠️ **Interactive mode**: Not subject to post-code generation filters
-4. ⚠️ **Google OAuth**: User-side OAuth broken (currently hidden in UI)
+1. ⚠️ **Google OAuth**: User-side OAuth broken (currently hidden in UI)
+
+### Recently Fixed Issues
+1. ✅ **Moderation bypass**: Users could bypass pending image moderation by hitting retry - FIXED (December 2024)
+   - Commands with images now properly go through moderation flow on retry
+   - Credits are deducted upfront and refunded if images are denied
+   - Maintains backward compatibility for non-image commands
+
+2. ✅ **Interactive mode filters**: Interactive/Agentic mode was not subject to post-code generation filters - FIXED (December 2024)
+   - Interactive mode now applies same dangerous pattern blocking as regular generation
+   - Filtered patterns (URLs, external content) go to code moderation queue
+   - Maintains security consistency across all code generation paths
 
 ### Anti-Patterns Fixed in Recent Cleanup
 - ✅ `Task.Delay().ContinueWith()` → Use `Task.Run()` + `InvokeAsync()`

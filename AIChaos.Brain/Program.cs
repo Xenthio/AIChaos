@@ -50,7 +50,7 @@ builder.Services.AddSingleton<CurrencyConversionService>();
 builder.Services.AddSingleton<TwitchService>();
 builder.Services.AddSingleton<YouTubeService>();
 builder.Services.AddSingleton<TunnelService>();
-builder.Services.AddSingleton<ImageModerationService>();
+builder.Services.AddSingleton<PromptModerationService>();
 builder.Services.AddSingleton<CodeModerationService>();
 builder.Services.AddSingleton<TestClientService>();
 builder.Services.AddSingleton<AgenticGameService>();

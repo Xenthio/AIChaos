@@ -1,10 +1,12 @@
+using System.Text.RegularExpressions;
 using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for managing code that requires moderation before execution.
-/// Similar to ImageModerationService but for filtered code patterns.
+/// Similar to PromptModerationService but for filtered code patterns.
+/// Provides pattern detection for dangerous and filtered code.
 /// </summary>
 public class CodeModerationService
 {
@@ -18,6 +20,85 @@ public class CodeModerationService
     public CodeModerationService(ILogger<CodeModerationService> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Checks if code contains dangerous patterns that could break the game.
+    /// These are always blocked, never sent to moderation.
+    /// </summary>
+    public static string? GetDangerousPatternReason(string code)
+    {
+        var dangerousChecks = new Dictionary<string, string>
+        {
+            [@"changelevel"] = "Map change command (changelevel)",
+            [@"RunConsoleCommand.*[""']map[""']"] = "Map change via console (map)",
+            [@"game\.ConsoleCommand.*[""']map\s"] = "Map change via console (map)",
+            [@"game\.ConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
+            [@"RunConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
+            [@"RunConsoleCommand.*[""']disconnect[""']"] = "Disconnect command",
+            [@"game\.ConsoleCommand.*[""']disconnect"] = "Disconnect command",
+            [@":\s*Kick\s*\("] = "Player kick",
+            [@"player\.Kick"] = "Player kick",
+            [@"RunConsoleCommand.*[""']kill[""']"] = "Kill command (RunConsoleCommand)",
+            [@"game\.ConsoleCommand.*[""']kill"] = "Kill command (game.ConsoleCommand)",
+            [@"ConCommand\s*\(\s*[""']kill[""']"] = "Kill command (ConCommand)",
+            [@"RunConsoleCommand.*[""']suicide[""']"] = "Suicide command (RunConsoleCommand)",
+            [@"game\.ConsoleCommand.*[""']suicide"] = "Suicide command (game.ConsoleCommand)",
+            [@"ConCommand\s*\(\s*[""']suicide[""']"] = "Suicide command (ConCommand)",
+            [@"RunConsoleCommand.*[""']screenshot[""']"] = "Screenshot command (via screenshot concmd)",
+            [@"RunConsoleCommand.*[""']jpeg[""']"] = "Screenshot command (via jpeg concmd)",
+            [@"RunConsoleCommand.*[""']unbindall[""']"] = "unbindall",
+            [@"game\.ConsoleCommand.*unbindall"] = "unbindall",
+            [@"SetHealth\s*\(\s*0\s*\)"] = "Instant death (SetHealth to 0)",
+            [@"SetHealth\s*\(\s*-"] = "Instant death (negative health)",
+            [@":Kill\s*\(\s*\)"] = "Instant death (Kill method)",
+            [@"TakeDamage\s*\(\s*9999"] = "Extreme damage",
+            [@"TakeDamage\s*\(\s*999999"] = "Extreme damage"
+        };
+
+        foreach (var (pattern, reason) in dangerousChecks)
+        {
+            if (Regex.IsMatch(code, pattern, RegexOptions.IgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Checks if code contains filtered patterns that require moderation.
+    /// Returns the reason if filtered content is found, null otherwise.
+    /// </summary>
+    public static string? GetFilteredPatternReason(string code)
+    {
+        var filteredChecks = new Dictionary<string, string>
+        {
+            // Check for specific URL opening functions first (more specific)
+            [@"http\.Fetch\s*\("] = "External HTTP request (http.Fetch)",
+            [@"HTTP\.Fetch\s*\("] = "External HTTP request (HTTP.Fetch)",
+            [@"html:?OpenURL\s*\("] = "External URL opening (html:OpenURL)",
+            [@"gui\.OpenURL\s*\("] = "External URL opening (gui.OpenURL)",
+            [@"steamworks\.OpenURL\s*\("] = "External URL opening (steamworks.OpenURL)",
+            
+            // Check for iframes with external sources
+            [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
+            [@"iframe.*src.*http"] = "External iframe detected",
+            
+            // Generic URL pattern (catches any http:// or https://)
+            [@"https?://"] = "URL detected in code"
+        };
+
+        foreach (var (pattern, reason) in filteredChecks)
+        {
+            if (Regex.IsMatch(code, pattern, RegexOptions.IgnoreCase))
+            {
+                return reason;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

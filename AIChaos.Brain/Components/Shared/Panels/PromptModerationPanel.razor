@@ -1,0 +1,121 @@
+@using AIChaos.Brain.Services
+@using AIChaos.Brain.Models
+@implements IDisposable
+@inject PromptModerationService ModerationService
+
+<!-- Prompt Content Filters -->
+<div class="card moderation-section">
+    <h2>🔍 Prompt Filters <span class="badge">@PendingCount</span></h2>
+    <div style="margin-bottom: 15px;">
+        <button @onclick="RefreshPrompts" class="btn-secondary">🔄 Refresh</button>
+        <label style="display: inline-flex; align-items: center; gap: 8px; margin-left: 10px; cursor: pointer;">
+            <input type="checkbox" @bind="autoRefresh" @bind:after="ToggleAutoRefresh">
+            <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
+        </label>
+    </div>
+    
+    @if (pendingPrompts == null || !pendingPrompts.Any())
+    {
+        <div class="empty-state">✅ No content pending</div>
+    }
+    else
+    {
+        <div class="prompt-list">
+            @foreach (var prompt in pendingPrompts)
+            {
+                <div class="prompt-card-compact">
+                    <div class="prompt-info">
+                        <span class="prompt-id">#@prompt.Id</span>
+                        <span class="prompt-author">👤 @prompt.Author</span>
+                        <span class="filter-reason" style="color: var(--warning); font-size: 11px;">⚠️ @prompt.FilterReason</span>
+                    </div>
+                    <div class="prompt-text">@prompt.UserPrompt</div>
+                    <div class="content-url" style="word-break: break-all; font-size: 12px; margin-bottom: 10px;">
+                        🔗 <a href="@prompt.ContentUrl" target="_blank" rel="noopener noreferrer" style="color: var(--info); text-decoration: underline;">@prompt.ContentUrl</a>
+                    </div>
+                    <div class="prompt-actions">
+                        <button @onclick="() => ApprovePrompt(prompt.Id)" class="btn-success btn-small">✅</button>
+                        <button @onclick="() => DenyPrompt(prompt.Id)" class="btn-danger btn-small">❌</button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int PendingCount { get; set; }
+    [Parameter] public EventCallback OnPromptProcessed { get; set; }
+    
+    private List<PendingPromptEntry>? pendingPrompts;
+    private bool autoRefresh = false;
+    private System.Threading.Timer? refreshTimer;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshPrompts();
+    }
+    
+    private async Task RefreshPrompts()
+    {
+        try
+        {
+            pendingPrompts = ModerationService.GetPendingPrompts();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load pending prompts: {ex.Message}");
+        }
+    }
+    
+    private void ToggleAutoRefresh()
+    {
+        if (autoRefresh)
+        {
+            refreshTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () => await RefreshPrompts());
+            }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }
+        else
+        {
+            refreshTimer?.Dispose();
+            refreshTimer = null;
+        }
+    }
+    
+    private async Task ApprovePrompt(int promptId)
+    {
+        try
+        {
+            ModerationService.ApprovePrompt(promptId);
+            await RefreshPrompts();
+            await OnPromptProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to approve prompt: {ex.Message}");
+        }
+    }
+    
+    private async Task DenyPrompt(int promptId)
+    {
+        try
+        {
+            ModerationService.DenyPrompt(promptId);
+            await RefreshPrompts();
+            await OnPromptProcessed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to deny prompt: {ex.Message}");
+        }
+    }
+    
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+}

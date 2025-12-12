@@ -2,6 +2,7 @@
 @inject CommandQueueService CommandQueue
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
+@inject PromptModerationService ModerationService
 @inject IJSRuntime JS
 @implements IDisposable
 @using AIChaos.Brain.Models
@@ -264,14 +265,24 @@
 
             var isSingleUserMode = !Settings.Settings.General.StreamMode;
 
-            // Check and deduct credits in Stream Mode
+            // Check if command contains content that needs moderation
+            var contentUrls = ModerationService.ExtractContentUrls(command.UserPrompt);
+            var needsModeration = contentUrls.Count > 0;
+            
+            // Check and deduct credits (for both image and non-image commands in Stream Mode)
             if (!isSingleUserMode)
             {
+                // Early check to provide detailed error message to user
+                if (CurrentAccount.CreditBalance < Constants.CommandCost)
+                {
+                    Console.WriteLine($"RepeatCommand failed: Insufficient credits. Have ${CurrentAccount.CreditBalance:F2}, need ${Constants.CommandCost:F2}");
+                    return;
+                }
+
                 if (!AccountService.DeductCredits(CurrentAccount.Id, Constants.CommandCost))
                 {
-                    // Refresh to get current balance for error message
                     var currentBalance = AccountService.GetAccountById(CurrentAccount.Id)?.CreditBalance ?? CurrentAccount.CreditBalance;
-                    Console.WriteLine($"RepeatCommand failed: Insufficient credits. Have ${currentBalance:F2}, need ${Constants.CommandCost:F2}");
+                    Console.WriteLine($"RepeatCommand failed: Failed to deduct credits. Balance: ${currentBalance:F2}");
                     return;
                 }
 
@@ -283,7 +294,35 @@
                     Console.WriteLine($"Credits deducted for repeat. New balance: ${CurrentAccount.CreditBalance:F2}");
                 }
             }
+            
+            if (needsModeration)
+            {
+                // Command contains content - must go through moderation flow
+                // Create placeholder command with PendingModeration status
+                var placeholderCommand = CommandQueue.AddCommandWithStatus(
+                    userPrompt: command.UserPrompt,
+                    executionCode: "", // Will be set after approval
+                    undoCode: "", // Will be set after approval
+                    source: "history_repeat",
+                    author: CurrentAccount.DisplayName,
+                    imageContext: null, // Will be set after approval
+                    userId: CurrentAccount.Id,
+                    aiResponse: "⏳ Waiting for content moderation approval...",
+                    status: CommandStatus.PendingModeration,
+                    queueForExecution: false); // Don't queue yet
 
+                // Queue content for moderation with link to new command
+                foreach (var url in contentUrls)
+                {
+                    ModerationService.AddPendingPrompt(url, command.UserPrompt, "history_repeat", CurrentAccount.DisplayName, CurrentAccount.Id, placeholderCommand.Id);
+                }
+
+                Console.WriteLine($"Command #{commandId} repeated with {contentUrls.Count} content URL(s) queued for moderation (new command #{placeholderCommand.Id})");
+                LoadHistory();
+                return;
+            }
+
+            // No content requiring moderation - use original fast path
             CommandQueue.AddCommand(
                 userPrompt: command.UserPrompt,
                 executionCode: command.ExecutionCode,

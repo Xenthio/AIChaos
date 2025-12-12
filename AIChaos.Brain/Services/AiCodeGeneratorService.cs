@@ -278,7 +278,7 @@ public class AiCodeGeneratorService
                 var undoCode = parts.Length > 1 ? parts[1].Trim() : "print(\"No undo code provided\")";
                 
                 // Check for dangerous patterns first (always block these)
-                var dangerousReason = GetDangerousPatternReason(executionCode);
+                var dangerousReason = CodeModerationService.GetDangerousPatternReason(executionCode);
                 if (dangerousReason != null)
                 {
                     _logger.LogWarning("AI generated code containing dangerous patterns: {Reason}. Blocking.", dangerousReason);
@@ -292,7 +292,7 @@ public class AiCodeGeneratorService
                 string? moderationReason = null;
                 if (settings.General.BlockLinksInGeneratedCode)
                 {
-                    moderationReason = GetFilteredPatternReason(executionCode);
+                    moderationReason = CodeModerationService.GetFilteredPatternReason(executionCode);
                     if (moderationReason != null)
                     {
                         _logger.LogInformation("AI generated code with filtered content: {Reason}. Sending to moderation.", moderationReason);
@@ -308,7 +308,7 @@ public class AiCodeGeneratorService
             var singleCode = code;
             
             // Check for dangerous patterns
-            var singleDangerousReason = GetDangerousPatternReason(singleCode);
+            var singleDangerousReason = CodeModerationService.GetDangerousPatternReason(singleCode);
             if (singleDangerousReason != null)
             {
                 _logger.LogWarning("AI generated code containing dangerous patterns: {Reason}. Blocking.", singleDangerousReason);
@@ -322,7 +322,7 @@ public class AiCodeGeneratorService
             string? singleModerationReason = null;
             if (settings.General.BlockLinksInGeneratedCode)
             {
-                singleModerationReason = GetFilteredPatternReason(singleCode);
+                singleModerationReason = CodeModerationService.GetFilteredPatternReason(singleCode);
                 if (singleModerationReason != null)
                 {
                     _logger.LogInformation("AI generated code with filtered content: {Reason}. Sending to moderation.", singleModerationReason);
@@ -340,92 +340,23 @@ public class AiCodeGeneratorService
     }
 
     /// <summary>
-    /// Checks if code contains dangerous patterns that could break the game.
-    /// These are always blocked, never sent to moderation.
+    /// Public method to check for dangerous patterns in code.
+    /// Delegates to CodeModerationService for pattern detection.
     /// </summary>
-    private static string? GetDangerousPatternReason(string code)
+    public static string? CheckDangerousPatterns(string code)
     {
-        var dangerousChecks = new Dictionary<string, string>
-        {
-            [@"changelevel"] = "Map change command (changelevel)",
-            [@"RunConsoleCommand.*[""']map[""']"] = "Map change via console (map)",
-            [@"game\.ConsoleCommand.*[""']map\s"] = "Map change via console (map)",
-            [@"game\.ConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
-            [@"RunConsoleCommand.*[""']changelevel"] = "Map change via console (changelevel)",
-            [@"RunConsoleCommand.*[""']disconnect[""']"] = "Disconnect command",
-            [@"game\.ConsoleCommand.*[""']disconnect"] = "Disconnect command",
-            [@":\s*Kick\s*\("] = "Player kick",
-            [@"player\.Kick"] = "Player kick",
-            [@"RunConsoleCommand.*[""']kill[""']"] = "Kill command (RunConsoleCommand)",
-            [@"game\.ConsoleCommand.*[""']kill"] = "Kill command (game.ConsoleCommand)",
-            [@"ConCommand\s*\(\s*[""']kill[""']"] = "Kill command (ConCommand)",
-            [@"RunConsoleCommand.*[""']suicide[""']"] = "Suicide command (RunConsoleCommand)",
-            [@"game\.ConsoleCommand.*[""']suicide"] = "Suicide command (game.ConsoleCommand)",
-            [@"ConCommand\s*\(\s*[""']suicide[""']"] = "Suicide command (ConCommand)",
-            [@"RunConsoleCommand.*[""']screenshot[""']"] = "Screenshot command (via screenshot concmd)",
-            [@"RunConsoleCommand.*[""']jpeg[""']"] = "Screenshot command (via jpeg concmd)",
-            [@"RunConsoleCommand.*[""']unbindall[""']"] = "unbindall",
-            [@"game\.ConsoleCommand.*unbindall"] = "unbindall",
-            [@"game\.ConsoleCommand.*suicide"] = "Suicide command",
-            [@"SetHealth\s*\(\s*0\s*\)"] = "Instant death (SetHealth to 0)",
-            [@"SetHealth\s*\(\s*-"] = "Instant death (negative health)",
-            [@":Kill\s*\(\s*\)"] = "Instant death (Kill method)",
-            [@"TakeDamage\s*\(\s*9999"] = "Extreme damage",
-            [@"TakeDamage\s*\(\s*999999"] = "Extreme damage"
-        };
-
-        foreach (var (pattern, reason) in dangerousChecks)
-        {
-            if (System.Text.RegularExpressions.Regex.IsMatch(code, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-            {
-                return reason;
-            }
-        }
-
-        return null;
+        return CodeModerationService.GetDangerousPatternReason(code);
     }
-
+    
     /// <summary>
-    /// Checks if code contains filtered patterns that require moderation.
-    /// Returns the reason if filtered content is found, null otherwise.
+    /// Public method to check for filtered patterns in code.
+    /// Delegates to CodeModerationService for pattern detection.
     /// </summary>
-    private static string? GetFilteredPatternReason(string code)
+    public static string? CheckFilteredPatterns(string code)
     {
-        var filteredChecks = new Dictionary<string, string>
-        {
-            // Check for specific URL opening functions first (more specific)
-            [@"http\.Fetch\s*\("] = "External HTTP request (http.Fetch)",
-            [@"HTTP\.Fetch\s*\("] = "External HTTP request (HTTP.Fetch)",
-            [@"html:?OpenURL\s*\("] = "External URL opening (html:OpenURL)",
-            [@"gui\.OpenURL\s*\("] = "External URL opening (gui.OpenURL)",
-            [@"steamworks\.OpenURL\s*\("] = "External URL opening (steamworks.OpenURL)",
-            
-            // Check for iframes with external sources
-            [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
-            [@"iframe.*src.*http"] = "External iframe detected",
-            
-            // Generic URL pattern (catches any http:// or https://)
-            [@"https?://"] = "URL detected in code"
-        };
-
-        foreach (var (pattern, reason) in filteredChecks)
-        {
-            if (System.Text.RegularExpressions.Regex.IsMatch(code, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-            {
-                return reason;
-            }
-        }
-
-        return null;
+        return CodeModerationService.GetFilteredPatternReason(code);
     }
-
-    /// <summary>
-    /// Checks if code contains dangerous patterns that could break the game.
-    /// </summary>
-    private static bool ContainsDangerousPatterns(string code)
-    {
-        return GetDangerousPatternReason(code) != null;
-    }
+    
     /// <summary>
     /// Generates force undo code for a stuck command.
     /// </summary>
