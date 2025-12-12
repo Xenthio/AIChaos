@@ -87,7 +87,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            await UpdateLuaFileAsync(url);
+            //await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
@@ -156,7 +156,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            await UpdateLuaFileAsync(url);
+            //await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
@@ -222,7 +222,7 @@ public partial class TunnelService : IDisposable
             _settingsService.UpdateTunnel(tunnel);
             
             // Update Lua file
-            await UpdateLuaFileAsync(url);
+            //await UpdateLuaFileAsync(url);
             
             return (true, url, null);
         }
