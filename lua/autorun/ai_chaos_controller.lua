@@ -205,42 +205,54 @@ if SERVER then
         end
     end
     
-    -- Hook for detecting level/map changes
+    -- Hook for detecting level/map changes (fires when server is shutting down)
     hook.Add("ShutDown", "AI_Chaos_LevelChange", function()
         isLevelChanging = true
         ReportLevelChange(game.GetMap(), false)
     end)
     
-    -- Hook for detecting when level finishes loading
-    hook.Add("InitPostEntity", "AI_Chaos_LevelLoaded", function()
-        local newMap = game.GetMap()
-        if currentMap ~= newMap then
-            print("[AI Chaos] Map changed from " .. tostring(currentMap) .. " to " .. tostring(newMap))
-            currentMap = newMap
-        end
-        
-        -- Check for pending re-runs after a short delay to ensure everything is loaded
-        timer.Simple(2, function()
-            CheckPendingReruns()
-        end)
+    -- Use Initialize hook which fires after map loads (this script runs on map load)
+    -- Note: This code is already running because the script loaded, so we check for reruns on startup
+    timer.Simple(3, function()
+        print("[AI Chaos] Checking for pending re-runs after load...")
+        CheckPendingReruns()
     end)
     
-    -- Hook for detecting save/load (game restore)
-    hook.Add("Restored", "AI_Chaos_SaveLoaded", function()
-        print("[AI Chaos] Save game loaded - checking for pending re-runs")
-        ReportLevelChange(game.GetMap(), true)
-        
-        -- Check for pending re-runs after delay
-        timer.Simple(5, function()
-            CheckPendingReruns()
-        end)
+    -- Listen for game events to detect save loading
+    -- PlayerInitialSpawn can indicate a reload in singleplayer
+    hook.Add("PlayerInitialSpawn", "AI_Chaos_PlayerSpawn", function(ply)
+        -- In singleplayer, this fires after loading a save
+        if game.SinglePlayer() then
+            timer.Simple(2, function()
+                print("[AI Chaos] Player spawned (singleplayer) - checking for pending re-runs")
+                CheckPendingReruns()
+            end)
+        end
     end)
+    
+    -- Also detect map changes by comparing maps in poll response handling
+    -- This is a fallback in case the hooks don't work as expected
+    local lastKnownMap = game.GetMap()
 
     -- Forward declaration
     local PollServer 
 
     -- 3. The Polling Logic
     PollServer = function()
+        -- Check if map changed (backup detection)
+        local currentMapNow = game.GetMap()
+        if currentMapNow ~= lastKnownMap then
+            print("[AI Chaos] Map change detected: " .. tostring(lastKnownMap) .. " -> " .. tostring(currentMapNow))
+            lastKnownMap = currentMapNow
+            currentMap = currentMapNow
+            isLevelChanging = false
+            
+            -- Check for pending re-runs after level change
+            timer.Simple(5, function()
+                CheckPendingReruns()
+            end)
+        end
+        
         -- Skip polling during level changes
         if isLevelChanging then
             timer.Simple(POLL_INTERVAL, PollServer)

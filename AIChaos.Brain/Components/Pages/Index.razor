@@ -9,6 +9,7 @@
 @inject SettingsService SettingsService
 @inject TestClientService TestClientService
 @inject RefundService RefundService
+@inject RedoService RedoService
 @inject YouTubeService YouTubeService
 @inject IJSRuntime JS
 @using AIChaos.Brain.Components.Layout
@@ -155,6 +156,7 @@ else
                     </div>
                     <div class="history-actions">
                         <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Re-execute the same code">🔁 Re-Execute</button>
+                        <button @onclick="() => OpenRedoModal(cmd.Id)" class="btn-success btn-small" title="Redo with AI feedback">🔄 Redo</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩ Undo</button>
                         <button @onclick="() => OpenRefundModal(cmd.Id)" class="btn-danger btn-small" title="Report Problem" style="font-size: 11px;">⚠️ Report</button>
                     </div>
@@ -189,6 +191,48 @@ else
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
         <button @onclick="() => showRefundModal = false" class="btn-secondary">Cancel</button>
         <button @onclick="SubmitRefund" class="btn-primary">Submit Report</button>
+    </div>
+</Modal>
+}
+
+<!-- Redo with Feedback Modal -->
+@if (showRedoModal)
+{
+<Modal @bind-IsOpen="showRedoModal">
+    <h3>🔄 Redo with Feedback</h3>
+    @{
+        var isFree = currentAccount != null && RedoService.IsNextRedoFree(currentAccount.Id);
+        var cost = currentAccount != null ? RedoService.GetRedoCost(currentAccount.Id) : Constants.Redo.RedoCost;
+    }
+    @if (isFree)
+    {
+        <p style="color: var(--success); font-weight: bold;">✨ Your first redo is FREE!</p>
+    }
+    else
+    {
+        <p style="color: var(--warning);">This redo will cost <strong>$@cost.ToString("F2")</strong></p>
+    }
+    <p style="margin-top: 10px;">Explain briefly what stopped your request from working and we will try to fix it:</p>
+    <div style="margin: 15px 0;">
+        <textarea 
+            @bind="redoFeedback" 
+            placeholder="E.g., 'The effect only lasted 2 seconds instead of the full duration' or 'Nothing happened when I submitted'"
+            style="width: 100%; min-height: 100px; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: var(--text-main); resize: vertical;"
+            disabled="@isRedoSubmitting">
+        </textarea>
+    </div>
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button @onclick="() => showRedoModal = false" class="btn-secondary" disabled="@isRedoSubmitting">Cancel</button>
+        <button @onclick="SubmitRedo" class="btn-success" disabled="@(isRedoSubmitting || string.IsNullOrWhiteSpace(redoFeedback))">
+            @if (isRedoSubmitting)
+            {
+                <span>Generating...</span>
+            }
+            else
+            {
+                <span>@(isFree ? "Redo (Free)" : $"Redo (${cost:F2})")</span>
+            }
+        </button>
     </div>
 </Modal>
 }
@@ -297,6 +341,10 @@ else
     private bool showRefundModal = false;
     private int selectedCommandIdForRefund = 0;
     private string selectedRefundReason = "";
+    private bool showRedoModal = false;
+    private int selectedCommandIdForRedo = 0;
+    private string redoFeedback = "";
+    private bool isRedoSubmitting = false;
     private bool _isInitialized = false;
     private System.Threading.Timer? streamStateRefreshTimer = null;
 
@@ -817,6 +865,72 @@ else
         {
             ShowStatus("Error submitting report", "error");
             Console.WriteLine($"Refund request failed: {ex.Message}");
+        }
+    }
+
+    private void OpenRedoModal(int commandId)
+    {
+        selectedCommandIdForRedo = commandId;
+        redoFeedback = "";
+        isRedoSubmitting = false;
+        showRedoModal = true;
+    }
+
+    private async Task SubmitRedo()
+    {
+        if (string.IsNullOrWhiteSpace(redoFeedback))
+        {
+            ShowStatus("Please provide feedback about what went wrong", "error");
+            return;
+        }
+
+        if (currentAccount == null)
+        {
+            ShowStatus("You must be logged in to redo a command", "error");
+            return;
+        }
+
+        isRedoSubmitting = true;
+        StateHasChanged();
+
+        try
+        {
+            var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+            var response = await RedoService.RequestRedoAsync(
+                currentAccount.Id,
+                selectedCommandIdForRedo,
+                redoFeedback,
+                isSingleUserMode
+            );
+
+            if (response.Status == "success")
+            {
+                ShowStatus(response.Message ?? "Redo submitted successfully!", "success");
+                showRedoModal = false;
+                
+                // Refresh account to show updated balance
+                var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+                if (updatedAccount != null)
+                {
+                    currentAccount = updatedAccount;
+                }
+                
+                await LoadHistory();
+            }
+            else
+            {
+                ShowStatus(response.Message ?? "Failed to submit redo", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("Error submitting redo request", "error");
+            Console.WriteLine($"Redo request failed: {ex.Message}");
+        }
+        finally
+        {
+            isRedoSubmitting = false;
+            StateHasChanged();
         }
     }
 
