@@ -90,11 +90,11 @@ function DownloadAndMountWorkshopAddon(workshopId, callback)
 end
 
 -- Download addon and get list of assets organized by category
--- callback(success, assets) where assets = {models={}, materials={}, sounds={}}
+-- callback(assets) where assets = {models={}, materials={}, sounds={}} or nil on failure
 function DownloadAndGetWorkshopAssets(workshopId, callback)
     DownloadAndMountWorkshopAddon(workshopId, function(success, data)
         if not success then
-            if callback then callback(false, nil) end
+            if callback then callback(nil) end
             return
         end
         
@@ -106,7 +106,7 @@ function DownloadAndGetWorkshopAssets(workshopId, callback)
                 sounds = {}
             }
             print("[AI Workshop] Server received " .. #assets.models .. " models for addon " .. workshopId)
-            if callback then callback(true, assets) end
+            if callback then callback(assets) end
             return
         end
         
@@ -132,7 +132,7 @@ function DownloadAndGetWorkshopAssets(workshopId, callback)
         SearchModels("models")
         
         print("[AI Workshop] Found " .. #assets.models .. " models in addon " .. workshopId)
-        if callback then callback(true, assets) end
+        if callback then callback(assets) end
     end)
 end
 
@@ -140,8 +140,8 @@ end
 -- callback(modelPath) - called with the selected model path (or nil on failure)
 -- Model is automatically precached before callback
 function DownloadAndGetWorkshopModel(workshopId, callback)
-    DownloadAndGetWorkshopAssets(workshopId, function(success, assets)
-        if not success or not assets or #assets.models == 0 then
+    DownloadAndGetWorkshopAssets(workshopId, function(assets)
+        if not assets or #assets.models == 0 then
             print("[AI Workshop] No models found in addon " .. tostring(workshopId))
             if callback then callback(nil) end
             return
