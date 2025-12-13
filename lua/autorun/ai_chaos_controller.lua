@@ -408,10 +408,11 @@ if SERVER then
     end)
     
     -- Check for pending re-runs when script loads (fires after map load/save load)
-    --timer.Simple(3, function()
+    -- Use a 3-second delay to ensure the server has had time to process any previous commands
+    timer.Simple(3, function()
         print("[AI Chaos] Checking for pending re-runs after load...")
         CheckPendingReruns()
-    --end)
+    end)
     
     -- Track map for detecting changes in poll loop (backup detection)
     local lastKnownMap = game.GetMap()

@@ -245,8 +245,7 @@ public class ChaosController : ControllerBase
         _logger.LogInformation("[LEVEL] {ChangeType} detected: {Map}", 
             request.IsSaveLoad ? "Save load" : "Level change", request.MapName);
 
-        var consumptionService = HttpContext.RequestServices.GetRequiredService<CommandConsumptionService>();
-        var response = consumptionService.HandleLevelChange(request.MapName, request.IsSaveLoad);
+        var response = _consumptionService.HandleLevelChange(request.MapName, request.IsSaveLoad);
         
         return Ok(response);
     }
@@ -262,17 +261,15 @@ public class ChaosController : ControllerBase
     {
         Response.Headers.Append("ngrok-skip-browser-warning", "true");
         
-        var consumptionService = HttpContext.RequestServices.GetRequiredService<CommandConsumptionService>();
-        
         // If we have a shutdown timestamp, process the level change first
         if (request?.ShutdownTimestamp != null)
         {
             var shutdownTime = DateTimeOffset.FromUnixTimeSeconds(request.ShutdownTimestamp.Value).UtcDateTime;
             _logger.LogInformation("[LEVEL] Processing shutdown timestamp: {Time}", shutdownTime);
-            consumptionService.HandleLevelChangeFromTimestamp(shutdownTime);
+            _consumptionService.HandleLevelChangeFromTimestamp(shutdownTime);
         }
         
-        var reruns = consumptionService.GetPendingReruns();
+        var reruns = _consumptionService.GetPendingReruns();
         
         return Ok(new LevelChangeResponse
         {
