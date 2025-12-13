@@ -97,4 +97,16 @@ public static class Constants
         /// </summary>
         public const decimal RedoCost = 1.00m;
     }
+
+    /// <summary>
+    /// API throttling settings.
+    /// </summary>
+    public static class ApiThrottling
+    {
+        /// <summary>
+        /// Maximum number of concurrent LLM API requests.
+        /// Only this many requests will be sent to the API at a time.
+        /// </summary>
+        public const int MaxConcurrentRequests = 3;
+    }
 }

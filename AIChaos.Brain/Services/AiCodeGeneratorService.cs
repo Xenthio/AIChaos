@@ -6,6 +6,7 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for generating Lua code using OpenRouter/OpenAI API.
+/// Implements API throttling to limit concurrent LLM requests.
 /// </summary>
 public class AiCodeGeneratorService
 {
@@ -13,6 +14,9 @@ public class AiCodeGeneratorService
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
+    
+    // Semaphore to limit concurrent API calls (API throttling)
+    private static readonly SemaphoreSlim _apiThrottle = new SemaphoreSlim(Constants.ApiThrottling.MaxConcurrentRequests, Constants.ApiThrottling.MaxConcurrentRequests);
     
     /// <summary>
     /// Shared ground rules for GLua code generation that can be used by other services.
@@ -215,6 +219,7 @@ public class AiCodeGeneratorService
     /// <summary>
     /// Generates Lua code for the given user request.
     /// Returns a tuple with execution code, undo code, and whether code needs moderation.
+    /// Implements API throttling to limit concurrent LLM requests.
     /// </summary>
     public async Task<(string ExecutionCode, string UndoCode, bool NeedsModeration, string? ModerationReason)> GenerateCodeAsync(
         string userRequest,
@@ -244,8 +249,16 @@ public class AiCodeGeneratorService
             }
         }
 
+        // Wait for API throttle slot (limits concurrent requests)
+        _logger.LogDebug("[API] Waiting for API throttle slot ({Available}/{Max} available)", 
+            _apiThrottle.CurrentCount, Constants.ApiThrottling.MaxConcurrentRequests);
+        
+        await _apiThrottle.WaitAsync();
+        
         try
         {
+            _logger.LogDebug("[API] Acquired API throttle slot, making request");
+            
             var settings = _settingsService.Settings;
             // Use unfiltered prompt when Private Discord Mode is enabled
             var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
@@ -351,6 +364,13 @@ public class AiCodeGeneratorService
         {
             _logger.LogError(ex, "Failed to generate code");
             return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")", false, null);
+        }
+        finally
+        {
+            // Always release the API throttle slot
+            _apiThrottle.Release();
+            _logger.LogDebug("[API] Released API throttle slot ({Available}/{Max} available)", 
+                _apiThrottle.CurrentCount, Constants.ApiThrottling.MaxConcurrentRequests);
         }
     }
 

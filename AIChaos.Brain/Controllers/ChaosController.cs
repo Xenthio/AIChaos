@@ -18,6 +18,7 @@ public class ChaosController : ControllerBase
     private readonly PromptModerationService _moderationService;
     private readonly TestClientService _testClientService;
     private readonly AgenticGameService _agenticService;
+    private readonly CommandConsumptionService _consumptionService;
     private readonly ILogger<ChaosController> _logger;
 
     public ChaosController(
@@ -28,6 +29,7 @@ public class ChaosController : ControllerBase
         PromptModerationService moderationService,
         TestClientService testClientService,
         AgenticGameService agenticService,
+        CommandConsumptionService consumptionService,
         ILogger<ChaosController> logger)
     {
         _commandQueue = commandQueue;
@@ -37,6 +39,7 @@ public class ChaosController : ControllerBase
         _moderationService = moderationService;
         _testClientService = testClientService;
         _agenticService = agenticService;
+        _consumptionService = consumptionService;
         _logger = logger;
     }
 
@@ -65,6 +68,8 @@ public class ChaosController : ControllerBase
             if (approvedResult.HasValue)
             {
                 _logger.LogInformation("[MAIN CLIENT] Sending approved command #{CommandId}", approvedResult.Value.CommandId);
+                // Track command execution for consumption tracking
+                _consumptionService.StartExecution(approvedResult.Value.CommandId, approvedResult.Value.Code);
                 return new PollResponse
                 {
                     HasCode = true,
@@ -87,6 +92,8 @@ public class ChaosController : ControllerBase
 
         if (result.HasValue)
         {
+            // Track command execution for consumption tracking
+            _consumptionService.StartExecution(result.Value.CommandId, result.Value.Code);
             return new PollResponse
             {
                 HasCode = true,
