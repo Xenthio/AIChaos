@@ -665,7 +665,8 @@ else
             }
             
             // If we got a command ID, it means it's pending moderation
-            if (commandId.HasValue && message.Contains("moderation"))
+            // Check for various moderation-related keywords in the message
+            if (commandId.HasValue && (message.Contains("moderation") || message.Contains("moderator") || message.Contains("approval")))
             {
                 ShowStatus(message, "info");
                 promptInput = "";
