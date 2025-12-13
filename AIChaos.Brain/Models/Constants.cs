@@ -20,6 +20,8 @@ public static class Constants
         public const string YouTube = "youtube";
         public const string Discord = "discord";
         public const string Dashboard = "dashboard";
+        public const string Favourite = "favourite";
+        public const string HistoryRepeat = "history_repeat";
     }
 
     /// <summary>

@@ -215,7 +215,7 @@ public class FavouritesService
             userPrompt: favourite.UserPrompt,
             executionCode: favourite.ExecutionCode,
             undoCode: favourite.UndoCode,
-            source: "favourite",
+            source: Constants.Sources.Favourite,
             author: displayName,
             imageContext: null,
             userId: userId

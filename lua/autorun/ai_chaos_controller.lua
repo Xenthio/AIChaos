@@ -226,15 +226,17 @@ if SERVER then
         if not modelPath or modelPath == "" then return false end
         modelPath = string.lower(modelPath)
         
-        -- Skip gesture/animation models
-        if string.find(modelPath, "gesture") then return false end
-        if string.find(modelPath, "anim") and not string.find(modelPath, "animal") then return false end
-        if string.find(modelPath, "pose") then return false end
+        -- Skip gesture/animation models (use path separators and specific patterns)
+        if string.find(modelPath, "/gestures/") then return false end
+        if string.find(modelPath, "/animations/") then return false end
+        if string.find(modelPath, "/poses/") then return false end
+        if string.find(modelPath, "_gesture") then return false end
+        if string.find(modelPath, "_anim%.mdl") then return false end -- e.g. walk_anim.mdl
         
         -- Skip invisible/error models
         if string.find(modelPath, "invisible") then return false end
-        if string.find(modelPath, "error") then return false end
-        if string.find(modelPath, "null") then return false end
+        if string.find(modelPath, "error%.mdl") then return false end
+        if string.find(modelPath, "null%.mdl") then return false end
         
         -- Prefer props, ragdolls, and NPCs
         if string.find(modelPath, "props") then return true end
