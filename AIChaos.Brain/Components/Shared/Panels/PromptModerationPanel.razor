@@ -192,14 +192,11 @@
                 {
                     AccountService.AddCredits(entry.UserId, Constants.CommandCost);
                     
-                    // Update the command status to Failed
-                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                    if (command != null)
-                    {
-                        command.Status = CommandStatus.Failed;
-                        command.ErrorMessage = "Content denied by moderator";
-                        command.AiResponse = "❌ Your content was denied by a moderator. Credits have been refunded.";
-                    }
+                    // Update the command status to Failed using UpdateCommand to fire HistoryChanged event
+                    CommandQueue.UpdateCommand(
+                        entry.CommandId.Value,
+                        CommandStatus.Failed,
+                        aiResponse: "❌ Your content was denied by a moderator. Credits have been refunded.");
                     
                     ShowStatus($"Denied and ${Constants.CommandCost:F2} refunded", "success");
                 }
