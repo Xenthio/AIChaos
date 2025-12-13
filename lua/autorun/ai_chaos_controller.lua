@@ -53,6 +53,9 @@ if SERVER then
     -- Track current map for level change detection
     local currentMap = game.GetMap()
     local isLevelChanging = false
+    
+    -- Forward declaration for ExecuteAICode (used by CheckPendingReruns)
+    local ExecuteAICode
 
     -- 1. Helper Function: Send code to client
     function RunOnClient(codeString)
@@ -169,7 +172,7 @@ if SERVER then
 
     -- 2. Helper Function: Run the code safely using CompileString + pcall for proper error messages
     -- This approach captures both syntax errors (from CompileString) and runtime errors (from pcall)
-    local function ExecuteAICode(code, commandId)
+    ExecuteAICode = function(code, commandId)
         print("[AI Chaos] Running generated code...")
         
         -- Clear any previous captured data
