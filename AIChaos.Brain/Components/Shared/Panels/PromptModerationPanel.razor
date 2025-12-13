@@ -2,6 +2,10 @@
 @using AIChaos.Brain.Models
 @implements IDisposable
 @inject PromptModerationService ModerationService
+@inject AiCodeGeneratorService CodeGenerator
+@inject CommandQueueService CommandQueue
+@inject TestClientService TestClientService
+@inject AccountService AccountService
 
 <!-- Prompt Content Filters -->
 <div class="card moderation-section">
@@ -13,6 +17,11 @@
             <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
         </label>
     </div>
+    
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-@statusType" style="margin-bottom: 10px;">@statusMessage</div>
+    }
     
     @if (pendingPrompts == null || !pendingPrompts.Any())
     {
@@ -34,8 +43,8 @@
                         🔗 <a href="@prompt.ContentUrl" target="_blank" rel="noopener noreferrer" style="color: var(--info); text-decoration: underline;">@prompt.ContentUrl</a>
                     </div>
                     <div class="prompt-actions">
-                        <button @onclick="() => ApprovePrompt(prompt.Id)" class="btn-success btn-small">✅</button>
-                        <button @onclick="() => DenyPrompt(prompt.Id)" class="btn-danger btn-small">❌</button>
+                        <button @onclick="() => ApprovePrompt(prompt.Id)" class="btn-success btn-small" disabled="@isProcessing">✅</button>
+                        <button @onclick="() => DenyPrompt(prompt.Id)" class="btn-danger btn-small" disabled="@isProcessing">❌</button>
                     </div>
                 </div>
             }
@@ -49,11 +58,62 @@
     
     private List<PendingPromptEntry>? pendingPrompts;
     private bool autoRefresh = false;
+    private bool isProcessing = false;
+    private string statusMessage = "";
+    private string statusType = "info";
     private System.Threading.Timer? refreshTimer;
     
     protected override async Task OnInitializedAsync()
     {
+        // Set up the approval processor for centralized handling
+        ModerationService.SetApprovalProcessor(ProcessApprovedPromptAsync);
         await RefreshPrompts();
+    }
+    
+    /// <summary>
+    /// Centralized prompt approval processing - generates code and queues command.
+    /// </summary>
+    private async Task<(bool success, string message)> ProcessApprovedPromptAsync(PendingPromptEntry entry)
+    {
+        if (CodeGenerator == null || CommandQueue == null || TestClientService == null)
+        {
+            return (false, "Required services not available");
+        }
+        
+        // Generate code with image context
+        var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
+            entry.UserPrompt,
+            imageContext: $"Image URL: {entry.ContentUrl}");
+        
+        // Check if we have a linked command to update
+        if (entry.CommandId.HasValue)
+        {
+            var command = CommandQueue.GetCommand(entry.CommandId.Value);
+            if (command != null)
+            {
+                command.ExecutionCode = executionCode;
+                command.UndoCode = undoCode;
+                command.ImageContext = entry.ContentUrl;
+                command.Status = CommandStatus.Queued;
+                command.AiResponse = null;
+
+                // Queue for execution
+                if (TestClientService.IsEnabled)
+                {
+                    TestClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
+                    Console.WriteLine($"[MODERATION] Approved prompt #{command.Id} queued for testing");
+                }
+                else
+                {
+                    CommandQueue.QueueInteractiveCode(command.Id, executionCode);
+                    Console.WriteLine($"[MODERATION] Approved prompt #{command.Id} queued for execution");
+                }
+                
+                return (true, $"Command #{command.Id} queued for execution");
+            }
+        }
+        
+        return (false, "No linked command found");
     }
     
     private async Task RefreshPrompts()
@@ -89,13 +149,32 @@
     {
         try
         {
-            ModerationService.ApprovePrompt(promptId);
+            isProcessing = true;
+            StateHasChanged();
+            
+            var (success, message) = await ModerationService.ApproveAndProcessPromptAsync(promptId);
+            
+            if (success)
+            {
+                ShowStatus(message, "success");
+            }
+            else
+            {
+                ShowStatus(message, "error");
+            }
+            
             await RefreshPrompts();
             await OnPromptProcessed.InvokeAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to approve prompt: {ex.Message}");
+            ShowStatus($"Error: {ex.Message}", "error");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
         }
     }
     
@@ -103,14 +182,56 @@
     {
         try
         {
-            ModerationService.DenyPrompt(promptId);
+            var entry = ModerationService.DenyPrompt(promptId);
+            if (entry != null)
+            {
+                // Refund credits if there's a linked command
+                if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
+                {
+                    AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                    
+                    // Update the command status to Failed
+                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                    if (command != null)
+                    {
+                        command.Status = CommandStatus.Failed;
+                        command.ErrorMessage = "Content denied by moderator";
+                        command.AiResponse = "❌ Your content was denied by a moderator. Credits have been refunded.";
+                    }
+                    
+                    ShowStatus($"Denied and ${Constants.CommandCost:F2} refunded", "success");
+                }
+                else
+                {
+                    ShowStatus("Prompt denied", "success");
+                }
+            }
+            
             await RefreshPrompts();
             await OnPromptProcessed.InvokeAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to deny prompt: {ex.Message}");
+            ShowStatus($"Error: {ex.Message}", "error");
         }
+    }
+    
+    private void ShowStatus(string message, string type)
+    {
+        statusMessage = message;
+        statusType = type;
+        StateHasChanged();
+        
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(Constants.MessageDurations.Short);
+            await InvokeAsync(() =>
+            {
+                statusMessage = "";
+                StateHasChanged();
+            });
+        });
     }
     
     public void Dispose()

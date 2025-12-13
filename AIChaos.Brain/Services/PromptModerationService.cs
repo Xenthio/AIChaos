@@ -15,6 +15,9 @@ public class PromptModerationService
     private readonly object _lock = new();
     private int _nextId = 1;
     
+    // Callback for processing approved prompts - set by external code
+    private Func<PendingPromptEntry, Task<(bool success, string message)>>? _approvalProcessor;
+    
     // Event for when pending prompts change
     public event EventHandler? PendingPromptsChanged;
     
@@ -29,6 +32,55 @@ public class PromptModerationService
     {
         _settingsService = settingsService;
         _logger = logger;
+    }
+    
+    /// <summary>
+    /// Sets the callback function that processes approved prompts (generates code and queues).
+    /// This allows the approval logic to be centralized while the actual processing
+    /// happens in the component layer where services like CodeGenerator are available.
+    /// </summary>
+    public void SetApprovalProcessor(Func<PendingPromptEntry, Task<(bool success, string message)>> processor)
+    {
+        _approvalProcessor = processor;
+    }
+    
+    /// <summary>
+    /// Approves and fully processes a prompt (generates code, queues command).
+    /// Returns (success, message) tuple.
+    /// </summary>
+    public async Task<(bool success, string message)> ApproveAndProcessPromptAsync(int promptId)
+    {
+        PendingPromptEntry? entry;
+        lock (_lock)
+        {
+            entry = _pendingPrompts.FirstOrDefault(i => i.Id == promptId);
+            if (entry == null)
+            {
+                return (false, "Prompt not found");
+            }
+            
+            entry.Status = PromptModerationStatus.Approved;
+            entry.ReviewedAt = DateTime.UtcNow;
+            _logger.LogInformation("[MODERATION] URL #{Id} APPROVED: {Url}", promptId, entry.ContentUrl);
+        }
+        
+        OnPendingPromptsChanged();
+        
+        // Process via callback if available
+        if (_approvalProcessor != null)
+        {
+            try
+            {
+                return await _approvalProcessor(entry);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[MODERATION] Error processing approved prompt #{Id}", promptId);
+                return (false, $"Error processing: {ex.Message}");
+            }
+        }
+        
+        return (true, "Approved (no processor configured)");
     }
     
     private void OnPendingPromptsChanged()

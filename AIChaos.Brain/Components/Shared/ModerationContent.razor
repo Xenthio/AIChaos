@@ -255,10 +255,59 @@
         LoadPendingCode();
         LoadPendingRefunds();
         
+        // Set up the centralized approval processor
+        ModerationService.SetApprovalProcessor(ProcessApprovedPromptAsync);
+        
         // Subscribe to events for real-time updates
         ModerationService.PendingPromptsChanged += OnPendingPromptsChanged;
         CodeModerationService.PendingCodeChanged += OnPendingCodeChanged;
         CommandQueue.HistoryChanged += OnHistoryChanged;
+    }
+    
+    /// <summary>
+    /// Centralized prompt approval processing - generates code and queues command.
+    /// </summary>
+    private async Task<(bool success, string message)> ProcessApprovedPromptAsync(PendingPromptEntry entry)
+    {
+        if (CodeGenerator == null || CommandQueue == null || TestClientService == null)
+        {
+            return (false, "Required services not available");
+        }
+        
+        // Generate code with image context
+        var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
+            entry.UserPrompt,
+            imageContext: $"Image URL: {entry.ContentUrl}");
+        
+        // Check if we have a linked command to update
+        if (entry.CommandId.HasValue)
+        {
+            var command = CommandQueue.GetCommand(entry.CommandId.Value);
+            if (command != null)
+            {
+                command.ExecutionCode = executionCode;
+                command.UndoCode = undoCode;
+                command.ImageContext = entry.ContentUrl;
+                command.Status = CommandStatus.Queued;
+                command.AiResponse = null;
+
+                // Queue for execution
+                if (TestClientService.IsEnabled)
+                {
+                    TestClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
+                    Console.WriteLine($"[MODERATION] Approved prompt #{command.Id} queued for testing");
+                }
+                else
+                {
+                    CommandQueue.QueueInteractiveCode(command.Id, executionCode);
+                    Console.WriteLine($"[MODERATION] Approved prompt #{command.Id} queued for execution");
+                }
+                
+                return (true, $"Command #{command.Id} queued for execution");
+            }
+        }
+        
+        return (false, "No linked command found");
     }
 
     private async void OnPendingPromptsChanged(object? sender, EventArgs e)
@@ -355,73 +404,17 @@
     {
         try
         {
-            // Null checks for injected services
-            if (CodeGenerator == null)
+            var (success, message) = await ModerationService.ApproveAndProcessPromptAsync(imageId);
+            
+            if (success)
             {
-                ShowAlert("Error: Code generator service not available", "error");
-                return;
+                ShowAlert($"Image approved! {message}", "success");
+            }
+            else
+            {
+                ShowAlert($"Approval issue: {message}", "warning");
             }
             
-            if (CommandQueue == null)
-            {
-                ShowAlert("Error: Command queue service not available", "error");
-                return;
-            }
-            
-            if (TestClientService == null)
-            {
-                ShowAlert("Error: Test client service not available", "error");
-                return;
-            }
-            
-            var entry = ModerationService.ApprovePrompt(imageId);
-            if (entry == null)
-            {
-                ShowAlert("Failed to approve image - image not found", "error");
-                return;
-            }
-            
-            // Generate code with image context
-            var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
-                entry.UserPrompt,
-                imageContext: $"Image URL: {entry.ContentUrl}");
-            
-            // Check if we have a linked command to update
-            if (entry.CommandId.HasValue)
-            {
-                // Update the existing placeholder command
-                var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                if (command != null)
-                {
-                    command.ExecutionCode = executionCode;
-                    command.UndoCode = undoCode;
-                    command.ImageContext = entry.ContentUrl;
-                    command.Status = CommandStatus.Queued;
-                    command.AiResponse = null; // Clear the pending message
-
-                    // Check if test client mode is enabled
-                    var isTestClientModeEnabled = TestClientService.IsEnabled;
-                    
-                    // Queue for execution
-                    if (isTestClientModeEnabled)
-                    {
-                        TestClientService.QueueForTesting(command.Id, executionCode, entry.UserPrompt);
-                        Console.WriteLine($"[MODERATION] Approved image command #{command.Id} queued for testing");
-                    }
-                    else
-                    {
-                        CommandQueue.QueueInteractiveCode(command.Id, executionCode);
-                        Console.WriteLine($"[MODERATION] Approved image command #{command.Id} queued for execution");
-                    }
-                    
-                    ShowAlert($"Image approved! Command #{command.Id} is now queued for execution.", "success");
-                    LoadPendingImages();
-                    return;
-                }
-            }
-            
-            // Fallback: No linked command (old behavior for backward compatibility)
-            ShowAlert("Image approved but no linked command found - this shouldn't happen for new submissions", "warning");
             LoadPendingImages();
         }
         catch (Exception ex)
