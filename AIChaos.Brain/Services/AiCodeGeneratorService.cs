@@ -78,12 +78,40 @@ public class AiCodeGeneratorService
 
         11. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
         
-        12. **Workshop Content:** You have access to helper functions for workshop content:
-           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and spawns first valid model from a workshop addon
-           - `DownloadAndMountWorkshopAddon(workshopId, callback)` - Downloads and mounts an addon for runtime use
-           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Gets list of models/materials/sounds in an addon
-           - `GetAllMountedAddonAssets()` - Lists assets from currently mounted addons
-           - Use these when users request specific workshop models or content
+        12. **Workshop Content:** You have access to helper functions for downloading Steam Workshop addons at runtime:
+           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and auto-spawns best model as prop/ragdoll
+           - `DownloadAndGetWorkshopModel(workshopId, callback)` - Downloads and returns best model path for custom entities (NPCs, etc)
+           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Downloads and returns all models/materials/sounds
+           
+           **Examples:**
+           ```lua
+           -- Quick spawn (props, ragdolls) - RECOMMENDED for simple spawns
+           DownloadAndSpawnWorkshopModel("485879458", function(ent)
+               if IsValid(ent) then 
+                   ent:SetColor(Color(255,0,0)) 
+               end
+           end)
+           
+           -- NPCs with workshop models - Set model AFTER spawning
+           DownloadAndGetWorkshopModel("485879458", function(model)
+               if model then
+                   local ply = Entity(1)
+                   local npc = ents.Create("npc_citizen")
+                   npc:SetPos(ply:GetPos() + ply:GetForward() * 100)
+                   npc:Spawn()
+                   npc:Activate()
+                   
+                   -- Set workshop model after NPC is spawned
+                   timer.Simple(0.1, function()
+                       if IsValid(npc) then
+                           npc:SetModel(model)
+                           npc:Give("weapon_smg1")
+                           npc:AddEntityRelationship(ply, D_LI, 99)
+                       end
+                   end)
+               end
+           end)
+           ```
            
         13. **Asset Discovery:** When in Interactive mode, you can discover available game assets:
            - Search models: `for _, f in pairs(file.Find("models/*", "GAME")) do print(f) end`
