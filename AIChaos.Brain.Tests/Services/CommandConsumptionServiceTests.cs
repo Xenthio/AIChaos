@@ -15,7 +15,7 @@ public class CommandConsumptionServiceTests
     {
         _commandQueue = new CommandQueueService(enablePersistence: false);
         _loggerMock = new Mock<ILogger<CommandConsumptionService>>();
-        _service = new CommandConsumptionService(_commandQueue, _loggerMock.Object);
+        _service = new CommandConsumptionService(_commandQueue, _loggerMock.Object, enablePersistence: false);
     }
 
     [Fact]

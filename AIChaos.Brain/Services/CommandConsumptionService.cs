@@ -22,12 +22,98 @@ public class CommandConsumptionService
     private readonly object _lock = new();
     private string _currentMap = "unknown";
     
+    // Persistence paths
+    private const string ExecutingStateDir = "queue_state";
+    private const string ExecutingStateFile = "queue_state/executing.json";
+    private readonly bool _enablePersistence;
+    
     public CommandConsumptionService(
         CommandQueueService commandQueue,
-        ILogger<CommandConsumptionService> logger)
+        ILogger<CommandConsumptionService> logger,
+        bool enablePersistence = true)
     {
         _commandQueue = commandQueue;
         _logger = logger;
+        _enablePersistence = enablePersistence;
+        
+        // Load persisted executing commands on startup
+        if (_enablePersistence)
+        {
+            LoadExecutingState();
+        }
+    }
+    
+    /// <summary>
+    /// Loads executing commands from persistence file.
+    /// </summary>
+    private void LoadExecutingState()
+    {
+        try
+        {
+            if (File.Exists(ExecutingStateFile))
+            {
+                var json = File.ReadAllText(ExecutingStateFile);
+                var commands = JsonSerializer.Deserialize<List<ExecutingCommandDto>>(json);
+                if (commands != null)
+                {
+                    foreach (var cmd in commands)
+                    {
+                        var executingCommand = new ExecutingCommand
+                        {
+                            CommandId = cmd.CommandId,
+                            Code = cmd.Code,
+                            StartedAt = cmd.StartedAt
+                        };
+                        _executingCommands.TryAdd(cmd.CommandId, executingCommand);
+                    }
+                    _logger.LogInformation("[CONSUMPTION] Loaded {Count} executing commands from persistence", commands.Count);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CONSUMPTION] Failed to load executing state");
+        }
+    }
+    
+    /// <summary>
+    /// Saves executing commands to persistence file.
+    /// </summary>
+    private void SaveExecutingState()
+    {
+        if (!_enablePersistence) return;
+        
+        try
+        {
+            if (!Directory.Exists(ExecutingStateDir))
+            {
+                Directory.CreateDirectory(ExecutingStateDir);
+            }
+            
+            var commands = _executingCommands.Values.Select(c => new ExecutingCommandDto
+            {
+                CommandId = c.CommandId,
+                Code = c.Code,
+                StartedAt = c.StartedAt
+            }).ToList();
+            
+            var json = JsonSerializer.Serialize(commands, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(ExecutingStateFile, json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[CONSUMPTION] Failed to save executing state");
+        }
+    }
+    
+    /// <summary>
+    /// DTO for persisting executing commands.
+    /// </summary>
+    private class ExecutingCommandDto
+    {
+        public int CommandId { get; set; }
+        public string Code { get; set; } = "";
+        public DateTime StartedAt { get; set; }
     }
     
     /// <summary>
@@ -45,6 +131,9 @@ public class CommandConsumptionService
         // Use AddOrUpdate for thread-safe insertion
         _executingCommands.AddOrUpdate(commandId, executingCommand, (_, _) => executingCommand);
         
+        // Persist executing state
+        SaveExecutingState();
+        
         // Update command entry
         var command = _commandQueue.GetCommand(commandId);
         if (command != null)
@@ -52,7 +141,8 @@ public class CommandConsumptionService
             command.ExecutionStartedAt = DateTime.UtcNow;
         }
         
-        _logger.LogInformation("[CONSUMPTION] Command #{CommandId} started executing", commandId);
+        _logger.LogInformation("[CONSUMPTION] Command #{CommandId} started executing at {Time}", 
+            commandId, executingCommand.StartedAt);
     }
     
     /// <summary>
@@ -79,6 +169,7 @@ public class CommandConsumptionService
             }
             
             _executingCommands.TryRemove(commandId, out _);
+            SaveExecutingState();
             _logger.LogInformation("[CONSUMPTION] Command #{CommandId} consumed after {Seconds:F1}s", 
                 commandId, elapsed.TotalSeconds);
         }
@@ -138,6 +229,9 @@ public class CommandConsumptionService
                 // If already consumed (elapsed >= threshold), just remove without re-queuing
             }
             
+            // Save state after processing
+            SaveExecutingState();
+            
             var changeType = isSaveLoad ? "save load" : "level change";
             _logger.LogInformation("[CONSUMPTION] {ChangeType} detected: {Map}. {Count} commands will re-run.", 
                 changeType, newMapName, response.PendingReruns.Count);
@@ -157,6 +251,9 @@ public class CommandConsumptionService
             // Get snapshot of command IDs to process (thread-safe)
             var commandIds = _executingCommands.Keys.ToList();
             
+            _logger.LogInformation("[CONSUMPTION] Processing shutdown timestamp {Time}. Currently tracking {Count} executing commands: [{Ids}]", 
+                shutdownTime, commandIds.Count, string.Join(", ", commandIds));
+            
             foreach (var commandId in commandIds)
             {
                 // Try to get and remove the command atomically
@@ -167,6 +264,9 @@ public class CommandConsumptionService
                 
                 // Calculate how long the command ran before shutdown
                 var elapsed = shutdownTime - executing.StartedAt;
+                
+                _logger.LogInformation("[CONSUMPTION] Command #{CommandId}: StartedAt={StartedAt}, ShutdownTime={ShutdownTime}, Elapsed={Elapsed:F1}s, Threshold={Threshold}s", 
+                    commandId, executing.StartedAt, shutdownTime, elapsed.TotalSeconds, Constants.Queue.ConsumptionTimeSeconds);
                 
                 // Only interrupt if not yet consumed at shutdown time
                 if (elapsed.TotalSeconds < Constants.Queue.ConsumptionTimeSeconds)
@@ -199,7 +299,11 @@ public class CommandConsumptionService
                 }
             }
             
-            _logger.LogInformation("[CONSUMPTION] Processed shutdown timestamp: {Time}", shutdownTime);
+            // Save state after processing
+            SaveExecutingState();
+            
+            _logger.LogInformation("[CONSUMPTION] Finished processing shutdown timestamp. {Count} commands pending rerun.", 
+                _pendingReruns.Count);
         }
     }
     
