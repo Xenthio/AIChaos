@@ -142,13 +142,18 @@ if SERVER then
             success = function(code, responseBody, headers)
                 if code == 200 then
                     local data = util.JSONToTable(responseBody)
-                    if data and data.PendingReruns and #data.PendingReruns > 0 then
-                        print("[AI Chaos] " .. #data.PendingReruns .. " command(s) to re-run after level load")
-                        for _, rerun in ipairs(data.PendingReruns) do
-                            -- Schedule the re-run with the specified delay
-                            timer.Simple(rerun.DelaySeconds or 5, function()
-                                print("[AI Chaos] Re-running command #" .. rerun.CommandId .. " after level load")
-                                ExecuteAICode(rerun.Code, rerun.CommandId)
+                    -- Note: ASP.NET Core uses camelCase by default (pendingReruns, not PendingReruns)
+                    local reruns = data and (data.pendingReruns or data.PendingReruns)
+                    if reruns and #reruns > 0 then
+                        print("[AI Chaos] " .. #reruns .. " command(s) to re-run after level load")
+                        for _, rerun in ipairs(reruns) do
+                            -- Schedule the re-run with the specified delay (camelCase: delaySeconds, commandId, code)
+                            local delay = rerun.delaySeconds or rerun.DelaySeconds or 5
+                            local cmdId = rerun.commandId or rerun.CommandId
+                            local cmdCode = rerun.code or rerun.Code
+                            timer.Simple(delay, function()
+                                print("[AI Chaos] Re-running command #" .. tostring(cmdId) .. " after level load")
+                                ExecuteAICode(cmdCode, cmdId)
                             end)
                         end
                     else
