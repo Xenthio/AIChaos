@@ -261,15 +261,24 @@ public class ChaosController : ControllerBase
     {
         Response.Headers.Append("ngrok-skip-browser-warning", "true");
         
+        _logger.LogInformation("[LEVEL] /pending-reruns called. Request: {Request}, HasTimestamp: {HasTimestamp}", 
+            request != null ? "received" : "null", request?.ShutdownTimestamp != null);
+        
         // If we have a shutdown timestamp, process the level change first
         if (request?.ShutdownTimestamp != null)
         {
             var shutdownTime = DateTimeOffset.FromUnixTimeSeconds(request.ShutdownTimestamp.Value).UtcDateTime;
-            _logger.LogInformation("[LEVEL] Processing shutdown timestamp: {Time}", shutdownTime);
+            _logger.LogInformation("[LEVEL] Processing shutdown timestamp: {UnixTime} -> {Time}", 
+                request.ShutdownTimestamp.Value, shutdownTime);
             _consumptionService.HandleLevelChangeFromTimestamp(shutdownTime);
+        }
+        else
+        {
+            _logger.LogWarning("[LEVEL] No shutdown timestamp provided - cannot determine interrupted commands");
         }
         
         var reruns = _consumptionService.GetPendingReruns();
+        _logger.LogInformation("[LEVEL] Returning {Count} pending reruns", reruns.Count);
         
         return Ok(new LevelChangeResponse
         {

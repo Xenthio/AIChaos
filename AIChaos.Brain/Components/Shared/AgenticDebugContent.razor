@@ -78,7 +78,52 @@
             </div>
         </div>
         
-        <!-- Steps / Conversation -->
+        <!-- Chat API Messages (Raw) -->
+        <div class="conversation-section">
+            <div class="section-header">💬 Chat API Messages (@selectedSession.ChatHistory.Count)</div>
+            
+            @if (!selectedSession.ChatHistory.Any())
+            {
+                <div class="empty-state">No chat messages recorded yet.</div>
+            }
+            else
+            {
+                <div class="chat-messages">
+                    @foreach (var (message, index) in selectedSession.ChatHistory.Select((m, i) => (m, i)))
+                    {
+                        <div class="chat-message @message.Role">
+                            <div class="message-role">
+                                @if (message.Role == "system")
+                                {
+                                    <span class="role-badge system">🔧 System</span>
+                                }
+                                else if (message.Role == "user")
+                                {
+                                    <span class="role-badge user">👤 User</span>
+                                }
+                                else if (message.Role == "assistant")
+                                {
+                                    <span class="role-badge assistant">🤖 Assistant</span>
+                                }
+                                <button @onclick="() => ToggleChatExpand(index)" class="btn-tiny">
+                                    @(expandedChats.Contains(index) ? "▼ Collapse" : "▶ Expand")
+                                </button>
+                            </div>
+                            @if (expandedChats.Contains(index))
+                            {
+                                <pre class="message-content-full">@message.Content</pre>
+                            }
+                            else
+                            {
+                                <pre class="message-content-preview">@TruncateText(message.Content, 200)</pre>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        
+        <!-- Steps / Parsed Conversation -->
         <div class="conversation-section">
             <div class="section-header">💬 Conversation Steps (@selectedSession.Steps.Count)</div>
             
@@ -461,6 +506,91 @@
         padding: 30px;
         color: var(--text-dim);
     }
+    
+    /* Chat API Messages Styles */
+    .chat-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .chat-message {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 12px;
+        border-left: 3px solid var(--border);
+    }
+    
+    .chat-message.system {
+        border-left-color: #9b59b6;
+        background: rgba(155, 89, 182, 0.1);
+    }
+    
+    .chat-message.user {
+        border-left-color: #3498db;
+        background: rgba(52, 152, 219, 0.1);
+    }
+    
+    .chat-message.assistant {
+        border-left-color: #27ae60;
+        background: rgba(39, 174, 96, 0.1);
+    }
+    
+    .message-role {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    
+    .role-badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .role-badge.system {
+        background: #9b59b6;
+        color: white;
+    }
+    
+    .role-badge.user {
+        background: #3498db;
+        color: white;
+    }
+    
+    .role-badge.assistant {
+        background: #27ae60;
+        color: white;
+    }
+    
+    .message-content-full {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+        margin: 0;
+    }
+    
+    .message-content-preview {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text-dim);
+        margin: 0;
+    }
 </style>
 
 @code {
@@ -476,6 +606,7 @@
     
     private HashSet<int> expandedCodes = new();
     private HashSet<int> expandedResults = new();
+    private HashSet<int> expandedChats = new();
     
     private System.Threading.Timer? refreshTimer;
     
@@ -518,6 +649,7 @@
             selectedSessionId = sessionId;
             expandedCodes.Clear();
             expandedResults.Clear();
+            expandedChats.Clear();
             
             // Refresh the selected session to get latest data
             var session = AgenticService.GetSession(sessionId);
@@ -546,6 +678,14 @@
             expandedResults.Remove(stepNumber);
         else
             expandedResults.Add(stepNumber);
+    }
+    
+    private void ToggleChatExpand(int index)
+    {
+        if (expandedChats.Contains(index))
+            expandedChats.Remove(index);
+        else
+            expandedChats.Add(index);
     }
     
     private string GetSessionStatusClass(AgentSession session)

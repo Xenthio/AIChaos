@@ -720,11 +720,14 @@ public class AgenticGameService
             }
         }
         
-        var messages = new List<ChatMessage>
-        {
-            new() { Role = "system", Content = AgenticSystemPrompt },
-            new() { Role = "user", Content = userContent.ToString() }
-        };
+        var systemMessage = new ChatMessage { Role = "system", Content = AgenticSystemPrompt };
+        var userMessage = new ChatMessage { Role = "user", Content = userContent.ToString() };
+        
+        var messages = new List<ChatMessage> { systemMessage, userMessage };
+        
+        // Track chat history for debugging
+        session.ChatHistory.Add(systemMessage);
+        session.ChatHistory.Add(userMessage);
         
         var response = await _openRouterService.ChatCompletionAsync(messages);
         
@@ -733,6 +736,9 @@ public class AgenticGameService
             _logger.LogError("[AGENT] OpenRouterService returned empty response for session #{SessionId}", session.Id);
             return null;
         }
+        
+        // Add assistant response to chat history
+        session.ChatHistory.Add(new ChatMessage { Role = "assistant", Content = response });
         
         return ParseAgentAiResponse(response);
     }
@@ -1080,6 +1086,11 @@ public class AgentSession
     public DateTime? CompletedAt { get; set; }
     public int? PendingCommandId { get; set; }
     public string? PendingCode { get; set; }
+    
+    /// <summary>
+    /// Full chat message history for debugging (shows actual API messages).
+    /// </summary>
+    public List<ChatMessage> ChatHistory { get; set; } = new();
 }
 
 /// <summary>

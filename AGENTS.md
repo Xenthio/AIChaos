@@ -88,7 +88,7 @@ AIChaos/
 │   ├── Extensions/             # Extension methods (NEW)
 │   │   └── ComponentExtensions.cs
 │   └── wwwroot/                # Static files (CSS, JS)
-├── AIChaos.Brain.Tests/        # Unit tests (79 tests)
+├── AIChaos.Brain.Tests/        # Unit tests (122 tests)
 ├── lua/                        # Garry's Mod addon
 │   └── autorun/
 │       └── chaos_controller.lua # GMod polling/execution

@@ -50,9 +50,13 @@ public class CommandConsumptionService
     {
         try
         {
+            _logger.LogInformation("[CONSUMPTION] Loading executing state from {File}...", ExecutingStateFile);
+            
             if (File.Exists(ExecutingStateFile))
             {
                 var json = File.ReadAllText(ExecutingStateFile);
+                _logger.LogInformation("[CONSUMPTION] File contents: {Json}", json);
+                
                 var commands = JsonSerializer.Deserialize<List<ExecutingCommandDto>>(json);
                 if (commands != null)
                 {
@@ -65,9 +69,14 @@ public class CommandConsumptionService
                             StartedAt = cmd.StartedAt
                         };
                         _executingCommands.TryAdd(cmd.CommandId, executingCommand);
+                        _logger.LogInformation("[CONSUMPTION] Loaded command #{CommandId} started at {Time}", cmd.CommandId, cmd.StartedAt);
                     }
                     _logger.LogInformation("[CONSUMPTION] Loaded {Count} executing commands from persistence", commands.Count);
                 }
+            }
+            else
+            {
+                _logger.LogInformation("[CONSUMPTION] No persistence file found at {File}", ExecutingStateFile);
             }
         }
         catch (Exception ex)
@@ -141,8 +150,8 @@ public class CommandConsumptionService
             command.ExecutionStartedAt = DateTime.UtcNow;
         }
         
-        _logger.LogInformation("[CONSUMPTION] Command #{CommandId} started executing at {Time}", 
-            commandId, executingCommand.StartedAt);
+        _logger.LogInformation("[CONSUMPTION] Command #{CommandId} started executing at {Time} (UTC). Total executing: {Count}. Persisted to disk.", 
+            commandId, executingCommand.StartedAt, _executingCommands.Count);
     }
     
     /// <summary>
