@@ -97,6 +97,10 @@ else
             @onclick='() => NavigateToSubPage("logs")'>
                 📋 Logs
             </button>
+            <button class="admin-tab @(activeSubPage == "agentic" ? "active" : "")"
+            @onclick='() => NavigateToSubPage("agentic")'>
+                🤖 Agentic
+            </button>
         }
     </div>
 
@@ -209,6 +213,10 @@ else
     else if (activeSubPage == "logs")
     {
         <LogsContent />
+    }
+    else if (activeSubPage == "agentic")
+    {
+        <AgenticDebugContent />
     }
 }
 

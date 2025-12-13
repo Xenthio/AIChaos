@@ -204,6 +204,13 @@ AIChaos/
     - "Re-Execute" → "▶️ Replay" (runs same code without changes)
     - "Redo" → "🔧 Fix" (AI regenerates with user feedback)
 
+11. ✅ **Agentic Debug View**: New dashboard tab for debugging agentic sessions
+    - View all active and completed agentic sessions
+    - See conversation steps with AI thinking, code, and results
+    - Expand/collapse code blocks and result data
+    - Auto-refreshes every 2 seconds to track active sessions
+    - Access via Dashboard → Agentic tab (Admin only)
+
 ### Anti-Patterns Fixed in Recent Cleanup
 - ✅ `Task.Delay().ContinueWith()` → Use `Task.Run()` + `InvokeAsync()`
 - ✅ `async void` → Always return `Task` with proper error handling

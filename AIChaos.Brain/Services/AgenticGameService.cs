@@ -225,6 +225,17 @@ public class AgenticGameService
         }
     }
     
+    /// <summary>
+    /// Gets all sessions (including completed ones).
+    /// </summary>
+    public List<AgentSession> GetAllSessions()
+    {
+        lock (_lock)
+        {
+            return _sessions.Values.ToList();
+        }
+    }
+    
     private int GetNextSessionId()
     {
         lock (_lock)
