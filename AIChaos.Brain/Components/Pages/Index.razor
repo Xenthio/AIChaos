@@ -11,6 +11,7 @@
 @inject RefundService RefundService
 @inject RedoService RedoService
 @inject YouTubeService YouTubeService
+@inject FavouritesService FavouritesService
 @inject IJSRuntime JS
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
@@ -47,6 +48,9 @@ else
     </div>
 
     <div class="form-group" style="margin-bottom: 15px;">
+        <button @onclick="() => showFavouritesModal = true" class="btn-secondary" style="margin-bottom: 10px; font-size: 14px;">
+            ⭐ Browse Example Prompts
+        </button>
         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
             <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
             <span>🔄 Interactive Mode</span>
@@ -237,6 +241,84 @@ else
 </Modal>
 }
 
+<!-- Favourites/Example Prompts Modal -->
+@if (showFavouritesModal)
+{
+<Modal @bind-IsOpen="showFavouritesModal">
+    <h3>⭐ Example Prompts</h3>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">Browse and execute pre-made chaos prompts!</p>
+    
+    @{
+        var favourites = FavouritesService.GetAllFavourites();
+        var categories = FavouritesService.GetCategories();
+    }
+    
+    @if (!favourites.Any())
+    {
+        <div style="text-align: center; padding: 30px; color: var(--text-dim);">
+            <p>No example prompts available yet.</p>
+            <p style="font-size: 12px;">Admins can add favourites from the Dashboard.</p>
+        </div>
+    }
+    else
+    {
+        <!-- Category Filter -->
+        @if (categories.Count > 1)
+        {
+            <div style="margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button @onclick="() => selectedFavouriteCategory = null" 
+                        class="@(selectedFavouriteCategory == null ? "btn-primary" : "btn-secondary")"
+                        style="font-size: 12px; padding: 5px 10px;">
+                    All
+                </button>
+                @foreach (var cat in categories)
+                {
+                    <button @onclick="() => selectedFavouriteCategory = cat" 
+                            class="@(selectedFavouriteCategory == cat ? "btn-primary" : "btn-secondary")"
+                            style="font-size: 12px; padding: 5px 10px;">
+                        @cat
+                    </button>
+                }
+            </div>
+        }
+        
+        <!-- Favourites List -->
+        <div style="max-height: 400px; overflow-y: auto;">
+            @foreach (var fav in favourites.Where(f => selectedFavouriteCategory == null || f.Category == selectedFavouriteCategory))
+            {
+                <div class="favourite-item" style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold; color: var(--text-main);">@fav.Name</div>
+                            <div style="color: var(--text-dim); font-size: 12px; margin-top: 4px;">@fav.UserPrompt</div>
+                            @if (!string.IsNullOrEmpty(fav.Description))
+                            {
+                                <div style="color: var(--text-dim); font-size: 11px; margin-top: 4px; font-style: italic;">@fav.Description</div>
+                            }
+                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+                                <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">@fav.Category</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-left: 10px;">
+                            <button @onclick="() => UseFavouriteAsPrompt(fav)" class="btn-secondary btn-small" title="Copy to prompt box">
+                                ✏️ Modify
+                            </button>
+                            <button @onclick="() => ExecuteFavourite(fav.Id)" class="btn-success btn-small" title="Execute immediately">
+                                ⚡ Run
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
+        <button @onclick="() => showFavouritesModal = false" class="btn-secondary">Close</button>
+    </div>
+</Modal>
+}
+
 @* Login/Register Modal *@
 
 <style>
@@ -324,6 +406,10 @@ else
         border-radius: 4px;
         font-size: 12px;
     }
+    
+    .favourite-item:hover {
+        background: rgba(255,255,255,0.08) !important;
+    }
 </style>
 
 @code {
@@ -347,6 +433,8 @@ else
     private bool isRedoSubmitting = false;
     private bool _isInitialized = false;
     private System.Threading.Timer? streamStateRefreshTimer = null;
+    private bool showFavouritesModal = false;
+    private string? selectedFavouriteCategory = null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -975,5 +1063,69 @@ else
     {
         activeInteractiveSession = null;
         StateHasChanged();
+    }
+    
+    private void UseFavouriteAsPrompt(FavouritePrompt favourite)
+    {
+        // Copy the prompt to the input box for modification
+        promptInput = favourite.UserPrompt;
+        showFavouritesModal = false;
+        StateHasChanged();
+    }
+    
+    private async Task ExecuteFavourite(int favouriteId)
+    {
+        if (currentAccount == null)
+        {
+            ShowStatus("Please sign in to execute favourites", "error");
+            return;
+        }
+        
+        var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+        
+        // Check balance in stream mode
+        if (!isSingleUserMode && currentAccount.CreditBalance < Constants.CommandCost)
+        {
+            ShowStatus($"Insufficient credits. You need ${Constants.CommandCost:F2}", "error");
+            return;
+        }
+        
+        // Deduct credits in stream mode
+        if (!isSingleUserMode)
+        {
+            if (!AccountService.DeductCredits(currentAccount.Id, Constants.CommandCost))
+            {
+                ShowStatus("Failed to deduct credits", "error");
+                return;
+            }
+            
+            // Refresh account balance
+            var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+            if (updatedAccount != null)
+            {
+                currentAccount = updatedAccount;
+            }
+        }
+        
+        var entry = FavouritesService.ExecuteFavourite(favouriteId, currentAccount.Id, currentAccount.DisplayName);
+        
+        if (entry != null)
+        {
+            showFavouritesModal = false;
+            var message = isSingleUserMode 
+                ? "Favourite queued for execution!" 
+                : $"Favourite queued! New balance: ${currentAccount.CreditBalance:F2}";
+            ShowStatus(message, "success");
+            await LoadHistory();
+        }
+        else
+        {
+            // Refund if favourite wasn't found
+            if (!isSingleUserMode)
+            {
+                AccountService.AddCredits(currentAccount.Id, Constants.CommandCost);
+            }
+            ShowStatus("Failed to execute favourite", "error");
+        }
     }
 }

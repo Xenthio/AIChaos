@@ -48,10 +48,14 @@ AIChaos/
 │   │   ├── AgenticGameService.cs    # Interactive mode handler (1,091 lines)
 │   │   ├── AiCodeGeneratorService.cs # LLM code generation
 │   │   ├── CodeModerationService.cs  # Code safety checks
+│   │   ├── CommandConsumptionService.cs # Command execution tracking
 │   │   ├── CommandQueueService.cs    # Command queue management
 │   │   ├── CurrencyConversionService.cs # USD conversion
+│   │   ├── FavouritesService.cs     # Favourite/example prompts management
+│   │   ├── OpenRouterService.cs     # LLM API abstraction layer
 │   │   ├── PromptModerationService.cs # Prompt content validation (URLs, external content)
 │   │   ├── QueueSlotService.cs      # Dynamic slot management
+│   │   ├── RedoService.cs           # Redo with feedback (free first redo)
 │   │   ├── RefundService.cs         # Refund request handling
 │   │   ├── SettingsService.cs       # App configuration
 │   │   ├── TestClientService.cs     # Test mode for development
@@ -174,6 +178,32 @@ AIChaos/
    - Movement blocking limited to max 10 seconds
    - UI elements that take cursor control must include Close button
 
+6. ✅ **YouTube OAuth Refresh**: Token auto-refresh before expiry
+   - Access tokens are refreshed 5 minutes before expiry
+   - Auto-refresh on 401 Unauthorized errors
+
+7. ✅ **OpenRouter API Service**: Refactored LLM API into its own service
+   - `OpenRouterService` provides clean API abstraction
+   - Supports multiple models, JSON responses, and throttling
+   - Makes it easier to add other LLM providers later
+
+8. ✅ **Favourites/Example Prompts System**: Users can browse and execute pre-saved prompts
+   - `FavouritesService` for managing favourite prompts
+   - "⭐ Browse Example Prompts" button in Index page
+   - Categories for organizing favourites
+   - "Modify" button to copy prompt for customization
+   - "Run" button to execute immediately
+
+9. ✅ **Workshop Helper Functions**: Lua helpers for downloading workshop content
+   - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and spawns first valid model
+   - `DownloadAndMountWorkshopAddon(workshopId, callback)` - Downloads and mounts addon at runtime
+   - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Gets list of assets in addon
+   - `GetAllMountedAddonAssets()` - Lists assets from mounted addons
+
+10. ✅ **Button Naming Clarification**:
+    - "Re-Execute" → "▶️ Replay" (runs same code without changes)
+    - "Redo" → "🔧 Fix" (AI regenerates with user feedback)
+
 ### Anti-Patterns Fixed in Recent Cleanup
 - ✅ `Task.Delay().ContinueWith()` → Use `Task.Run()` + `InvokeAsync()`
 - ✅ `async void` → Always return `Task` with proper error handling
@@ -188,7 +218,7 @@ AIChaos/
 ### Test Suite
 - **Location**: `AIChaos.Brain.Tests/`
 - **Framework**: xUnit
-- **Coverage**: 79 tests covering services and models
+- **Coverage**: 122 tests covering services and models
 - **Command**: `dotnet test` from solution root
 
 ### Test Categories

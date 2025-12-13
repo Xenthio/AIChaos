@@ -80,6 +80,18 @@ public class AiCodeGeneratorService
            - For model swaps, you can use a bonemerge and temporarily hide the original model. this is a softlock safe way to change appearances.  
 
         11. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
+        
+        12. **Workshop Content:** You have access to helper functions for workshop content:
+           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and spawns first valid model from a workshop addon
+           - `DownloadAndMountWorkshopAddon(workshopId, callback)` - Downloads and mounts an addon for runtime use
+           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Gets list of models/materials/sounds in an addon
+           - `GetAllMountedAddonAssets()` - Lists assets from currently mounted addons
+           - Use these when users request specific workshop models or content
+           
+        13. **Asset Discovery:** When in Interactive mode, you can discover available game assets:
+           - Search models: `for _, f in pairs(file.Find("models/*", "GAME")) do print(f) end`
+           - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass()) end`
+           - List sounds: Use `file.Find("sound/*", "GAME")` to discover available sounds
            
         """;
     
