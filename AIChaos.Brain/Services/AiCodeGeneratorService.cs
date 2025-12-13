@@ -6,17 +6,14 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for generating Lua code using OpenRouter/OpenAI API.
-/// Implements API throttling to limit concurrent LLM requests.
+/// Uses OpenRouterService for API calls with built-in throttling.
 /// </summary>
 public class AiCodeGeneratorService
 {
-    private readonly HttpClient _httpClient;
+    private readonly OpenRouterService _openRouterService;
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
-    
-    // Semaphore to limit concurrent API calls (API throttling)
-    private static readonly SemaphoreSlim _apiThrottle = new SemaphoreSlim(Constants.ApiThrottling.MaxConcurrentRequests, Constants.ApiThrottling.MaxConcurrentRequests);
     
     /// <summary>
     /// Shared ground rules for GLua code generation that can be used by other services.
@@ -217,12 +214,12 @@ public class AiCodeGeneratorService
         """;
 
     public AiCodeGeneratorService(
-        HttpClient httpClient,
+        OpenRouterService openRouterService,
         SettingsService settingsService,
         CommandQueueService commandQueue,
         ILogger<AiCodeGeneratorService> logger)
     {
-        _httpClient = httpClient;
+        _openRouterService = openRouterService;
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _logger = logger;
@@ -231,7 +228,7 @@ public class AiCodeGeneratorService
     /// <summary>
     /// Generates Lua code for the given user request.
     /// Returns a tuple with execution code, undo code, and whether code needs moderation.
-    /// Implements API throttling to limit concurrent LLM requests.
+    /// Uses OpenRouterService for API calls with built-in throttling.
     /// </summary>
     public async Task<(string ExecutionCode, string UndoCode, bool NeedsModeration, string? ModerationReason)> GenerateCodeAsync(
         string userRequest,
@@ -261,54 +258,29 @@ public class AiCodeGeneratorService
             }
         }
 
-        // Wait for API throttle slot (limits concurrent requests)
-        _logger.LogDebug("[API] Waiting for API throttle slot ({Available}/{Max} available)", 
-            _apiThrottle.CurrentCount, Constants.ApiThrottling.MaxConcurrentRequests);
-        
-        await _apiThrottle.WaitAsync();
-        
         try
         {
-            _logger.LogDebug("[API] Acquired API throttle slot, making request");
+            _logger.LogDebug("[API] Generating code via OpenRouterService");
             
             var settings = _settingsService.Settings;
             // Use unfiltered prompt when Private Discord Mode is enabled
             var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
 
-            var requestBody = new
+            var messages = new List<ChatMessage>
             {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = activePrompt },
-                    new { role = "user", content = userContent.ToString() }
-                }
+                new() { Role = "system", Content = activePrompt },
+                new() { Role = "user", Content = userContent.ToString() }
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
             {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
+                _logger.LogError("OpenRouter returned empty response");
+                return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")", false, null);
+            }
 
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-
-            // Clean up markdown if present
-            code = code.Replace("```lua", "").Replace("```", "").Trim();
+            var code = OpenRouterService.CleanLuaCode(response);
 
             // Parse execution and undo code
             if (code.Contains("---UNDO---"))
@@ -377,13 +349,6 @@ public class AiCodeGeneratorService
             _logger.LogError(ex, "Failed to generate code");
             return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")", false, null);
         }
-        finally
-        {
-            // Always release the API throttle slot
-            _apiThrottle.Release();
-            _logger.LogDebug("[API] Released API throttle slot ({Available}/{Max} available)", 
-                _apiThrottle.CurrentCount, Constants.ApiThrottling.MaxConcurrentRequests);
-        }
     }
 
     /// <summary>
@@ -429,40 +394,20 @@ public class AiCodeGeneratorService
 
         try
         {
-            var settings = _settingsService.Settings;
-            var requestBody = new
+            var messages = new List<ChatMessage>
             {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects." },
-                    new { role = "user", content = forceUndoPrompt }
-                }
+                new() { Role = "system", Content = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects." },
+                new() { Role = "user", Content = forceUndoPrompt }
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
             {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
+                return "print(\"Force undo generation failed\")";
+            }
 
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-
-            return code.Replace("```lua", "").Replace("```", "").Trim();
+            return OpenRouterService.CleanLuaCode(response);
         }
         catch (Exception ex)
         {

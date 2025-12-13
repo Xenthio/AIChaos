@@ -19,7 +19,7 @@ public class AgenticGameService
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly CodeModerationService _codeModerationService;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly OpenRouterService _openRouterService;
     private readonly ILogger<AgenticGameService> _logger;
     
     // Active agent sessions
@@ -138,13 +138,13 @@ public class AgenticGameService
         SettingsService settingsService,
         CommandQueueService commandQueue,
         CodeModerationService codeModerationService,
-        IHttpClientFactory httpClientFactory,
+        OpenRouterService openRouterService,
         ILogger<AgenticGameService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _codeModerationService = codeModerationService;
-        _httpClientFactory = httpClientFactory;
+        _openRouterService = openRouterService;
         _logger = logger;
     }
     
@@ -709,44 +709,26 @@ public class AgenticGameService
             }
         }
         
-        var settings = _settingsService.Settings;
-        var requestBody = new
+        var messages = new List<ChatMessage>
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = AgenticSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
+            new() { Role = "system", Content = AgenticSystemPrompt },
+            new() { Role = "user", Content = userContent.ToString() }
         };
         
-        var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+        var response = await _openRouterService.ChatCompletionAsync(messages);
+        
+        if (string.IsNullOrEmpty(response))
         {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
+            _logger.LogError("[AGENT] OpenRouterService returned empty response for session #{SessionId}", session.Id);
+            return null;
+        }
         
-        var response = await httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var jsonDoc = JsonDocument.Parse(responseContent);
-        
-        var aiContent = jsonDoc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
-        
-        return ParseAgentAiResponse(aiContent);
+        return ParseAgentAiResponse(response);
     }
     
     private async Task<string?> AskAiToFixCodeAsync(string currentCode, string error, string originalPrompt)
     {
-        var settings = _settingsService.Settings;
-        
-        if (string.IsNullOrEmpty(settings.OpenRouter.ApiKey))
+        if (!_openRouterService.IsConfigured)
         {
             _logger.LogWarning("[AGENT] Cannot fix code - API key not configured");
             return null;
@@ -759,46 +741,26 @@ public class AgenticGameService
         userContent.AppendLine($"\n**Error message:**\n{error}");
         userContent.AppendLine("\nPlease fix the code. Return ONLY the fixed code.");
         
-        var requestBody = new
+        var messages = new List<ChatMessage>
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = ErrorFixSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
+            new() { Role = "system", Content = ErrorFixSystemPrompt },
+            new() { Role = "user", Content = userContent.ToString() }
         };
-        
-        var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-        
-        var response = await httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return null;
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
         
         try
         {
-            var jsonDoc = JsonDocument.Parse(responseContent);
-            if (!jsonDoc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
+            {
                 return null;
+            }
             
-            var fixedCode = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
-            
-            // Clean markdown
-            fixedCode = fixedCode.Trim();
-            if (fixedCode.StartsWith("```lua")) fixedCode = fixedCode[6..];
-            else if (fixedCode.StartsWith("```")) fixedCode = fixedCode[3..];
-            if (fixedCode.EndsWith("```")) fixedCode = fixedCode[..^3];
-            
-            return fixedCode.Trim();
+            return OpenRouterService.CleanLuaCode(response);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "[AGENT] Failed to get AI fix for code");
             return null;
         }
     }
