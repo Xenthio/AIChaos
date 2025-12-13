@@ -15,6 +15,9 @@ public class QueueSlotService
     private readonly List<ExecutionSlot> _slots = new();
     private readonly object _lock = new();
     
+    // Blast queue - commands that should be sent immediately, bypassing slot timers
+    private readonly Queue<(int CommandId, string Code)> _blastQueue = new();
+    
     // Configuration
     private const int DefaultSlotBlockSeconds = 25; // Default 25 seconds between executions per slot
     private const int MinSlots = 3;
@@ -44,7 +47,16 @@ public class QueueSlotService
     {
         lock (_lock)
         {
-            // First, check if there are any queued commands
+            // First, check if there are any blasted commands waiting
+            if (_blastQueue.Count > 0)
+            {
+                var blasted = _blastQueue.Dequeue();
+                _logger.LogInformation("[BLAST] Sending blasted command #{CommandId} to GMod ({Remaining} remaining)", 
+                    blasted.CommandId, _blastQueue.Count);
+                return blasted;
+            }
+            
+            // Next, check if there are any queued commands
             if (_commandQueue.GetQueueCount() == 0)
             {
                 // No commands in queue
@@ -87,6 +99,7 @@ public class QueueSlotService
     
     /// <summary>
     /// Manually blasts the next item(s) in queue, bypassing all slot timers.
+    /// Commands are added to a priority blast queue that GMod polls first.
     /// Used by streamer control.
     /// </summary>
     public List<(int CommandId, string Code)> ManualBlast(int count = 1)
@@ -100,8 +113,10 @@ public class QueueSlotService
                 var result = _commandQueue.PollNextCommand();
                 if (!result.HasValue) break;
                 
+                // Add to blast queue so GMod will receive them on next poll(s)
+                _blastQueue.Enqueue(result.Value);
                 results.Add(result.Value);
-                _logger.LogInformation("[MANUAL BLAST] Force-executing command #{CommandId}", result.Value.CommandId);
+                _logger.LogInformation("[MANUAL BLAST] Queued command #{CommandId} for immediate execution", result.Value.CommandId);
             }
             
             // Free all slots to allow immediate execution
@@ -111,6 +126,8 @@ public class QueueSlotService
                 // Set to a time that makes slots immediately available
                 slot.LastExecutionTime = DateTime.UtcNow.AddSeconds(-DefaultSlotBlockSeconds);
             }
+            
+            _logger.LogInformation("[MANUAL BLAST] {Count} command(s) ready for GMod to poll", results.Count);
             
             return results;
         }
