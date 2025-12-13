@@ -285,11 +285,13 @@
             var command = CommandQueue.GetCommand(entry.CommandId.Value);
             if (command != null)
             {
-                command.ExecutionCode = executionCode;
-                command.UndoCode = undoCode;
-                command.ImageContext = entry.ContentUrl;
-                command.Status = CommandStatus.Queued;
-                command.AiResponse = null;
+                // Use UpdateCommand to update status and fire HistoryChanged event
+                CommandQueue.UpdateCommand(
+                    command.Id,
+                    CommandStatus.Queued,
+                    executionCode: executionCode,
+                    undoCode: undoCode,
+                    imageContext: entry.ContentUrl);
 
                 // Queue for execution
                 if (TestClientService.IsEnabled)
@@ -437,14 +439,11 @@
                 {
                     AccountService.AddCredits(entry.UserId, Constants.CommandCost);
                     
-                    // Update the command status to Failed
-                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                    if (command != null)
-                    {
-                        command.Status = CommandStatus.Failed;
-                        command.ErrorMessage = "Image denied by moderator";
-                        command.AiResponse = "❌ Your image was denied by a moderator. Credits have been refunded.";
-                    }
+                    // Update the command status to Failed using UpdateCommand to fire events
+                    CommandQueue.UpdateCommand(
+                        entry.CommandId.Value,
+                        CommandStatus.Failed,
+                        aiResponse: "❌ Your image was denied by a moderator. Credits have been refunded.");
                     
                     ShowAlert($"Image denied and ${Constants.CommandCost:F2} refunded", "success");
                 }
@@ -484,10 +483,12 @@
                 var command = CommandQueue.GetCommand(entry.CommandId.Value);
                 if (command != null)
                 {
-                    command.ExecutionCode = entry.ExecutionCode;
-                    command.UndoCode = entry.UndoCode;
-                    command.Status = CommandStatus.Queued;
-                    command.AiResponse = null;
+                    // Use UpdateCommand to update status and fire HistoryChanged event
+                    CommandQueue.UpdateCommand(
+                        command.Id,
+                        CommandStatus.Queued,
+                        executionCode: entry.ExecutionCode,
+                        undoCode: entry.UndoCode);
 
                     // Queue for execution
                     if (TestClientService.IsEnabled)
@@ -528,14 +529,11 @@
                 {
                     AccountService.AddCredits(entry.UserId, Constants.CommandCost);
                     
-                    // Update the command status to Failed
-                    var command = CommandQueue.GetCommand(entry.CommandId.Value);
-                    if (command != null)
-                    {
-                        command.Status = CommandStatus.Failed;
-                        command.ErrorMessage = "Code denied by moderator: " + entry.FilterReason;
-                        command.AiResponse = $"❌ Your code was denied by a moderator. Reason: {entry.FilterReason}. Credits have been refunded.";
-                    }
+                    // Update the command status to Failed using UpdateCommand to fire events
+                    CommandQueue.UpdateCommand(
+                        entry.CommandId.Value,
+                        CommandStatus.Failed,
+                        aiResponse: $"❌ Your code was denied by a moderator. Reason: {entry.FilterReason}. Credits have been refunded.");
                     
                     ShowAlert($"Code denied and ${Constants.CommandCost:F2} refunded", "success");
                 }

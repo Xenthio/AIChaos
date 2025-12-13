@@ -232,6 +232,33 @@ public class CommandQueueService
     }
     
     /// <summary>
+    /// Updates a command's status and optionally other properties.
+    /// Fires HistoryChanged event to notify subscribers.
+    /// </summary>
+    public bool UpdateCommand(int commandId, CommandStatus status, string? executionCode = null, string? undoCode = null, string? imageContext = null, string? aiResponse = null)
+    {
+        lock (_lock)
+        {
+            var command = _history.FirstOrDefault(c => c.Id == commandId);
+            if (command == null) return false;
+            
+            command.Status = status;
+            
+            if (executionCode != null)
+                command.ExecutionCode = executionCode;
+            if (undoCode != null)
+                command.UndoCode = undoCode;
+            if (imageContext != null)
+                command.ImageContext = imageContext;
+            if (aiResponse != null)
+                command.AiResponse = aiResponse;
+            
+            OnHistoryChanged();
+            return true;
+        }
+    }
+    
+    /// <summary>
     /// Queues the execution code for a previous command (repeat).
     /// </summary>
     public bool RepeatCommand(int commandId)

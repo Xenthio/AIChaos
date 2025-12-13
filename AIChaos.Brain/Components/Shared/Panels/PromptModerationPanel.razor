@@ -91,11 +91,13 @@
             var command = CommandQueue.GetCommand(entry.CommandId.Value);
             if (command != null)
             {
-                command.ExecutionCode = executionCode;
-                command.UndoCode = undoCode;
-                command.ImageContext = entry.ContentUrl;
-                command.Status = CommandStatus.Queued;
-                command.AiResponse = null;
+                // Use UpdateCommand to update status and fire HistoryChanged event
+                CommandQueue.UpdateCommand(
+                    command.Id,
+                    CommandStatus.Queued,
+                    executionCode: executionCode,
+                    undoCode: undoCode,
+                    imageContext: entry.ContentUrl);
 
                 // Queue for execution
                 if (TestClientService.IsEnabled)
