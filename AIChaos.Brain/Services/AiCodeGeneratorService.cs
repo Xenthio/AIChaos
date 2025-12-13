@@ -234,7 +234,9 @@ public class AiCodeGeneratorService
         string userRequest,
         string currentMap = "unknown",
         string? imageContext = null,
-        bool includeHistory = true)
+        bool includeHistory = true,
+        string? referenceCode = null,
+        string? referenceUndoCode = null)
     {
         var userContent = new StringBuilder();
         userContent.Append($"Current Map: {currentMap}. Request: {userRequest}");
@@ -242,6 +244,17 @@ public class AiCodeGeneratorService
         if (!string.IsNullOrEmpty(imageContext))
         {
             userContent.Append($"\n[SYSTEM DETECTED IMAGE CONTEXT]: {imageContext}");
+        }
+        
+        // Include reference code from an existing favourite/saved payload for modification requests
+        if (!string.IsNullOrEmpty(referenceCode))
+        {
+            userContent.Append($"\n\n[REFERENCE CODE - Use as base/inspiration for this modification]:\n```lua\n{referenceCode}\n```");
+            if (!string.IsNullOrEmpty(referenceUndoCode))
+            {
+                userContent.Append($"\n\n[REFERENCE UNDO CODE]:\n```lua\n{referenceUndoCode}\n```");
+            }
+            userContent.Append("\n\nThe user wants to modify or build upon this existing effect. Use the reference code as a quality baseline.");
         }
 
         // Include recent command history if enabled

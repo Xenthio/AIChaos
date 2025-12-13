@@ -19,7 +19,6 @@ public class CommandQueueService
     
     private static readonly string SavedPayloadsDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "saved_payloads");
-    private static readonly string SavedPayloadsFile = Path.Combine(SavedPayloadsDirectory, "payloads.json");
     
     // Queue persistence paths
     private static readonly string QueuePersistenceDirectory = Path.Combine(
@@ -348,6 +347,7 @@ public class CommandQueueService
     
     /// <summary>
     /// Saves a command payload for random chaos mode.
+    /// Each payload is saved as its own JSON file for easy merging/transfer.
     /// </summary>
     public SavedPayload SavePayload(CommandEntry command, string name)
     {
@@ -364,7 +364,7 @@ public class CommandQueueService
             };
             
             _savedPayloads.Add(payload);
-            PersistSavedPayloads();
+            PersistSinglePayload(payload);
             return payload;
         }
     }
@@ -391,31 +391,45 @@ public class CommandQueueService
             if (payload == null) return false;
             
             _savedPayloads.Remove(payload);
-            PersistSavedPayloads();
+            DeleteSinglePayload(payload.Id);
             return true;
         }
     }
     
     /// <summary>
-    /// Loads saved payloads from file on startup.
+    /// Loads saved payloads from individual JSON files on startup.
+    /// Each payload is stored in its own file for easy merging/transfer between installations.
     /// </summary>
     private void LoadSavedPayloads()
     {
         try
         {
-            if (File.Exists(SavedPayloadsFile))
+            if (!Directory.Exists(SavedPayloadsDirectory))
+                return;
+            
+            // Load each .json file in the directory
+            var files = Directory.GetFiles(SavedPayloadsDirectory, "*.json");
+            foreach (var file in files)
             {
-                var json = File.ReadAllText(SavedPayloadsFile);
-                var payloads = JsonSerializer.Deserialize<List<SavedPayload>>(json);
-                if (payloads != null)
+                try
                 {
-                    _savedPayloads.AddRange(payloads);
-                    // Set next ID to be higher than any existing
-                    if (_savedPayloads.Any())
+                    var json = File.ReadAllText(file);
+                    var payload = JsonSerializer.Deserialize<SavedPayload>(json);
+                    if (payload != null)
                     {
-                        _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
+                        _savedPayloads.Add(payload);
                     }
                 }
+                catch
+                {
+                    // Skip files that can't be parsed
+                }
+            }
+            
+            // Set next ID to be higher than any existing
+            if (_savedPayloads.Any())
+            {
+                _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
             }
         }
         catch
@@ -425,25 +439,69 @@ public class CommandQueueService
     }
     
     /// <summary>
-    /// Persists saved payloads to file.
+    /// Persists a single saved payload to its own JSON file.
     /// </summary>
-    private void PersistSavedPayloads()
+    private void PersistSinglePayload(SavedPayload payload)
     {
         try
         {
             // Ensure directory exists
             Directory.CreateDirectory(SavedPayloadsDirectory);
             
-            var json = JsonSerializer.Serialize(_savedPayloads, new JsonSerializerOptions
+            // Generate safe filename from payload name or ID
+            var safeName = string.IsNullOrWhiteSpace(payload.Name)
+                ? $"payload_{payload.Id}"
+                : SanitizeFileName(payload.Name);
+            var fileName = $"{payload.Id}_{safeName}.json";
+            var filePath = Path.Combine(SavedPayloadsDirectory, fileName);
+            
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
-            File.WriteAllText(SavedPayloadsFile, json);
+            File.WriteAllText(filePath, json);
         }
         catch
         {
             // Silently ignore persistence errors
         }
+    }
+    
+    /// <summary>
+    /// Deletes a saved payload's JSON file.
+    /// </summary>
+    private void DeleteSinglePayload(int payloadId)
+    {
+        try
+        {
+            if (!Directory.Exists(SavedPayloadsDirectory))
+                return;
+            
+            // Find and delete the file with matching ID prefix
+            var files = Directory.GetFiles(SavedPayloadsDirectory, $"{payloadId}_*.json");
+            foreach (var file in files)
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+            // Silently ignore deletion errors
+        }
+    }
+    
+    /// <summary>
+    /// Sanitizes a string for use as a filename.
+    /// </summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = string.Join("", name.Where(c => !invalid.Contains(c)));
+        // Limit length and replace spaces
+        sanitized = sanitized.Replace(' ', '_');
+        if (sanitized.Length > 50)
+            sanitized = sanitized.Substring(0, 50);
+        return sanitized;
     }
     
     /// <summary>

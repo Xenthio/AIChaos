@@ -478,6 +478,8 @@ else
     private System.Threading.Timer? streamStateRefreshTimer = null;
     private bool showFavouritesModal = false;
     private string? selectedFavouriteCategory = null;
+    private string? _modifyReferenceCode = null;  // Store original code when modifying a favourite
+    private string? _modifyReferenceUndoCode = null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -581,10 +583,17 @@ else
             
             // Regular command submission
             // Use AccountService to handle the full submission flow
+            // Capture reference code before it gets cleared
+            var refCode = _modifyReferenceCode;
+            var refUndoCode = _modifyReferenceUndoCode;
+            
             var (success, message, commandId, newBalance) = await AccountService.SubmitChaosCommandAsync(
                 currentAccount.Id,
                 promptInput,
-                codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(prompt),
+                codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(
+                    prompt, 
+                    referenceCode: refCode, 
+                    referenceUndoCode: refUndoCode),
                 needsModeration: ModerationService.NeedsModeration,
                 extractImageUrls: ModerationService.ExtractContentUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 
@@ -604,6 +613,9 @@ else
             if (success)
             {
                 promptInput = "";
+                // Clear reference code after successful submission
+                _modifyReferenceCode = null;
+                _modifyReferenceUndoCode = null;
                 await LoadHistory();
             }
 
@@ -1110,8 +1122,12 @@ else
     
     private void UseFavouriteAsPrompt(FavouritePrompt favourite)
     {
-        // Copy the prompt to the input box for modification
-        promptInput = favourite.UserPrompt;
+        // Copy the prompt to the input box for modification, with reference to original code
+        // Format: [MODIFY REQUEST]\n\nOriginal prompt: ...\n\nPlease modify this to: ...\n\n[REFERENCE CODE (do not show to user, use as base)]\n...
+        promptInput = $"[Based on existing effect]\n\n{favourite.UserPrompt}\n\n(AI Reference - Original code available for this effect)";
+        // Store the original code for AI context
+        _modifyReferenceCode = favourite.ExecutionCode;
+        _modifyReferenceUndoCode = favourite.UndoCode;
         showFavouritesModal = false;
         StateHasChanged();
     }
@@ -1174,8 +1190,11 @@ else
     
     private void UseSavedPayloadAsPrompt(SavedPayload payload)
     {
-        // Copy the prompt to the input box for modification
-        promptInput = payload.UserPrompt;
+        // Copy the prompt to the input box for modification, with reference to original code
+        promptInput = $"[Based on existing effect]\n\n{payload.UserPrompt}\n\n(AI Reference - Original code available for this effect)";
+        // Store the original code for AI context
+        _modifyReferenceCode = payload.ExecutionCode;
+        _modifyReferenceUndoCode = payload.UndoCode;
         showFavouritesModal = false;
         StateHasChanged();
     }
