@@ -155,8 +155,8 @@ else
                         <div class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</div>
                     </div>
                     <div class="history-actions">
-                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Re-execute the same code">🔁 Re-Execute</button>
-                        <button @onclick="() => OpenRedoModal(cmd.Id)" class="btn-success btn-small" title="Redo with AI feedback">🔄 Redo</button>
+                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Replay the same code without changes">▶️ Replay</button>
+                        <button @onclick="() => OpenRedoModal(cmd.Id)" class="btn-success btn-small" title="Describe what went wrong and AI will fix it">🔧 Fix</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩ Undo</button>
                         <button @onclick="() => OpenRefundModal(cmd.Id)" class="btn-danger btn-small" title="Report Problem" style="font-size: 11px;">⚠️ Report</button>
                     </div>
@@ -195,22 +195,22 @@ else
 </Modal>
 }
 
-<!-- Redo with Feedback Modal -->
+<!-- Fix with Feedback Modal -->
 @if (showRedoModal)
 {
 <Modal @bind-IsOpen="showRedoModal">
-    <h3>🔄 Redo with Feedback</h3>
+    <h3>🔧 Fix with AI</h3>
     @{
         var isFree = currentAccount != null && RedoService.IsNextRedoFree(currentAccount.Id);
         var cost = currentAccount != null ? RedoService.GetRedoCost(currentAccount.Id) : Constants.Redo.RedoCost;
     }
     @if (isFree)
     {
-        <p style="color: var(--success); font-weight: bold;">✨ Your first redo is FREE!</p>
+        <p style="color: var(--success); font-weight: bold;">✨ Your first fix is FREE!</p>
     }
     else
     {
-        <p style="color: var(--warning);">This redo will cost <strong>$@cost.ToString("F2")</strong></p>
+        <p style="color: var(--warning);">This fix will cost <strong>$@cost.ToString("F2")</strong></p>
     }
     <p style="margin-top: 10px;">Explain briefly what stopped your request from working and we will try to fix it:</p>
     <div style="margin: 15px 0;">
@@ -226,11 +226,11 @@ else
         <button @onclick="SubmitRedo" class="btn-success" disabled="@(isRedoSubmitting || string.IsNullOrWhiteSpace(redoFeedback))">
             @if (isRedoSubmitting)
             {
-                <span>Generating...</span>
+                <span>Fixing...</span>
             }
             else
             {
-                <span>@(isFree ? "Redo (Free)" : $"Redo (${cost:F2})")</span>
+                <span>@(isFree ? "🔧 Fix (Free)" : $"🔧 Fix (${cost:F2})")</span>
             }
         </button>
     </div>
@@ -905,7 +905,7 @@ else
 
             if (response.Status == "success")
             {
-                ShowStatus(response.Message ?? "Redo submitted successfully!", "success");
+                ShowStatus(response.Message ?? "Fix submitted successfully!", "success");
                 showRedoModal = false;
                 
                 // Refresh account to show updated balance
@@ -919,13 +919,13 @@ else
             }
             else
             {
-                ShowStatus(response.Message ?? "Failed to submit redo", "error");
+                ShowStatus(response.Message ?? "Failed to submit fix", "error");
             }
         }
         catch (Exception ex)
         {
-            ShowStatus("Error submitting redo request", "error");
-            Console.WriteLine($"Redo request failed: {ex.Message}");
+            ShowStatus("Error submitting fix request", "error");
+            Console.WriteLine($"Fix request failed: {ex.Message}");
         }
         finally
         {

@@ -107,6 +107,6 @@ public static class Constants
         /// Maximum number of concurrent LLM API requests.
         /// Only this many requests will be sent to the API at a time.
         /// </summary>
-        public const int MaxConcurrentRequests = 3;
+        public const int MaxConcurrentRequests = 15;
     }
 }

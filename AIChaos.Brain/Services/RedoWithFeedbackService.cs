@@ -157,15 +157,15 @@ public class RedoService
             var updatedAccount = _accountService.GetAccountById(accountId);
             
             _logger.LogInformation(
-                "[REDO] User {Username} requested redo for command #{OriginalId}. New command #{NewId}. Free: {IsFree}", 
+                "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId}. Free: {IsFree}", 
                 account.Username, commandId, newCommand.Id, isFree);
 
             return new RedoResponse
             {
                 Status = "success",
                 Message = isFree 
-                    ? "Free redo submitted! Your next redo will cost credits." 
-                    : $"Redo submitted! ${cost:F2} deducted.",
+                    ? "Free fix submitted! Your next fix will cost credits." 
+                    : $"Fix submitted! ${cost:F2} deducted.",
                 NewCommandId = newCommand.Id,
                 NewBalance = updatedAccount?.CreditBalance ?? account.CreditBalance,
                 WasFree = isFree
@@ -173,7 +173,7 @@ public class RedoService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[REDO] Failed to generate redo code for command #{CommandId}", commandId);
+            _logger.LogError(ex, "[FIX] Failed to generate fix code for command #{CommandId}", commandId);
             
             // Refund credits if we already deducted them
             if (!isSingleUserMode && !isFree)
