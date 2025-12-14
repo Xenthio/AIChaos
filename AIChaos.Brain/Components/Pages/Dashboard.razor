@@ -175,7 +175,7 @@ else
                             <span class="history-source">@cmd.Source</span>
                             <span class="history-status status-@GetStatusClass(cmd.Status)">@GetStatusText(cmd.Status)</span>
                             <div class="history-actions">
-                                <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small">🔁</button>
+                                <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="@(cmd.Status == CommandStatus.PendingModeration ? "Cannot retry - awaiting moderation" : "Repeat")" disabled="@(cmd.Status == CommandStatus.PendingModeration)">🔁</button>
                                 <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small">↩</button>
                             </div>
                         </div>
@@ -439,6 +439,13 @@ else
             if (command == null)
             {
                 ShowStatus("✗ Command not found", "error");
+                return Task.CompletedTask;
+            }
+
+            // Prevent retrying commands that are pending moderation
+            if (command.Status == CommandStatus.PendingModeration)
+            {
+                ShowStatus("✗ Cannot retry - command is awaiting moderation approval", "error");
                 return Task.CompletedTask;
             }
 
