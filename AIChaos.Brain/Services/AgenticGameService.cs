@@ -344,6 +344,78 @@ public class AgenticGameService
     }
     
     /// <summary>
+    /// Resumes an agentic session after intermediate code was approved by moderation.
+    /// Returns true if a session was found and resumed.
+    /// </summary>
+    public bool ResumeSessionAfterModeration(int codeId)
+    {
+        AgentSession? sessionToResume = null;
+        
+        lock (_lock)
+        {
+            // Find the session that's waiting for this code to be approved
+            // The codeId for intermediate code is -(session.Id * 1000 + iteration)
+            sessionToResume = _sessions.Values.FirstOrDefault(s => 
+                s.CurrentPhase == AgentPhase.PendingModeration && 
+                s.PendingCommandId == codeId);
+        }
+        
+        if (sessionToResume == null)
+        {
+            _logger.LogDebug("[AGENT] No pending moderation session found for code #{CodeId}", codeId);
+            return false;
+        }
+        
+        _logger.LogInformation("[AGENT] Resuming session #{SessionId} after moderation approval for code #{CodeId}", 
+            sessionToResume.Id, codeId);
+        
+        // Queue the code for interactive execution (it was stored in PendingCode)
+        if (!string.IsNullOrEmpty(sessionToResume.PendingCode))
+        {
+            if (sessionToResume.Mode == AgentMode.AgenticTest && IsTestClientEnabled)
+            {
+                QueueForTesting(codeId, sessionToResume.PendingCode, sessionToResume.UserPrompt);
+            }
+            else
+            {
+                _commandQueue.QueueInteractiveCode(codeId, sessionToResume.PendingCode);
+            }
+            
+            // Reset phase to previous state (prepare/generate based on what was happening)
+            sessionToResume.CurrentPhase = AgentPhase.Preparing; // Could also be Generating but we'll let the result handler determine
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Handles denial of intermediate agentic code from moderation.
+    /// </summary>
+    public void DenySessionModeration(int codeId)
+    {
+        AgentSession? sessionToDeny = null;
+        
+        lock (_lock)
+        {
+            sessionToDeny = _sessions.Values.FirstOrDefault(s => 
+                s.CurrentPhase == AgentPhase.PendingModeration && 
+                s.PendingCommandId == codeId);
+        }
+        
+        if (sessionToDeny == null)
+        {
+            _logger.LogDebug("[AGENT] No pending moderation session found for code #{CodeId} to deny", codeId);
+            return;
+        }
+        
+        _logger.LogInformation("[AGENT] Session #{SessionId} denied by moderation for code #{CodeId}", 
+            sessionToDeny.Id, codeId);
+        
+        sessionToDeny.Steps.Last().Error = "Code denied by moderator";
+        CompleteSession(sessionToDeny, false);
+    }
+    
+    /// <summary>
     /// Reports execution result from test client.
     /// </summary>
     public async Task<TestResultAction> ReportTestResultAsync(int commandId, bool success, string? error)
@@ -676,10 +748,11 @@ public class AgenticGameService
                         _logger.LogInformation("[AGENT] Session #{SessionId} intermediate code contains filtered pattern: {Reason}. Sending to moderation.", 
                             session.Id, moderationReason);
                         
-                        // Add to code moderation queue
+                        // Add to code moderation queue - when approved, this will queue the wrapped code for interactive execution
+                        var codeToQueue = WrapCodeForDataCapture(intermediateCode);
                         _codeModerationService.AddPendingCode(
                             session.UserPrompt,
-                            intermediateCode,
+                            intermediateCode, // Store unwrapped code for display
                             "print(\"Intermediate code - no undo\")",
                             moderationReason,
                             session.Source,
@@ -687,9 +760,13 @@ public class AgenticGameService
                             session.UserId,
                             cmdId);
                         
-                        // Mark session as needing moderation
-                        session.Steps.Last().Error = $"Code sent to moderation: {moderationReason}";
-                        CompleteSession(session, false);
+                        // Set session to pending moderation state (don't complete/fail it)
+                        session.CurrentPhase = AgentPhase.PendingModeration;
+                        session.PendingCommandId = cmdId;
+                        session.PendingCode = codeToQueue;
+                        session.Steps.Last().Success = true; // Step worked, just needs approval
+                        
+                        _logger.LogInformation("[AGENT] Session #{SessionId} paused for moderation approval", session.Id);
                         return;
                     }
                 }
@@ -1183,6 +1260,7 @@ public enum AgentPhase
     Generating,
     Testing,
     Fixing,
+    PendingModeration, // Waiting for moderator approval of filtered code
     Complete,
     Failed
 }

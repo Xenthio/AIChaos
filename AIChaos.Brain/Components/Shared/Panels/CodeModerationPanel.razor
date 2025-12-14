@@ -5,6 +5,7 @@
 @inject CommandQueueService CommandQueue
 @inject AccountService AccountService
 @inject TestClientService TestClientService
+@inject AgenticGameService AgenticGameService
 
 <!-- Pending Code -->
 <div class="card moderation-section">
@@ -111,8 +112,21 @@
                 return;
             }
 
-            // Update the linked command if it exists
-            if (entry.CommandId.HasValue)
+            // Check if this is an agentic intermediate code (negative command ID)
+            if (entry.CommandId.HasValue && entry.CommandId.Value < 0)
+            {
+                // This is intermediate agentic code - resume the session
+                if (AgenticGameService.ResumeSessionAfterModeration(entry.CommandId.Value))
+                {
+                    ShowStatus($"Code approved! Agentic session resumed.", "success");
+                }
+                else
+                {
+                    ShowStatus("Code approved but agentic session not found", "warning");
+                }
+            }
+            // Update the linked command if it exists (regular command)
+            else if (entry.CommandId.HasValue)
             {
                 var command = CommandQueue.GetCommand(entry.CommandId.Value);
                 if (command != null)
@@ -167,8 +181,25 @@
             var entry = CodeModerationService.DenyCode(codeId);
             if (entry != null)
             {
-                // Refund credits if there's a linked command
-                if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
+                // Check if this is an agentic intermediate code (negative command ID)
+                if (entry.CommandId.HasValue && entry.CommandId.Value < 0)
+                {
+                    // This is intermediate agentic code - fail the session
+                    AgenticGameService.DenySessionModeration(entry.CommandId.Value);
+                    
+                    // Refund credits if user ID exists
+                    if (!string.IsNullOrEmpty(entry.UserId))
+                    {
+                        AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                        ShowStatus($"Agentic code denied, session failed, ${Constants.CommandCost:F2} refunded", "success");
+                    }
+                    else
+                    {
+                        ShowStatus("Agentic code denied, session failed", "success");
+                    }
+                }
+                // Refund credits if there's a linked command (regular command)
+                else if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
                 {
                     AccountService.AddCredits(entry.UserId, Constants.CommandCost);
                     
