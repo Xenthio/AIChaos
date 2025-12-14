@@ -94,6 +94,17 @@ public class AgenticGameService
         - Search for models: `local models = {} for _, ent in pairs(ents.GetAll()) do local m = ent:GetModel() if m and m:find("pattern") then table.insert(models, m) end end PrintTable(models)`
         - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass(), npc:GetPos()) end`
         - Check player state: `local p = Entity(1) print("Health:", p:Health(), "Pos:", p:GetPos(), "Weapon:", p:GetActiveWeapon():GetClass())`
+        - **Workshop content inspection**: `DownloadAndGetWorkshopAssets("workshopId", function(assets) if assets then print("Models:", #assets.models, "Weapons:", #assets.weapons, "Entities:", #assets.entities) PrintTable(assets) end end)`
+        
+        **WORKSHOP CONTENT IN AGENTIC MODE:**
+        Use `DownloadAndGetWorkshopAssets()` in preparation phase to discover what's in a workshop addon:
+        1. **Prep phase**: Download and inspect - `DownloadAndGetWorkshopAssets("id", function(a) PrintTable(a) end)`
+        2. **Generate phase**: Use discovered weapons/entities/models appropriately
+        
+        Example workflow:
+        - User: "download workshop 158421055"
+        - Prep: Use DownloadAndGetWorkshopAssets to discover it has weapons
+        - Generate: Use the weapon class names to give to player with ply:Give()
         
         **AGENTIC WORKFLOW RULES:**
         1. **BE EFFICIENT** - If you can generate immediately, do so with `isComplete: true`

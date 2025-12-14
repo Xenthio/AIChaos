@@ -79,17 +79,31 @@ public class AiCodeGeneratorService
         11. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
         
         12. **Workshop Content:** You have access to helper functions for downloading Steam Workshop addons at runtime:
-           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Downloads and auto-spawns best model as prop/ragdoll
-           - `DownloadAndGetWorkshopModel(workshopId, callback)` - Downloads and returns best model path for custom entities (NPCs, etc)
-           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Downloads and returns all models/materials/sounds
+           - `DownloadAndSpawn(workshopId, callback)` - SMART: Auto-detects type (weapon/entity/model) and spawns appropriately
+           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Spawns best model as prop/ragdoll
+           - `DownloadAndGetWorkshopModel(workshopId, callback)` - Returns best model path for custom use
+           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Returns {models, weapons, entities} for manual handling
            
            **Examples:**
            ```lua
-           -- Quick spawn (props, ragdolls) - RECOMMENDED for simple spawns
-           DownloadAndSpawnWorkshopModel("485879458", function(ent)
-               if IsValid(ent) then 
-                   ent:SetColor(Color(255,0,0)) 
+           -- SMART SPAWN (RECOMMENDED) - Auto-detects and handles weapons, entities, or models
+           DownloadAndSpawn("158421055", function(result)
+               if result then
+                   if result.type == "weapon" then
+                       print("Gave weapon: " .. result.name)
+                   elseif result.type == "entity" then
+                       print("Spawned entity: " .. result.name)
+                       result.object:SetColor(Color(255,0,0))
+                   elseif result.type == "model" then
+                       print("Spawned model")
+                       result.object:SetColor(Color(0,255,0))
+                   end
                end
+           end)
+           
+           -- Model-only spawn
+           DownloadAndSpawnWorkshopModel("485879458", function(ent)
+               if IsValid(ent) then ent:SetColor(Color(255,0,0)) end
            end)
            
            -- NPCs with workshop models - Set model AFTER spawning
@@ -101,7 +115,6 @@ public class AiCodeGeneratorService
                    npc:Spawn()
                    npc:Activate()
                    
-                   -- Set workshop model after NPC is spawned
                    timer.Simple(0.1, function()
                        if IsValid(npc) then
                            npc:SetModel(model)
