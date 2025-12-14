@@ -80,6 +80,7 @@ public class AiCodeGeneratorService
         
         12. **Workshop Content:** You have access to helper functions for downloading Steam Workshop addons at runtime:
            - `DownloadAndSpawn(workshopId, callback)` - SMART: Auto-detects type (weapon/entity/model) and spawns appropriately
+           - `DownloadAndMountWorkshopAddon(workshopId, callback)` - Just mounts the addon, no spawning
            - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Spawns best model as prop/ragdoll
            - `DownloadAndGetWorkshopModel(workshopId, callback)` - Returns best model path for custom use
            - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Returns {models, weapons, entities} for manual handling
