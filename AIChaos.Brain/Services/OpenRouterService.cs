@@ -12,10 +12,10 @@ namespace AIChaos.Brain.Services;
 /// - API throttling
 /// - Multiple model support
 /// </summary>
-public class OpenRouterService
+public class OpenRouterService : IOpenRouterService
 {
     private readonly HttpClient _httpClient;
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly ILogger<OpenRouterService> _logger;
     
     // Semaphore to limit concurrent API calls (API throttling)
@@ -25,7 +25,7 @@ public class OpenRouterService
 
     public OpenRouterService(
         HttpClient httpClient,
-        SettingsService settingsService,
+        ISettingsService settingsService,
         ILogger<OpenRouterService> logger)
     {
         _httpClient = httpClient;

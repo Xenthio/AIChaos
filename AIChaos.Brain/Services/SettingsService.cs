@@ -7,7 +7,7 @@ namespace AIChaos.Brain.Services;
 /// <summary>
 /// Service for managing application settings persistence.
 /// </summary>
-public class SettingsService
+public class SettingsService : ISettingsService
 {
     private readonly string _settingsPath;
     private readonly ILogger<SettingsService> _logger;

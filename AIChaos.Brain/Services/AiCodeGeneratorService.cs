@@ -10,8 +10,8 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public class AiCodeGeneratorService
 {
-    private readonly OpenRouterService _openRouterService;
-    private readonly SettingsService _settingsService;
+    private readonly IOpenRouterService _openRouterService;
+    private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
     
@@ -255,8 +255,8 @@ public class AiCodeGeneratorService
         """;
 
     public AiCodeGeneratorService(
-        OpenRouterService openRouterService,
-        SettingsService settingsService,
+        IOpenRouterService openRouterService,
+        ISettingsService settingsService,
         CommandQueueService commandQueue,
         ILogger<AiCodeGeneratorService> logger)
     {

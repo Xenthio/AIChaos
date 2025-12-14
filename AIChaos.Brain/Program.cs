@@ -40,7 +40,8 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChao
 
 // Register services as singletons
 builder.Services.AddSingleton<LogCaptureService>();
-builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<ISettingsService, SettingsService>();
+builder.Services.AddSingleton<SettingsService>(sp => (SettingsService)sp.GetRequiredService<ISettingsService>());
 builder.Services.AddSingleton<CommandQueueService>();
 builder.Services.AddSingleton<QueueSlotService>();
 builder.Services.AddSingleton<AiCodeGeneratorService>();
@@ -56,7 +57,8 @@ builder.Services.AddSingleton<TestClientService>();
 builder.Services.AddSingleton<AgenticGameService>();
 builder.Services.AddSingleton<CommandConsumptionService>();
 builder.Services.AddSingleton<RedoService>();
-builder.Services.AddSingleton<OpenRouterService>();
+builder.Services.AddSingleton<IOpenRouterService, OpenRouterService>();
+builder.Services.AddSingleton<OpenRouterService>(sp => (OpenRouterService)sp.GetRequiredService<IOpenRouterService>());
 builder.Services.AddSingleton<FavouritesService>();
 
 // Configure log capture for admin viewing - use a factory to avoid BuildServiceProvider warning

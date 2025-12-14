@@ -16,10 +16,10 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public class AgenticGameService
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly CodeModerationService _codeModerationService;
-    private readonly OpenRouterService _openRouterService;
+    private readonly IOpenRouterService _openRouterService;
     private readonly ILogger<AgenticGameService> _logger;
     
     // Active agent sessions
@@ -146,10 +146,10 @@ public class AgenticGameService
     #endregion
     
     public AgenticGameService(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         CommandQueueService commandQueue,
         CodeModerationService codeModerationService,
-        OpenRouterService openRouterService,
+        IOpenRouterService openRouterService,
         ILogger<AgenticGameService> logger)
     {
         _settingsService = settingsService;
