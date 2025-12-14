@@ -5,14 +5,11 @@ using AIChaos.Brain.Models;
 namespace AIChaos.Brain.Services;
 
 /// <summary>
-/// Service for interacting with the OpenRouter API (or other compatible LLM APIs).
-/// Provides a clean abstraction for chat completions with support for:
-/// - Multiple message formats (system, user, assistant)
-/// - Structured JSON responses
-/// - API throttling
-/// - Multiple model support
+/// OpenRouter implementation of the LLM service interface.
+/// Provides access to multiple LLM models through the OpenRouter API.
+/// Can be easily replaced with other providers (OpenAI, Anthropic, etc.) by implementing ILLMService.
 /// </summary>
-public class OpenRouterService : IOpenRouterService
+public class OpenRouterService : ILLMService
 {
     private readonly HttpClient _httpClient;
     private readonly ISettingsService _settingsService;

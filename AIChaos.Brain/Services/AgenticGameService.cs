@@ -19,7 +19,7 @@ public class AgenticGameService
     private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly CodeModerationService _codeModerationService;
-    private readonly IOpenRouterService _openRouterService;
+    private readonly ILLMService _llmService;
     private readonly ILogger<AgenticGameService> _logger;
     
     // Active agent sessions
@@ -149,13 +149,13 @@ public class AgenticGameService
         ISettingsService settingsService,
         CommandQueueService commandQueue,
         CodeModerationService codeModerationService,
-        IOpenRouterService openRouterService,
+        ILLMService openRouterService,
         ILogger<AgenticGameService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _codeModerationService = codeModerationService;
-        _openRouterService = openRouterService;
+        _llmService = openRouterService;
         _logger = logger;
     }
     
@@ -861,7 +861,7 @@ public class AgenticGameService
         session.ChatHistory.Add(systemMessage);
         session.ChatHistory.Add(userMessage);
         
-        var response = await _openRouterService.ChatCompletionAsync(messages);
+        var response = await _llmService.ChatCompletionAsync(messages);
         
         if (string.IsNullOrEmpty(response))
         {
@@ -877,7 +877,7 @@ public class AgenticGameService
     
     private async Task<string?> AskAiToFixCodeAsync(string currentCode, string error, string originalPrompt)
     {
-        if (!_openRouterService.IsConfigured)
+        if (!_llmService.IsConfigured)
         {
             _logger.LogWarning("[AGENT] Cannot fix code - API key not configured");
             return null;
@@ -898,7 +898,7 @@ public class AgenticGameService
         
         try
         {
-            var response = await _openRouterService.ChatCompletionAsync(messages);
+            var response = await _llmService.ChatCompletionAsync(messages);
             
             if (string.IsNullOrEmpty(response))
             {

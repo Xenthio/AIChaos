@@ -5,12 +5,12 @@ using AIChaos.Brain.Models;
 namespace AIChaos.Brain.Services;
 
 /// <summary>
-/// Service for generating Lua code using OpenRouter/OpenAI API.
-/// Uses OpenRouterService for API calls with built-in throttling.
+/// Service for generating Lua code using LLM APIs.
+/// Uses ILLMService for API calls with built-in throttling.
 /// </summary>
 public class AiCodeGeneratorService
 {
-    private readonly IOpenRouterService _openRouterService;
+    private readonly ILLMService _llmService;
     private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
@@ -255,12 +255,12 @@ public class AiCodeGeneratorService
         """;
 
     public AiCodeGeneratorService(
-        IOpenRouterService openRouterService,
+        ILLMService llmService,
         ISettingsService settingsService,
         CommandQueueService commandQueue,
         ILogger<AiCodeGeneratorService> logger)
     {
-        _openRouterService = openRouterService;
+        _llmService = llmService;
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _logger = logger;
@@ -269,7 +269,7 @@ public class AiCodeGeneratorService
     /// <summary>
     /// Generates Lua code for the given user request.
     /// Returns a tuple with execution code, undo code, and whether code needs moderation.
-    /// Uses OpenRouterService for API calls with built-in throttling.
+    /// Uses ILLMService for API calls with built-in throttling.
     /// </summary>
     public async Task<(string ExecutionCode, string UndoCode, bool NeedsModeration, string? ModerationReason)> GenerateCodeAsync(
         string userRequest,
@@ -314,7 +314,7 @@ public class AiCodeGeneratorService
 
         try
         {
-            _logger.LogDebug("[API] Generating code via OpenRouterService");
+            _logger.LogDebug("[API] Generating code via LLM API");
             
             var settings = _settingsService.Settings;
             // Use unfiltered prompt when Private Discord Mode is enabled
@@ -326,7 +326,7 @@ public class AiCodeGeneratorService
                 new() { Role = "user", Content = userContent.ToString() }
             };
 
-            var response = await _openRouterService.ChatCompletionAsync(messages);
+            var response = await _llmService.ChatCompletionAsync(messages);
             
             if (string.IsNullOrEmpty(response))
             {
@@ -454,7 +454,7 @@ public class AiCodeGeneratorService
                 new() { Role = "user", Content = forceUndoPrompt }
             };
 
-            var response = await _openRouterService.ChatCompletionAsync(messages);
+            var response = await _llmService.ChatCompletionAsync(messages);
             
             if (string.IsNullOrEmpty(response))
             {

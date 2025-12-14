@@ -64,8 +64,8 @@ builder.Services.AddSingleton<TestClientService>();
 builder.Services.AddSingleton<AgenticGameService>();
 builder.Services.AddSingleton<CommandConsumptionService>();
 builder.Services.AddSingleton<RedoService>();
-builder.Services.AddSingleton<IOpenRouterService, OpenRouterService>();
-builder.Services.AddSingleton<OpenRouterService>(sp => (OpenRouterService)sp.GetRequiredService<IOpenRouterService>());
+builder.Services.AddSingleton<ILLMService, OpenRouterService>();
+builder.Services.AddSingleton<OpenRouterService>(sp => (OpenRouterService)sp.GetRequiredService<ILLMService>());
 builder.Services.AddSingleton<FavouritesService>();
 
 // Register DataMigrationService as scoped (needs DbContext)

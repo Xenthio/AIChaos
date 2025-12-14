@@ -3,17 +3,18 @@ using AIChaos.Brain.Models;
 namespace AIChaos.Brain.Services;
 
 /// <summary>
-/// Interface for interacting with the OpenRouter API (or other compatible LLM APIs).
+/// Interface for interacting with LLM APIs (Language Model APIs).
 /// Provides a clean abstraction for chat completions with support for:
 /// - Multiple message formats (system, user, assistant)
 /// - Structured JSON responses
 /// - API throttling
 /// - Multiple model support
+/// - Multiple providers (OpenRouter, OpenAI, Anthropic, etc.)
 /// </summary>
-public interface IOpenRouterService
+public interface ILLMService
 {
     /// <summary>
-    /// Sends a chat completion request to the OpenRouter API.
+    /// Sends a chat completion request to the LLM API.
     /// </summary>
     /// <param name="messages">List of chat messages (system, user, assistant)</param>
     /// <param name="model">Optional model override (uses settings default if null)</param>
@@ -48,7 +49,7 @@ public interface IOpenRouterService
     (int Available, int Max) GetThrottleStatus();
 
     /// <summary>
-    /// Checks if the OpenRouter API is configured.
+    /// Checks if the LLM API is configured.
     /// </summary>
     bool IsConfigured { get; }
 }
