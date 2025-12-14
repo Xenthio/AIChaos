@@ -638,8 +638,52 @@ public class AgenticGameService
             }
             else
             {
-                var codeToExecute = WrapCodeForDataCapture(response.Code ?? "");
+                var intermediateCode = response.Code ?? "";
                 var cmdId = -(session.Id * 1000 + session.CurrentIteration);
+                
+                // Apply safety filters to intermediate code as well (not just final code)
+                // Check for dangerous patterns first (always block these)
+                var dangerousReason = CodeModerationService.GetDangerousPatternReason(intermediateCode);
+                if (dangerousReason != null)
+                {
+                    _logger.LogWarning("[AGENT] Session #{SessionId} intermediate code contains dangerous pattern: {Reason}. Blocking.", 
+                        session.Id, dangerousReason);
+                    
+                    // Block this code and fail the session
+                    session.Steps.Last().Error = $"Blocked: {dangerousReason}";
+                    CompleteSession(session, false);
+                    return;
+                }
+                
+                // Check for filtered patterns (send to moderation if BlockLinksInGeneratedCode is enabled)
+                var settings = _settingsService.Settings;
+                if (settings.General.BlockLinksInGeneratedCode)
+                {
+                    var moderationReason = CodeModerationService.GetFilteredPatternReason(intermediateCode);
+                    if (moderationReason != null)
+                    {
+                        _logger.LogInformation("[AGENT] Session #{SessionId} intermediate code contains filtered pattern: {Reason}. Sending to moderation.", 
+                            session.Id, moderationReason);
+                        
+                        // Add to code moderation queue
+                        _codeModerationService.AddPendingCode(
+                            session.UserPrompt,
+                            intermediateCode,
+                            "print(\"Intermediate code - no undo\")",
+                            moderationReason,
+                            session.Source,
+                            session.Author,
+                            session.UserId,
+                            cmdId);
+                        
+                        // Mark session as needing moderation
+                        session.Steps.Last().Error = $"Code sent to moderation: {moderationReason}";
+                        CompleteSession(session, false);
+                        return;
+                    }
+                }
+                
+                var codeToExecute = WrapCodeForDataCapture(intermediateCode);
                 
                 // For AgenticTest mode, preparation code also goes to test client
                 if (session.Mode == AgentMode.AgenticTest && IsTestClientEnabled)
