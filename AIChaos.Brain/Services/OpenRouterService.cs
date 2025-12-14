@@ -66,7 +66,7 @@ public class OpenRouterService
                 messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray()
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
             {
                 Content = new StringContent(
                     JsonSerializer.Serialize(requestBody),
@@ -80,7 +80,7 @@ public class OpenRouterService
             response.EnsureSuccessStatusCode();
 
             var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
+            using var jsonDoc = JsonDocument.Parse(responseContent);
 
             var content = jsonDoc.RootElement
                 .GetProperty("choices")[0]

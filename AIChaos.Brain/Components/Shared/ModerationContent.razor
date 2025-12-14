@@ -275,7 +275,7 @@
         }
         
         // Generate code with image context
-        var (executionCode, undoCode, needsModeration, moderationReason) = await CodeGenerator.GenerateCodeAsync(
+        var (executionCode, undoCode, _, _) = await CodeGenerator.GenerateCodeAsync(
             entry.UserPrompt,
             imageContext: $"Image URL: {entry.ContentUrl}");
         

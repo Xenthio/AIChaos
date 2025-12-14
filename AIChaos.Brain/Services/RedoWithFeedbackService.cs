@@ -103,18 +103,15 @@ public class RedoService
         }
 
         // Deduct credits if not free and not single user mode
-        if (!isSingleUserMode && !isFree)
+        if (!isSingleUserMode && !isFree && !_accountService.DeductCredits(accountId, cost))
         {
-            if (!_accountService.DeductCredits(accountId, cost))
+            return new RedoResponse
             {
-                return new RedoResponse
-                {
-                    Status = "error",
-                    Message = "Failed to deduct credits",
-                    NewBalance = account.CreditBalance,
-                    WasFree = false
-                };
-            }
+                Status = "error",
+                Message = "Failed to deduct credits",
+                NewBalance = account.CreditBalance,
+                WasFree = false
+            };
         }
 
         // Increment redo count
@@ -134,7 +131,7 @@ public class RedoService
 
         try
         {
-            var (executionCode, undoCode, needsModeration, moderationReason) = 
+            var (executionCode, undoCode, _, _) = 
                 await _codeGenerator.GenerateCodeAsync(feedbackPrompt);
 
             // Create new command entry as a redo

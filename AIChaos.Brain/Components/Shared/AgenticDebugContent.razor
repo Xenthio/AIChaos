@@ -594,8 +594,8 @@
 </style>
 
 @code {
-    private string alertMessage = "";
-    private string alertType = "info";
+    private readonly string alertMessage = "";
+    private readonly string alertType = "info";
     
     private List<AgentSession> allSessions = new();
     private List<AgentSession> activeSessions = new();
@@ -604,9 +604,9 @@
         ? allSessions.FirstOrDefault(s => s.Id == selectedSessionId.Value)
         : null;
     
-    private HashSet<int> expandedCodes = new();
-    private HashSet<int> expandedResults = new();
-    private HashSet<int> expandedChats = new();
+    private readonly HashSet<int> expandedCodes = new();
+    private readonly HashSet<int> expandedResults = new();
+    private readonly HashSet<int> expandedChats = new();
     
     private System.Threading.Timer? refreshTimer;
     
