@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using AIChaos.Brain.Models;
 using AIChaos.Brain.Helpers;
 using Google.Apis.Auth.OAuth2;
@@ -19,6 +20,7 @@ public partial class YouTubeService : IDisposable
     private readonly AccountService _accountService;
     private readonly CurrencyConversionService _currencyConverter;
     private readonly ILogger<YouTubeService> _logger;
+    private readonly HttpClient _httpClient;
 
     private Google.Apis.YouTube.v3.YouTubeService? _youtubeService;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -26,6 +28,8 @@ public partial class YouTubeService : IDisposable
     private readonly Dictionary<string, DateTime> _cooldowns = new();
     private readonly SemaphoreSlim _listenerLock = new(1, 1);
     private bool _isPolling = false;
+    private DateTime _tokenExpiresAt = DateTime.MinValue;
+    private const int TokenRefreshBufferMinutes = 5; // Refresh token 5 minutes before expiry
 
     public bool IsListening => _isPolling && _pollingTask != null && !_pollingTask.IsCompleted;
     public string? CurrentVideoId { get; private set; }
@@ -45,6 +49,7 @@ public partial class YouTubeService : IDisposable
         _accountService = accountService;
         _currencyConverter = currencyConverter;
         _logger = logger;
+        _httpClient = new HttpClient();
     }
     
     /// <summary>
@@ -73,6 +78,132 @@ public partial class YouTubeService : IDisposable
     }
 
     /// <summary>
+    /// Refreshes the access token using the stored refresh token.
+    /// </summary>
+    public async Task<bool> RefreshAccessTokenAsync()
+    {
+        var settings = _settingsService.Settings.YouTube;
+        
+        if (string.IsNullOrEmpty(settings.RefreshToken))
+        {
+            _logger.LogWarning("[YouTube] Cannot refresh token - no refresh token stored. User needs to re-authorize.");
+            return false;
+        }
+        
+        if (string.IsNullOrEmpty(settings.ClientId) || string.IsNullOrEmpty(settings.ClientSecret))
+        {
+            _logger.LogWarning("[YouTube] Cannot refresh token - missing client credentials.");
+            return false;
+        }
+        
+        try
+        {
+            _logger.LogInformation("[YouTube] Refreshing access token...");
+            
+            using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["client_id"] = settings.ClientId,
+                ["client_secret"] = settings.ClientSecret,
+                ["refresh_token"] = settings.RefreshToken,
+                ["grant_type"] = "refresh_token"
+            });
+            
+            var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", content);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("[YouTube] Token refresh failed: {StatusCode} - {Error}", 
+                    response.StatusCode, errorContent);
+                    
+                // If refresh token is invalid, clear it so user knows to re-authorize
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    _logger.LogWarning("[YouTube] Refresh token appears to be invalid. User needs to re-authorize YouTube.");
+                }
+                return false;
+            }
+            
+            var tokenJson = await response.Content.ReadAsStringAsync();
+            var tokenData = JsonDocument.Parse(tokenJson);
+            
+            var newAccessToken = tokenData.RootElement.GetProperty("access_token").GetString();
+            var expiresIn = tokenData.RootElement.TryGetProperty("expires_in", out var expiresInProp) 
+                ? expiresInProp.GetInt32() 
+                : 3600; // Default 1 hour
+            
+            if (string.IsNullOrEmpty(newAccessToken))
+            {
+                _logger.LogError("[YouTube] Token refresh returned empty access token");
+                return false;
+            }
+            
+            // Update settings with new access token
+            settings.AccessToken = newAccessToken;
+            _settingsService.UpdateYouTube(settings);
+            
+            // Track when this token expires
+            _tokenExpiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+            
+            _logger.LogInformation("[YouTube] Access token refreshed successfully. Expires in {ExpiresIn} seconds", expiresIn);
+            
+            // Reinitialize the YouTube service with the new token
+            return await InitializeServiceWithTokenAsync(newAccessToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[YouTube] Failed to refresh access token");
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Checks if the token needs to be refreshed and refreshes it if necessary.
+    /// </summary>
+    public async Task<bool> EnsureValidTokenAsync()
+    {
+        // If we haven't set an expiry time, assume we need to check on first API call failure
+        if (_tokenExpiresAt == DateTime.MinValue)
+        {
+            return true; // Let it try with current token
+        }
+        
+        // Check if token is expiring soon (within buffer time)
+        var expiresIn = _tokenExpiresAt - DateTime.UtcNow;
+        if (expiresIn.TotalMinutes <= TokenRefreshBufferMinutes)
+        {
+            _logger.LogInformation("[YouTube] Token expiring in {Minutes:F1} minutes, refreshing...", expiresIn.TotalMinutes);
+            return await RefreshAccessTokenAsync();
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Initializes the YouTube service with a specific access token.
+    /// </summary>
+    private async Task<bool> InitializeServiceWithTokenAsync(string accessToken)
+    {
+        try
+        {
+            var credential = GoogleCredential.FromAccessToken(accessToken);
+
+            _youtubeService = new Google.Apis.YouTube.v3.YouTubeService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "AIChaos Brain"
+            });
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[YouTube] Failed to initialize service with new token");
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Initializes the YouTube service with stored credentials.
     /// </summary>
     public async Task<bool> InitializeAsync()
@@ -94,6 +225,13 @@ public partial class YouTubeService : IDisposable
                 HttpClientInitializer = credential,
                 ApplicationName = "AIChaos Brain"
             });
+            
+            // Set initial token expiry - assume 1 hour from now if we don't know
+            // This will be corrected after first token refresh
+            if (_tokenExpiresAt == DateTime.MinValue)
+            {
+                _tokenExpiresAt = DateTime.UtcNow.AddMinutes(55); // Assume ~55 mins remaining
+            }
 
             _logger.LogInformation("YouTube service initialized");
             return true;
@@ -248,6 +386,14 @@ public partial class YouTubeService : IDisposable
                     _logger.LogWarning("[YouTube] YouTube service is null, stopping polling");
                     break;
                 }
+                
+                // Proactively refresh token before it expires
+                if (!await EnsureValidTokenAsync())
+                {
+                    _logger.LogError("[YouTube] Failed to ensure valid token, stopping polling");
+                    _isPolling = false;
+                    break;
+                }
 
                 pollCount++;
                 _logger.LogDebug("[YouTube] Poll #{PollCount} starting...", pollCount);
@@ -292,6 +438,24 @@ public partial class YouTubeService : IDisposable
                 // Stop polling to prevent further quota usage
                 _isPolling = false;
                 break;
+            }
+            catch (Google.GoogleApiException apiEx) when (apiEx.HttpStatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogWarning("[YouTube] Access token expired (poll #{PollCount}). Attempting to refresh...", pollCount);
+                
+                // Try to refresh the token
+                if (await RefreshAccessTokenAsync())
+                {
+                    _logger.LogInformation("[YouTube] Token refreshed successfully, continuing polling");
+                    // Continue the loop - the service was reinitialized with new token
+                    continue;
+                }
+                else
+                {
+                    _logger.LogError("[YouTube] Failed to refresh token. Stopping polling. User needs to re-authorize YouTube.");
+                    _isPolling = false;
+                    break;
+                }
             }
             catch (Exception ex)
             {
@@ -389,6 +553,7 @@ public partial class YouTubeService : IDisposable
         _youtubeService?.Dispose();
         _cancellationTokenSource?.Dispose();
         _listenerLock?.Dispose();
+        _httpClient?.Dispose();
         GC.SuppressFinalize(this);
     }
 }

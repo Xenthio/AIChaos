@@ -9,7 +9,7 @@ public class CommandQueueServiceTests
     public void CommandQueueService_Constructor_InitializesEmpty()
     {
         // Arrange & Act
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Assert
         Assert.Equal(0, service.GetQueueCount());
@@ -20,7 +20,7 @@ public class CommandQueueServiceTests
     public void AddCommand_AddsToQueueAndHistory()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var entry = service.AddCommand("test prompt", "execution code", "undo code");
@@ -39,7 +39,7 @@ public class CommandQueueServiceTests
     public void AddCommand_WithAllParameters_SetsCorrectValues()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var entry = service.AddCommand(
@@ -68,7 +68,7 @@ public class CommandQueueServiceTests
     public void AddCommand_WithoutQueueing_AddsToHistoryOnly()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var entry = service.AddCommand(
@@ -86,7 +86,7 @@ public class CommandQueueServiceTests
     public void AddCommandWithStatus_SetsSpecificStatus()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var entry = service.AddCommandWithStatus(
@@ -104,7 +104,7 @@ public class CommandQueueServiceTests
     public void PollNextCommand_EmptyQueue_ReturnsNull()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var result = service.PollNextCommand();
@@ -117,7 +117,7 @@ public class CommandQueueServiceTests
     public void PollNextCommand_WithQueuedCommand_ReturnsCommand()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         service.AddCommand("prompt", "code", "undo");
 
         // Act
@@ -133,7 +133,7 @@ public class CommandQueueServiceTests
     public void PollNextCommand_RemovesFromQueue()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         service.AddCommand("prompt", "code", "undo");
 
         // Act
@@ -150,7 +150,7 @@ public class CommandQueueServiceTests
     public void PollNextCommand_FIFO_Order()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         service.AddCommand("first", "code1", "undo1");
         service.AddCommand("second", "code2", "undo2");
         service.AddCommand("third", "code3", "undo3");
@@ -170,7 +170,7 @@ public class CommandQueueServiceTests
     public void GetHistory_ReturnsAllEntries()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         service.AddCommand("first", "code1", "undo1");
         service.AddCommand("second", "code2", "undo2");
 
@@ -187,7 +187,7 @@ public class CommandQueueServiceTests
     public void GetCommand_ReturnsCorrectCommand()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         var entry1 = service.AddCommand("first", "code1", "undo1");
         var entry2 = service.AddCommand("second", "code2", "undo2");
 
@@ -204,7 +204,7 @@ public class CommandQueueServiceTests
     public void GetCommand_NonExistent_ReturnsNull()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var result = service.GetCommand(999);
@@ -217,7 +217,7 @@ public class CommandQueueServiceTests
     public void Preferences_DefaultValues()
     {
         // Arrange & Act
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Assert
         Assert.NotNull(service.Preferences);
@@ -228,7 +228,7 @@ public class CommandQueueServiceTests
     public void HistoryChanged_EventFires_WhenCommandAdded()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
         var eventFired = false;
         service.HistoryChanged += (sender, args) => eventFired = true;
 
@@ -243,7 +243,7 @@ public class CommandQueueServiceTests
     public void AutoIncrementId_WorksCorrectly()
     {
         // Arrange
-        var service = new CommandQueueService();
+        var service = new CommandQueueService(enablePersistence: false);
 
         // Act
         var entry1 = service.AddCommand("first", "code1", "undo1");

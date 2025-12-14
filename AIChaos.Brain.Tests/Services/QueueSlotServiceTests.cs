@@ -11,7 +11,7 @@ public class QueueSlotServiceTests
 
     public QueueSlotServiceTests()
     {
-        _commandQueue = new CommandQueueService();
+        _commandQueue = new CommandQueueService(enablePersistence: false);
         _loggerMock = new Mock<ILogger<QueueSlotService>>();
     }
 
@@ -45,7 +45,7 @@ public class QueueSlotServiceTests
     public void PollNextCommand_WithQueuedCommand_ReturnsCommand()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test prompt", "test code", "undo code");
         var service = new QueueSlotService(commandQueue, _loggerMock.Object);
 
@@ -62,7 +62,7 @@ public class QueueSlotServiceTests
     public void PollNextCommand_OccupiesSlot()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test prompt", "test code", "undo code");
         var service = new QueueSlotService(commandQueue, _loggerMock.Object);
 
@@ -80,7 +80,7 @@ public class QueueSlotServiceTests
     public void ManualBlast_BypassesSlotTimers()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test prompt", "test code", "undo code");
         var service = new QueueSlotService(commandQueue, _loggerMock.Object);
 
@@ -97,7 +97,7 @@ public class QueueSlotServiceTests
     public void ManualBlast_FreesAllSlots()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test1", "code1", "undo1");
         commandQueue.AddCommand("test2", "code2", "undo2");
         commandQueue.AddCommand("test3", "code3", "undo3");
@@ -119,7 +119,7 @@ public class QueueSlotServiceTests
     public void ManualBlast_WithMultipleCount_ExecutesMultipleCommands()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test1", "code1", "undo1");
         commandQueue.AddCommand("test2", "code2", "undo2");
         commandQueue.AddCommand("test3", "code3", "undo3");
@@ -139,7 +139,7 @@ public class QueueSlotServiceTests
     public void ManualBlast_StopsWhenQueueEmpty()
     {
         // Arrange
-        var commandQueue = new CommandQueueService();
+        var commandQueue = new CommandQueueService(enablePersistence: false);
         commandQueue.AddCommand("test1", "code1", "undo1");
         commandQueue.AddCommand("test2", "code2", "undo2");
         var service = new QueueSlotService(commandQueue, _loggerMock.Object);

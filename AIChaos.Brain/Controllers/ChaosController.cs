@@ -18,6 +18,7 @@ public class ChaosController : ControllerBase
     private readonly PromptModerationService _moderationService;
     private readonly TestClientService _testClientService;
     private readonly AgenticGameService _agenticService;
+    private readonly CommandConsumptionService _consumptionService;
     private readonly ILogger<ChaosController> _logger;
 
     public ChaosController(
@@ -28,6 +29,7 @@ public class ChaosController : ControllerBase
         PromptModerationService moderationService,
         TestClientService testClientService,
         AgenticGameService agenticService,
+        CommandConsumptionService consumptionService,
         ILogger<ChaosController> logger)
     {
         _commandQueue = commandQueue;
@@ -37,6 +39,7 @@ public class ChaosController : ControllerBase
         _moderationService = moderationService;
         _testClientService = testClientService;
         _agenticService = agenticService;
+        _consumptionService = consumptionService;
         _logger = logger;
     }
 
@@ -65,6 +68,8 @@ public class ChaosController : ControllerBase
             if (approvedResult.HasValue)
             {
                 _logger.LogInformation("[MAIN CLIENT] Sending approved command #{CommandId}", approvedResult.Value.CommandId);
+                // Track command execution for consumption tracking
+                _consumptionService.StartExecution(approvedResult.Value.CommandId, approvedResult.Value.Code);
                 return new PollResponse
                 {
                     HasCode = true,
@@ -87,6 +92,8 @@ public class ChaosController : ControllerBase
 
         if (result.HasValue)
         {
+            // Track command execution for consumption tracking
+            _consumptionService.StartExecution(result.Value.CommandId, result.Value.Code);
             return new PollResponse
             {
                 HasCode = true,
@@ -225,6 +232,58 @@ public class ChaosController : ControllerBase
             Status = action == TestResultAction.Unknown ? "error" : "success",
             Message = message,
             CommandId = request.CommandId
+        });
+    }
+
+    /// <summary>
+    /// Notifies the server of a level change or save load in GMod.
+    /// Used to handle command consumption tracking and re-runs.
+    /// </summary>
+    [HttpPost("levelchange")]
+    public ActionResult<LevelChangeResponse> ReportLevelChange([FromBody] LevelChangeRequest request)
+    {
+        _logger.LogInformation("[LEVEL] {ChangeType} detected: {Map}", 
+            request.IsSaveLoad ? "Save load" : "Level change", request.MapName);
+
+        var response = _consumptionService.HandleLevelChange(request.MapName, request.IsSaveLoad);
+        
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Gets any commands pending re-run after a level change.
+    /// Called by GMod after the level finishes loading.
+    /// If shutdown_timestamp is provided, marks commands executing at that time as interrupted.
+    /// </summary>
+    [HttpGet("pending-reruns")]
+    [HttpPost("pending-reruns")]
+    public ActionResult<LevelChangeResponse> GetPendingReruns([FromBody] PendingRerunsRequest? request = null)
+    {
+        Response.Headers.Append("ngrok-skip-browser-warning", "true");
+        
+        _logger.LogInformation("[LEVEL] /pending-reruns called. Request: {Request}, HasTimestamp: {HasTimestamp}", 
+            request != null ? "received" : "null", request?.ShutdownTimestamp != null);
+        
+        // If we have a shutdown timestamp, process the level change first
+        if (request?.ShutdownTimestamp != null)
+        {
+            var shutdownTime = DateTimeOffset.FromUnixTimeSeconds(request.ShutdownTimestamp.Value).UtcDateTime;
+            _logger.LogInformation("[LEVEL] Processing shutdown timestamp: {UnixTime} -> {Time}", 
+                request.ShutdownTimestamp.Value, shutdownTime);
+            _consumptionService.HandleLevelChangeFromTimestamp(shutdownTime);
+        }
+        else
+        {
+            _logger.LogWarning("[LEVEL] No shutdown timestamp provided - cannot determine interrupted commands");
+        }
+        
+        var reruns = _consumptionService.GetPendingReruns();
+        _logger.LogInformation("[LEVEL] Returning {Count} pending reruns", reruns.Count);
+        
+        return Ok(new LevelChangeResponse
+        {
+            Status = "success",
+            PendingReruns = reruns
         });
     }
 }

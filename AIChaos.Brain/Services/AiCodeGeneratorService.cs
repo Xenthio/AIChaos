@@ -6,10 +6,11 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for generating Lua code using OpenRouter/OpenAI API.
+/// Uses OpenRouterService for API calls with built-in throttling.
 /// </summary>
 public class AiCodeGeneratorService
 {
-    private readonly HttpClient _httpClient;
+    private readonly OpenRouterService _openRouterService;
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
@@ -36,7 +37,6 @@ public class AiCodeGeneratorService
            - Light effects: Can be permanent. (spawning one or a few props/friendly npcs, changing walk speed slightly, chat messages)
            - Mild effects: 15 seconds to 1 minute.
            - Heavy/Chaos effects: 5-10 seconds.
-           bn 
 
         3. **Safety:** Do not use 'os.execute', 'http.Fetch' (outbound), or file system writes. 
 
@@ -46,21 +46,90 @@ public class AiCodeGeneratorService
 
         5. **POV Awareness:** Try to make sure things happen where the player can see them (unless otherwise stated for comedic effect). For example, spawning something in front of the player rather than behind them or at world origin.
 
-        6. **UI:** Asides from default gmod Lua UI, you can also make advanced UI in HTML for better effects and fancy styling and JS.
-           - Always try to include a close button in interactable UI if you can (Only make UI interactable if needed!)
+        6. **UI Controls - CRITICAL:**
+           - Asides from default gmod Lua UI, you can also make advanced UI in HTML for better effects and fancy styling and JS.
+           - **MANDATORY:** If a UI element takes control of the cursor (MakePopup, SetKeyboardInputEnabled, SetMouseInputEnabled), you MUST include a visible Close button.
+           - The Close button must be clearly visible and functional - position it at the top-right corner with text "X" or "Close".
            - Make sure UI can be undone if it causes issues, always try to clean up large screen real estate UI!
+           - Example close button pattern:
+             ```
+             local closeBtn = vgui.Create("DButton", panel)
+             closeBtn:SetText("X")
+             closeBtn:SetSize(30, 30)
+             closeBtn:SetPos(panel:GetWide() - 35, 5)
+             closeBtn.DoClick = function() panel:Remove() end
+             ```
 
-        7.  **Future Proofing:** You can store permanent references to things incase future prompts might want to use them (spawned entities and such)
+        7. **Input Blocking - STRICT LIMIT:**
+           - NEVER block player movement controls (WASD, mouse look) for more than 10 seconds.
+           - If you need to disable controls temporarily, always include a timer to restore them within 10 seconds MAX.
+           - Examples of blocking to avoid: `LocalPlayer():Lock()`, disabling +forward/+back/+moveleft/+moveright bindings, freezing player controls.
+           - Always prefer visual effects over control-blocking effects.
+
+        8. **Future Proofing:** You can store permanent references to things incase future prompts might want to use them (spawned entities and such)
         
-        8. **Performance and Stability:** Do not crash the server, but feel free to temporarily lag it or spawn many entities (limit to 100, or 10 a second) for comedic effect.
+        9. **Performance and Stability:** Do not crash the server, but feel free to temporarily lag it or spawn many entities (limit to 100, or 10 a second) for comedic effect.
            - If you need to spawn lots of props, you can make them no-collide with eachother for better performance.
            - If you are spawning many props over time (which is what you should do if you are spawning many), you should start cleaning up old ones as you spawn new ones in (though, make sure they have enough time to be seen).
         
-        9. **Anti-Softlock:** NEVER use 'entity:Remove()' on key story objects or NPCs.
+        10. **Anti-Softlock:** NEVER use 'entity:Remove()' on key story objects or NPCs.
            - Instead, use 'SetNoDraw(true)' and 'SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE)' to hide them, then revert it in the timer.
            - For model swaps, you can use a bonemerge and temporarily hide the original model. this is a softlock safe way to change appearances.  
 
-        10. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
+        11. **Restrictions:** Do NOT change or reload the map! Do NOT attempt to spawn the player in other maps! Don't disconnect or instant kill the player! Don't change the FOV!
+        
+        12. **Workshop Content:** You have access to helper functions for downloading Steam Workshop addons at runtime:
+           - `DownloadAndSpawn(workshopId, callback)` - SMART: Auto-detects type (weapon/entity/model) and spawns appropriately
+           - `DownloadAndSpawnWorkshopModel(workshopId, callback)` - Spawns best model as prop/ragdoll
+           - `DownloadAndGetWorkshopModel(workshopId, callback)` - Returns best model path for custom use
+           - `DownloadAndGetWorkshopAssets(workshopId, callback)` - Returns {models, weapons, entities} for manual handling
+           
+           **Examples:**
+           ```lua
+           -- SMART SPAWN (RECOMMENDED) - Auto-detects and handles weapons, entities, or models
+           DownloadAndSpawn("158421055", function(result)
+               if result then
+                   if result.type == "weapon" then
+                       print("Gave weapon: " .. result.name)
+                   elseif result.type == "entity" then
+                       print("Spawned entity: " .. result.name)
+                       result.object:SetColor(Color(255,0,0))
+                   elseif result.type == "model" then
+                       print("Spawned model")
+                       result.object:SetColor(Color(0,255,0))
+                   end
+               end
+           end)
+           
+           -- Model-only spawn
+           DownloadAndSpawnWorkshopModel("485879458", function(ent)
+               if IsValid(ent) then ent:SetColor(Color(255,0,0)) end
+           end)
+           
+           -- NPCs with workshop models - Set model AFTER spawning
+           DownloadAndGetWorkshopModel("485879458", function(model)
+               if model then
+                   local ply = Entity(1)
+                   local npc = ents.Create("npc_citizen")
+                   npc:SetPos(ply:GetPos() + ply:GetForward() * 100)
+                   npc:Spawn()
+                   npc:Activate()
+                   
+                   timer.Simple(0.1, function()
+                       if IsValid(npc) then
+                           npc:SetModel(model)
+                           npc:Give("weapon_smg1")
+                           npc:AddEntityRelationship(ply, D_LI, 99)
+                       end
+                   end)
+               end
+           end)
+           ```
+           
+        13. **Asset Discovery:** When in Interactive mode, you can discover available game assets:
+           - Search models: `for _, f in pairs(file.Find("models/*", "GAME")) do print(f) end`
+           - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass()) end`
+           - List sounds: Use `file.Find("sound/*", "GAME")` to discover available sounds
            
         """;
     
@@ -186,12 +255,12 @@ public class AiCodeGeneratorService
         """;
 
     public AiCodeGeneratorService(
-        HttpClient httpClient,
+        OpenRouterService openRouterService,
         SettingsService settingsService,
         CommandQueueService commandQueue,
         ILogger<AiCodeGeneratorService> logger)
     {
-        _httpClient = httpClient;
+        _openRouterService = openRouterService;
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _logger = logger;
@@ -200,12 +269,15 @@ public class AiCodeGeneratorService
     /// <summary>
     /// Generates Lua code for the given user request.
     /// Returns a tuple with execution code, undo code, and whether code needs moderation.
+    /// Uses OpenRouterService for API calls with built-in throttling.
     /// </summary>
     public async Task<(string ExecutionCode, string UndoCode, bool NeedsModeration, string? ModerationReason)> GenerateCodeAsync(
         string userRequest,
         string currentMap = "unknown",
         string? imageContext = null,
-        bool includeHistory = true)
+        bool includeHistory = true,
+        string? referenceCode = null,
+        string? referenceUndoCode = null)
     {
         var userContent = new StringBuilder();
         userContent.Append($"Current Map: {currentMap}. Request: {userRequest}");
@@ -213,6 +285,17 @@ public class AiCodeGeneratorService
         if (!string.IsNullOrEmpty(imageContext))
         {
             userContent.Append($"\n[SYSTEM DETECTED IMAGE CONTEXT]: {imageContext}");
+        }
+        
+        // Include reference code from an existing favourite/saved payload for modification requests
+        if (!string.IsNullOrEmpty(referenceCode))
+        {
+            userContent.Append($"\n\n[REFERENCE CODE - Use as base/inspiration for this modification]:\n```lua\n{referenceCode}\n```");
+            if (!string.IsNullOrEmpty(referenceUndoCode))
+            {
+                userContent.Append($"\n\n[REFERENCE UNDO CODE]:\n```lua\n{referenceUndoCode}\n```");
+            }
+            userContent.Append("\n\nThe user wants to modify or build upon this existing effect. Use the reference code as a quality baseline.");
         }
 
         // Include recent command history if enabled
@@ -231,44 +314,27 @@ public class AiCodeGeneratorService
 
         try
         {
+            _logger.LogDebug("[API] Generating code via OpenRouterService");
+            
             var settings = _settingsService.Settings;
             // Use unfiltered prompt when Private Discord Mode is enabled
             var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
 
-            var requestBody = new
+            var messages = new List<ChatMessage>
             {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = activePrompt },
-                    new { role = "user", content = userContent.ToString() }
-                }
+                new() { Role = "system", Content = activePrompt },
+                new() { Role = "user", Content = userContent.ToString() }
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
             {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
+                _logger.LogError("OpenRouter returned empty response");
+                return ("print(\"AI Generation Failed\")", "print(\"Undo not available\")", false, null);
+            }
 
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-
-            // Clean up markdown if present
-            code = code.Replace("```lua", "").Replace("```", "").Trim();
+            var code = OpenRouterService.CleanLuaCode(response);
 
             // Parse execution and undo code
             if (code.Contains("---UNDO---"))
@@ -382,40 +448,20 @@ public class AiCodeGeneratorService
 
         try
         {
-            var settings = _settingsService.Settings;
-            var requestBody = new
+            var messages = new List<ChatMessage>
             {
-                model = settings.OpenRouter.Model,
-                messages = new[]
-                {
-                    new { role = "system", content = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects." },
-                    new { role = "user", content = forceUndoPrompt }
-                }
+                new() { Role = "system", Content = "You are a Garry's Mod Lua expert. Generate code to completely stop and reverse problematic effects." },
+                new() { Role = "user", Content = forceUndoPrompt }
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
             {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(requestBody),
-                    Encoding.UTF8,
-                    "application/json")
-            };
+                return "print(\"Force undo generation failed\")";
+            }
 
-            request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-
-            var response = await _httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode();
-
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var jsonDoc = JsonDocument.Parse(responseContent);
-
-            var code = jsonDoc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString() ?? "";
-
-            return code.Replace("```lua", "").Replace("```", "").Trim();
+            return OpenRouterService.CleanLuaCode(response);
         }
         catch (Exception ex)
         {

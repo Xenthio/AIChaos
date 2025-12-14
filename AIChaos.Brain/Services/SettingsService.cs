@@ -313,4 +313,46 @@ public class SettingsService
             _logger.LogInformation("[Settings] YouTube polling interval updated to {Interval} seconds", _settings.YouTube.PollingIntervalSeconds);
         }
     }
+    
+    /// <summary>
+    /// Updates the stream state for persistence.
+    /// Called periodically to track if stream was live when app closes.
+    /// </summary>
+    public void UpdateStreamState(bool wasStreamLive, bool wasYouTubeListening, bool wasTwitchListening, 
+        string? lastYouTubeVideoId = null, string? lastTwitchChannel = null)
+    {
+        lock (_lock)
+        {
+            _settings.StreamState.WasStreamLive = wasStreamLive;
+            _settings.StreamState.WasYouTubeListening = wasYouTubeListening;
+            _settings.StreamState.WasTwitchListening = wasTwitchListening;
+            _settings.StreamState.LastYouTubeVideoId = lastYouTubeVideoId ?? _settings.StreamState.LastYouTubeVideoId;
+            _settings.StreamState.LastTwitchChannel = lastTwitchChannel ?? _settings.StreamState.LastTwitchChannel;
+            _settings.StreamState.LastUpdated = DateTime.UtcNow;
+            SaveSettings();
+        }
+    }
+    
+    /// <summary>
+    /// Gets the persisted stream state for auto-reconnect.
+    /// </summary>
+    public StreamStateSettings GetStreamState()
+    {
+        lock (_lock)
+        {
+            return _settings.StreamState;
+        }
+    }
+    
+    /// <summary>
+    /// Clears the stream state (e.g., when manually stopping the stream).
+    /// </summary>
+    public void ClearStreamState()
+    {
+        lock (_lock)
+        {
+            _settings.StreamState = new StreamStateSettings();
+            SaveSettings();
+        }
+    }
 }

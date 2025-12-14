@@ -19,7 +19,7 @@ public class AgenticGameService
     private readonly SettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly CodeModerationService _codeModerationService;
-    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly OpenRouterService _openRouterService;
     private readonly ILogger<AgenticGameService> _logger;
     
     // Active agent sessions
@@ -94,6 +94,17 @@ public class AgenticGameService
         - Search for models: `local models = {} for _, ent in pairs(ents.GetAll()) do local m = ent:GetModel() if m and m:find("pattern") then table.insert(models, m) end end PrintTable(models)`
         - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass(), npc:GetPos()) end`
         - Check player state: `local p = Entity(1) print("Health:", p:Health(), "Pos:", p:GetPos(), "Weapon:", p:GetActiveWeapon():GetClass())`
+        - **Workshop content inspection**: `DownloadAndGetWorkshopAssets("workshopId", function(assets) if assets then print("Models:", #assets.models, "Weapons:", #assets.weapons, "Entities:", #assets.entities) PrintTable(assets) end end)`
+        
+        **WORKSHOP CONTENT IN AGENTIC MODE:**
+        Use `DownloadAndGetWorkshopAssets()` in preparation phase to discover what's in a workshop addon:
+        1. **Prep phase**: Download and inspect - `DownloadAndGetWorkshopAssets("id", function(a) PrintTable(a) end)`
+        2. **Generate phase**: Use discovered weapons/entities/models appropriately
+        
+        Example workflow:
+        - User: "download workshop 158421055"
+        - Prep: Use DownloadAndGetWorkshopAssets to discover it has weapons
+        - Generate: Use the weapon class names to give to player with ply:Give()
         
         **AGENTIC WORKFLOW RULES:**
         1. **BE EFFICIENT** - If you can generate immediately, do so with `isComplete: true`
@@ -138,13 +149,13 @@ public class AgenticGameService
         SettingsService settingsService,
         CommandQueueService commandQueue,
         CodeModerationService codeModerationService,
-        IHttpClientFactory httpClientFactory,
+        OpenRouterService openRouterService,
         ILogger<AgenticGameService> logger)
     {
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _codeModerationService = codeModerationService;
-        _httpClientFactory = httpClientFactory;
+        _openRouterService = openRouterService;
         _logger = logger;
     }
     
@@ -222,6 +233,17 @@ public class AgenticGameService
         lock (_lock)
         {
             return _sessions.Values.Where(s => !s.IsComplete).ToList();
+        }
+    }
+    
+    /// <summary>
+    /// Gets all sessions (including completed ones).
+    /// </summary>
+    public List<AgentSession> GetAllSessions()
+    {
+        lock (_lock)
+        {
+            return _sessions.Values.ToList();
         }
     }
     
@@ -319,6 +341,78 @@ public class AgenticGameService
             _approvedQueue.RemoveAt(0);
             return result;
         }
+    }
+    
+    /// <summary>
+    /// Resumes an agentic session after intermediate code was approved by moderation.
+    /// Returns true if a session was found and resumed.
+    /// </summary>
+    public bool ResumeSessionAfterModeration(int codeId)
+    {
+        AgentSession? sessionToResume = null;
+        
+        lock (_lock)
+        {
+            // Find the session that's waiting for this code to be approved
+            // The codeId for intermediate code is -(session.Id * 1000 + iteration)
+            sessionToResume = _sessions.Values.FirstOrDefault(s => 
+                s.CurrentPhase == AgentPhase.PendingModeration && 
+                s.PendingCommandId == codeId);
+        }
+        
+        if (sessionToResume == null)
+        {
+            _logger.LogDebug("[AGENT] No pending moderation session found for code #{CodeId}", codeId);
+            return false;
+        }
+        
+        _logger.LogInformation("[AGENT] Resuming session #{SessionId} after moderation approval for code #{CodeId}", 
+            sessionToResume.Id, codeId);
+        
+        // Queue the code for interactive execution (it was stored in PendingCode)
+        if (!string.IsNullOrEmpty(sessionToResume.PendingCode))
+        {
+            if (sessionToResume.Mode == AgentMode.AgenticTest && IsTestClientEnabled)
+            {
+                QueueForTesting(codeId, sessionToResume.PendingCode, sessionToResume.UserPrompt);
+            }
+            else
+            {
+                _commandQueue.QueueInteractiveCode(codeId, sessionToResume.PendingCode);
+            }
+            
+            // Reset phase to previous state (prepare/generate based on what was happening)
+            sessionToResume.CurrentPhase = AgentPhase.Preparing; // Could also be Generating but we'll let the result handler determine
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Handles denial of intermediate agentic code from moderation.
+    /// </summary>
+    public void DenySessionModeration(int codeId)
+    {
+        AgentSession? sessionToDeny = null;
+        
+        lock (_lock)
+        {
+            sessionToDeny = _sessions.Values.FirstOrDefault(s => 
+                s.CurrentPhase == AgentPhase.PendingModeration && 
+                s.PendingCommandId == codeId);
+        }
+        
+        if (sessionToDeny == null)
+        {
+            _logger.LogDebug("[AGENT] No pending moderation session found for code #{CodeId} to deny", codeId);
+            return;
+        }
+        
+        _logger.LogInformation("[AGENT] Session #{SessionId} denied by moderation for code #{CodeId}", 
+            sessionToDeny.Id, codeId);
+        
+        sessionToDeny.Steps.Last().Error = "Code denied by moderator";
+        CompleteSession(sessionToDeny, false);
     }
     
     /// <summary>
@@ -627,8 +721,57 @@ public class AgenticGameService
             }
             else
             {
-                var codeToExecute = WrapCodeForDataCapture(response.Code ?? "");
+                var intermediateCode = response.Code ?? "";
                 var cmdId = -(session.Id * 1000 + session.CurrentIteration);
+                
+                // Apply safety filters to intermediate code as well (not just final code)
+                // Check for dangerous patterns first (always block these)
+                var dangerousReason = CodeModerationService.GetDangerousPatternReason(intermediateCode);
+                if (dangerousReason != null)
+                {
+                    _logger.LogWarning("[AGENT] Session #{SessionId} intermediate code contains dangerous pattern: {Reason}. Blocking.", 
+                        session.Id, dangerousReason);
+                    
+                    // Block this code and fail the session
+                    session.Steps.Last().Error = $"Blocked: {dangerousReason}";
+                    CompleteSession(session, false);
+                    return;
+                }
+                
+                // Check for filtered patterns (send to moderation if BlockLinksInGeneratedCode is enabled)
+                var settings = _settingsService.Settings;
+                if (settings.General.BlockLinksInGeneratedCode)
+                {
+                    var moderationReason = CodeModerationService.GetFilteredPatternReason(intermediateCode);
+                    if (moderationReason != null)
+                    {
+                        _logger.LogInformation("[AGENT] Session #{SessionId} intermediate code contains filtered pattern: {Reason}. Sending to moderation.", 
+                            session.Id, moderationReason);
+                        
+                        // Add to code moderation queue - when approved, this will queue the wrapped code for interactive execution
+                        var codeToQueue = WrapCodeForDataCapture(intermediateCode);
+                        _codeModerationService.AddPendingCode(
+                            session.UserPrompt,
+                            intermediateCode, // Store unwrapped code for display
+                            "print(\"Intermediate code - no undo\")",
+                            moderationReason,
+                            session.Source,
+                            session.Author,
+                            session.UserId,
+                            cmdId);
+                        
+                        // Set session to pending moderation state (don't complete/fail it)
+                        session.CurrentPhase = AgentPhase.PendingModeration;
+                        session.PendingCommandId = cmdId;
+                        session.PendingCode = codeToQueue;
+                        session.Steps.Last().Success = true; // Step worked, just needs approval
+                        
+                        _logger.LogInformation("[AGENT] Session #{SessionId} paused for moderation approval", session.Id);
+                        return;
+                    }
+                }
+                
+                var codeToExecute = WrapCodeForDataCapture(intermediateCode);
                 
                 // For AgenticTest mode, preparation code also goes to test client
                 if (session.Mode == AgentMode.AgenticTest && IsTestClientEnabled)
@@ -709,44 +852,32 @@ public class AgenticGameService
             }
         }
         
-        var settings = _settingsService.Settings;
-        var requestBody = new
+        var systemMessage = new ChatMessage { Role = "system", Content = AgenticSystemPrompt };
+        var userMessage = new ChatMessage { Role = "user", Content = userContent.ToString() };
+        
+        var messages = new List<ChatMessage> { systemMessage, userMessage };
+        
+        // Track chat history for debugging
+        session.ChatHistory.Add(systemMessage);
+        session.ChatHistory.Add(userMessage);
+        
+        var response = await _openRouterService.ChatCompletionAsync(messages);
+        
+        if (string.IsNullOrEmpty(response))
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = AgenticSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
-        };
+            _logger.LogError("[AGENT] OpenRouterService returned empty response for session #{SessionId}", session.Id);
+            return null;
+        }
         
-        var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
+        // Add assistant response to chat history
+        session.ChatHistory.Add(new ChatMessage { Role = "assistant", Content = response });
         
-        var response = await httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var jsonDoc = JsonDocument.Parse(responseContent);
-        
-        var aiContent = jsonDoc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
-        
-        return ParseAgentAiResponse(aiContent);
+        return ParseAgentAiResponse(response);
     }
     
     private async Task<string?> AskAiToFixCodeAsync(string currentCode, string error, string originalPrompt)
     {
-        var settings = _settingsService.Settings;
-        
-        if (string.IsNullOrEmpty(settings.OpenRouter.ApiKey))
+        if (!_openRouterService.IsConfigured)
         {
             _logger.LogWarning("[AGENT] Cannot fix code - API key not configured");
             return null;
@@ -759,46 +890,26 @@ public class AgenticGameService
         userContent.AppendLine($"\n**Error message:**\n{error}");
         userContent.AppendLine("\nPlease fix the code. Return ONLY the fixed code.");
         
-        var requestBody = new
+        var messages = new List<ChatMessage>
         {
-            model = settings.OpenRouter.Model,
-            messages = new[]
-            {
-                new { role = "system", content = ErrorFixSystemPrompt },
-                new { role = "user", content = userContent.ToString() }
-            }
+            new() { Role = "system", Content = ErrorFixSystemPrompt },
+            new() { Role = "user", Content = userContent.ToString() }
         };
-        
-        var httpClient = _httpClientFactory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.OpenRouter.BaseUrl}/chat/completions")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {settings.OpenRouter.ApiKey}");
-        
-        var response = await httpClient.SendAsync(request);
-        if (!response.IsSuccessStatusCode) return null;
-        
-        var responseContent = await response.Content.ReadAsStringAsync();
         
         try
         {
-            var jsonDoc = JsonDocument.Parse(responseContent);
-            if (!jsonDoc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+            var response = await _openRouterService.ChatCompletionAsync(messages);
+            
+            if (string.IsNullOrEmpty(response))
+            {
                 return null;
+            }
             
-            var fixedCode = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
-            
-            // Clean markdown
-            fixedCode = fixedCode.Trim();
-            if (fixedCode.StartsWith("```lua")) fixedCode = fixedCode[6..];
-            else if (fixedCode.StartsWith("```")) fixedCode = fixedCode[3..];
-            if (fixedCode.EndsWith("```")) fixedCode = fixedCode[..^3];
-            
-            return fixedCode.Trim();
+            return OpenRouterService.CleanLuaCode(response);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "[AGENT] Failed to get AI fix for code");
             return null;
         }
     }
@@ -1107,6 +1218,11 @@ public class AgentSession
     public DateTime? CompletedAt { get; set; }
     public int? PendingCommandId { get; set; }
     public string? PendingCode { get; set; }
+    
+    /// <summary>
+    /// Full chat message history for debugging (shows actual API messages).
+    /// </summary>
+    public List<ChatMessage> ChatHistory { get; set; } = new();
 }
 
 /// <summary>
@@ -1144,6 +1260,7 @@ public enum AgentPhase
     Generating,
     Testing,
     Fixing,
+    PendingModeration, // Waiting for moderator approval of filtered code
     Complete,
     Failed
 }

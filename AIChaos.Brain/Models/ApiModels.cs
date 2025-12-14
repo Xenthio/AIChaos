@@ -20,6 +20,36 @@ public class CommandEntry
     public string? ErrorMessage { get; set; }
     public string? AiResponse { get; set; } // Non-code AI response message for the user
     public DateTime? ExecutedAt { get; set; }
+    
+    /// <summary>
+    /// Whether this command has been fully consumed (played uninterrupted for required duration).
+    /// </summary>
+    public bool IsConsumed { get; set; } = false;
+    
+    /// <summary>
+    /// When the command started executing (for consumption tracking).
+    /// </summary>
+    public DateTime? ExecutionStartedAt { get; set; }
+    
+    /// <summary>
+    /// Number of times this command was interrupted by level changes.
+    /// </summary>
+    public int InterruptCount { get; set; } = 0;
+    
+    /// <summary>
+    /// Whether this is a redo of a previous command.
+    /// </summary>
+    public bool IsRedo { get; set; } = false;
+    
+    /// <summary>
+    /// The original command ID if this is a redo.
+    /// </summary>
+    public int? OriginalCommandId { get; set; }
+    
+    /// <summary>
+    /// User-provided feedback explaining why the command failed (for redo).
+    /// </summary>
+    public string? RedoFeedback { get; set; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -411,6 +441,89 @@ public class TestResultRequest
     
     [JsonPropertyName("is_test_client")]
     public bool IsTestClient { get; set; }
+}
+
+/// <summary>
+/// Request to redo a failed command with user feedback.
+/// </summary>
+public class RedoRequest
+{
+    /// <summary>
+    /// The ID of the command to redo.
+    /// </summary>
+    public int CommandId { get; set; }
+    
+    /// <summary>
+    /// User-provided explanation of what went wrong.
+    /// </summary>
+    public string Feedback { get; set; } = "";
+}
+
+/// <summary>
+/// Response from a redo request.
+/// </summary>
+public class RedoResponse
+{
+    public string Status { get; set; } = "";
+    public string? Message { get; set; }
+    public int? NewCommandId { get; set; }
+    public decimal NewBalance { get; set; }
+    public bool WasFree { get; set; }
+}
+
+/// <summary>
+/// Notification from GMod about level/map changes.
+/// </summary>
+public class LevelChangeRequest
+{
+    [JsonPropertyName("map_name")]
+    public string MapName { get; set; } = "";
+    
+    [JsonPropertyName("is_save_load")]
+    public bool IsSaveLoad { get; set; }
+    
+    [JsonPropertyName("timestamp")]
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Request for pending re-runs after level load.
+/// </summary>
+public class PendingRerunsRequest
+{
+    /// <summary>
+    /// Unix timestamp of when shutdown occurred.
+    /// If provided, server will mark commands executing at that time as interrupted.
+    /// </summary>
+    [JsonPropertyName("shutdown_timestamp")]
+    public long? ShutdownTimestamp { get; set; }
+}
+
+/// <summary>
+/// Response to level change notification.
+/// </summary>
+public class LevelChangeResponse
+{
+    public string Status { get; set; } = "";
+    
+    /// <summary>
+    /// Commands that need to be re-run after the level loads.
+    /// </summary>
+    public List<PendingRerunCommand> PendingReruns { get; set; } = new();
+}
+
+/// <summary>
+/// A command pending re-run after level change.
+/// </summary>
+public class PendingRerunCommand
+{
+    public int CommandId { get; set; }
+    public string Code { get; set; } = "";
+    
+    /// <summary>
+    /// Delay in seconds before running this command after level loads.
+    /// </summary>
+    public int DelaySeconds { get; set; }
 }
 
 

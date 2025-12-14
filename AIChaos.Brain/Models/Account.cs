@@ -81,6 +81,11 @@ public class Account
     /// User role: Admin, Moderator, or User
     /// </summary>
     public UserRole Role { get; set; } = UserRole.User;
+
+    /// <summary>
+    /// Number of redos the user has used. First redo is free.
+    /// </summary>
+    public int RedoCount { get; set; } = 0;
 }
 
 /// <summary>

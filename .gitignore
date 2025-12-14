@@ -41,3 +41,4 @@ venv/
 logs/
 tunnel_url.txt
 .backup
+AIChaos.Brain/queue_state/executing.json

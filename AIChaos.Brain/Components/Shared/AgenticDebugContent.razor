@@ -1,0 +1,733 @@
+@inject AgenticGameService AgenticService
+@inject ILogger<AgenticDebugContent> Logger
+@implements IDisposable
+
+<div id="alerts">
+    @if (!string.IsNullOrEmpty(alertMessage))
+    {
+        <div class="alert alert-@alertType">@alertMessage</div>
+    }
+</div>
+
+<!-- Active Sessions Overview -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2>🤖 Agentic Sessions</h2>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <span style="color: var(--text-dim); font-size: 14px;">
+                Active: @activeSessions.Count | Total: @allSessions.Count
+            </span>
+            <button @onclick="RefreshSessions" class="btn-small btn-info">🔄 Refresh</button>
+        </div>
+    </div>
+    
+    @if (!allSessions.Any())
+    {
+        <div class="empty-state">
+            <p>No agentic sessions yet.</p>
+            <p style="color: var(--text-dim); font-size: 14px;">Sessions will appear here when you use Interactive Mode from the Commands tab.</p>
+        </div>
+    }
+    else
+    {
+        <div class="session-list">
+            @foreach (var session in allSessions.OrderByDescending(s => s.CreatedAt))
+            {
+                <div class="session-item @(selectedSessionId == session.Id ? "selected" : "") @GetSessionStatusClass(session)" 
+                     @onclick="() => SelectSession(session.Id)">
+                    <div class="session-header">
+                        <span class="session-id">#@session.Id</span>
+                        <span class="session-mode">@session.Mode</span>
+                        <span class="session-phase @GetPhaseClass(session.CurrentPhase)">@session.CurrentPhase</span>
+                    </div>
+                    <div class="session-prompt">@TruncateText(session.UserPrompt, 80)</div>
+                    <div class="session-meta">
+                        <span>@session.Author</span>
+                        <span>@session.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                        <span>@session.Steps.Count steps</span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- Selected Session Detail -->
+@if (selectedSession != null)
+{
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+            <div>
+                <h2>📝 Session #@selectedSession.Id Detail</h2>
+                <div style="color: var(--text-dim); font-size: 14px;">
+                    Mode: @selectedSession.Mode | 
+                    Phase: <span class="@GetPhaseClass(selectedSession.CurrentPhase)">@selectedSession.CurrentPhase</span> |
+                    Iterations: @selectedSession.CurrentIteration/@selectedSession.MaxIterations
+                </div>
+            </div>
+            <button @onclick="() => selectedSessionId = null" class="btn-small">✕ Close</button>
+        </div>
+        
+        <!-- User Prompt -->
+        <div class="conversation-section">
+            <div class="section-header">📣 User Prompt</div>
+            <div class="message user-message">
+                <div class="message-author">@selectedSession.Author (@selectedSession.Source)</div>
+                <div class="message-content">@selectedSession.UserPrompt</div>
+                <div class="message-time">@selectedSession.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
+            </div>
+        </div>
+        
+        <!-- Chat API Messages (Raw) -->
+        <div class="conversation-section">
+            <div class="section-header">💬 Chat API Messages (@selectedSession.ChatHistory.Count)</div>
+            
+            @if (!selectedSession.ChatHistory.Any())
+            {
+                <div class="empty-state">No chat messages recorded yet.</div>
+            }
+            else
+            {
+                <div class="chat-messages">
+                    @foreach (var (message, index) in selectedSession.ChatHistory.Select((m, i) => (m, i)))
+                    {
+                        <div class="chat-message @message.Role">
+                            <div class="message-role">
+                                @if (message.Role == "system")
+                                {
+                                    <span class="role-badge system">🔧 System</span>
+                                }
+                                else if (message.Role == "user")
+                                {
+                                    <span class="role-badge user">👤 User</span>
+                                }
+                                else if (message.Role == "assistant")
+                                {
+                                    <span class="role-badge assistant">🤖 Assistant</span>
+                                }
+                                <button @onclick="() => ToggleChatExpand(index)" class="btn-tiny">
+                                    @(expandedChats.Contains(index) ? "▼ Collapse" : "▶ Expand")
+                                </button>
+                            </div>
+                            @if (expandedChats.Contains(index))
+                            {
+                                <pre class="message-content-full">@message.Content</pre>
+                            }
+                            else
+                            {
+                                <pre class="message-content-preview">@TruncateText(message.Content, 200)</pre>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        
+        <!-- Steps / Parsed Conversation -->
+        <div class="conversation-section">
+            <div class="section-header">💬 Conversation Steps (@selectedSession.Steps.Count)</div>
+            
+            @if (!selectedSession.Steps.Any())
+            {
+                <div class="empty-state">No steps recorded yet.</div>
+            }
+            else
+            {
+                @foreach (var step in selectedSession.Steps)
+                {
+                    <div class="step-container @(step.Success == true ? "success" : step.Success == false ? "failure" : "pending")">
+                        <div class="step-header">
+                            <span class="step-number">Step @step.StepNumber</span>
+                            <span class="step-phase @GetStepPhaseClass(step.Phase)">@step.Phase</span>
+                            <span class="step-status">
+                                @if (step.Success == true)
+                                {
+                                    <span style="color: var(--success);">✓ Success</span>
+                                }
+                                else if (step.Success == false)
+                                {
+                                    <span style="color: var(--error);">✗ Failed</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--warning);">⏳ Pending</span>
+                                }
+                            </span>
+                            <span class="step-time">@step.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+                        
+                        @if (!string.IsNullOrEmpty(step.AiThinking))
+                        {
+                            <div class="step-thinking">
+                                <strong>🧠 AI Thinking:</strong>
+                                <div>@step.AiThinking</div>
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(step.Code))
+                        {
+                            <div class="step-code">
+                                <div class="code-header">
+                                    <strong>💻 Code</strong>
+                                    <button @onclick="() => ToggleCodeExpand(step.StepNumber)" class="btn-tiny">
+                                        @(expandedCodes.Contains(step.StepNumber) ? "▼ Collapse" : "▶ Expand")
+                                    </button>
+                                </div>
+                                @if (expandedCodes.Contains(step.StepNumber))
+                                {
+                                    <pre class="code-block">@step.Code</pre>
+                                }
+                                else
+                                {
+                                    <pre class="code-preview">@TruncateText(step.Code, 150)</pre>
+                                }
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(step.ResultData))
+                        {
+                            <div class="step-result">
+                                <div class="result-header">
+                                    <strong>📊 Result Data</strong>
+                                    <button @onclick="() => ToggleResultExpand(step.StepNumber)" class="btn-tiny">
+                                        @(expandedResults.Contains(step.StepNumber) ? "▼ Collapse" : "▶ Expand")
+                                    </button>
+                                </div>
+                                @if (expandedResults.Contains(step.StepNumber))
+                                {
+                                    <pre class="result-block">@step.ResultData</pre>
+                                }
+                                else
+                                {
+                                    <pre class="result-preview">@TruncateText(step.ResultData, 200)</pre>
+                                }
+                            </div>
+                        }
+                        
+                        @if (!string.IsNullOrEmpty(step.Error))
+                        {
+                            <div class="step-error">
+                                <strong>❌ Error:</strong>
+                                <pre>@step.Error</pre>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+        
+        <!-- Final Output -->
+        @if (selectedSession.IsComplete)
+        {
+            <div class="conversation-section">
+                <div class="section-header">
+                    @if (selectedSession.WasSuccessful)
+                    {
+                        <span>✅ Final Output</span>
+                    }
+                    else
+                    {
+                        <span>❌ Session Failed</span>
+                    }
+                </div>
+                
+                @if (!string.IsNullOrEmpty(selectedSession.FinalExecutionCode))
+                {
+                    <div class="final-code">
+                        <strong>Final Execution Code:</strong>
+                        <pre class="code-block">@selectedSession.FinalExecutionCode</pre>
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(selectedSession.FinalUndoCode))
+                {
+                    <div class="final-code">
+                        <strong>Undo Code:</strong>
+                        <pre class="code-block">@selectedSession.FinalUndoCode</pre>
+                    </div>
+                }
+                
+                @if (selectedSession.CompletedAt.HasValue)
+                {
+                    <div style="color: var(--text-dim); font-size: 12px; margin-top: 10px;">
+                        Completed at: @selectedSession.CompletedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                        (Duration: @((selectedSession.CompletedAt.Value - selectedSession.CreatedAt).TotalSeconds.ToString("F1"))s)
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .session-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .session-item {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .session-item:hover {
+        border-color: var(--primary);
+    }
+    
+    .session-item.selected {
+        border-color: var(--primary);
+        background: rgba(var(--primary-rgb), 0.1);
+    }
+    
+    .session-item.active {
+        border-left: 3px solid var(--warning);
+    }
+    
+    .session-item.complete {
+        border-left: 3px solid var(--success);
+    }
+    
+    .session-item.failed {
+        border-left: 3px solid var(--error);
+    }
+    
+    .session-header {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    
+    .session-id {
+        font-weight: bold;
+        color: var(--primary);
+    }
+    
+    .session-mode {
+        background: var(--bg-tertiary);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    
+    .session-phase {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    
+    .session-prompt {
+        color: var(--text);
+        margin-bottom: 8px;
+    }
+    
+    .session-meta {
+        display: flex;
+        gap: 15px;
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+    
+    .conversation-section {
+        margin-bottom: 20px;
+    }
+    
+    .section-header {
+        font-weight: bold;
+        margin-bottom: 10px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid var(--border);
+    }
+    
+    .message {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+    }
+    
+    .message-author {
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: var(--primary);
+    }
+    
+    .message-content {
+        margin-bottom: 5px;
+    }
+    
+    .message-time {
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+    
+    .step-container {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 10px;
+        border-left: 3px solid var(--border);
+    }
+    
+    .step-container.success {
+        border-left-color: var(--success);
+    }
+    
+    .step-container.failure {
+        border-left-color: var(--error);
+    }
+    
+    .step-container.pending {
+        border-left-color: var(--warning);
+    }
+    
+    .step-header {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .step-number {
+        font-weight: bold;
+    }
+    
+    .step-phase {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    
+    .step-phase.prepare { background: var(--info); color: white; }
+    .step-phase.generate { background: var(--primary); color: white; }
+    .step-phase.fix { background: var(--warning); color: black; }
+    .step-phase.test { background: var(--success); color: white; }
+    
+    .step-time {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-left: auto;
+    }
+    
+    .step-thinking {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        margin-bottom: 10px;
+        font-style: italic;
+    }
+    
+    .step-code, .step-result {
+        margin-bottom: 10px;
+    }
+    
+    .code-header, .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    
+    .code-block, .result-block {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    
+    .code-preview, .result-preview {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        color: var(--text-dim);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    .step-error {
+        background: rgba(var(--error-rgb), 0.1);
+        border: 1px solid var(--error);
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    .step-error pre {
+        margin: 5px 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+    
+    .final-code {
+        margin-bottom: 15px;
+    }
+    
+    .final-code pre {
+        margin-top: 5px;
+    }
+    
+    .btn-tiny {
+        padding: 2px 8px;
+        font-size: 11px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .btn-tiny:hover {
+        background: var(--bg-secondary);
+    }
+    
+    .phase-preparing { color: var(--info); }
+    .phase-generating { color: var(--primary); }
+    .phase-testing { color: var(--success); }
+    .phase-fixing { color: var(--warning); }
+    .phase-complete { color: var(--success); }
+    .phase-failed { color: var(--error); }
+    
+    .empty-state {
+        text-align: center;
+        padding: 30px;
+        color: var(--text-dim);
+    }
+    
+    /* Chat API Messages Styles */
+    .chat-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 500px;
+        overflow-y: auto;
+    }
+    
+    .chat-message {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 12px;
+        border-left: 3px solid var(--border);
+    }
+    
+    .chat-message.system {
+        border-left-color: #9b59b6;
+        background: rgba(155, 89, 182, 0.1);
+    }
+    
+    .chat-message.user {
+        border-left-color: #3498db;
+        background: rgba(52, 152, 219, 0.1);
+    }
+    
+    .chat-message.assistant {
+        border-left-color: #27ae60;
+        background: rgba(39, 174, 96, 0.1);
+    }
+    
+    .message-role {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+    
+    .role-badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    
+    .role-badge.system {
+        background: #9b59b6;
+        color: white;
+    }
+    
+    .role-badge.user {
+        background: #3498db;
+        color: white;
+    }
+    
+    .role-badge.assistant {
+        background: #27ae60;
+        color: white;
+    }
+    
+    .message-content-full {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+        margin: 0;
+    }
+    
+    .message-content-preview {
+        background: var(--bg-tertiary);
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: var(--text-dim);
+        margin: 0;
+    }
+</style>
+
+@code {
+    private readonly string alertMessage = "";
+    private readonly string alertType = "info";
+    
+    private List<AgentSession> allSessions = new();
+    private List<AgentSession> activeSessions = new();
+    private int? selectedSessionId = null;
+    private AgentSession? selectedSession => selectedSessionId.HasValue 
+        ? allSessions.FirstOrDefault(s => s.Id == selectedSessionId.Value)
+        : null;
+    
+    private readonly HashSet<int> expandedCodes = new();
+    private readonly HashSet<int> expandedResults = new();
+    private readonly HashSet<int> expandedChats = new();
+    
+    private System.Threading.Timer? refreshTimer;
+    
+    protected override void OnInitialized()
+    {
+        RefreshSessions();
+        
+        // Auto-refresh every 2 seconds
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(() =>
+            {
+                RefreshSessions();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+    
+    private void RefreshSessions()
+    {
+        try
+        {
+            activeSessions = AgenticService.GetActiveSessions();
+            allSessions = AgenticService.GetAllSessions();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to refresh agentic sessions");
+        }
+    }
+    
+    private void SelectSession(int sessionId)
+    {
+        if (selectedSessionId == sessionId)
+        {
+            selectedSessionId = null;
+        }
+        else
+        {
+            selectedSessionId = sessionId;
+            expandedCodes.Clear();
+            expandedResults.Clear();
+            expandedChats.Clear();
+            
+            // Refresh the selected session to get latest data
+            var session = AgenticService.GetSession(sessionId);
+            if (session != null)
+            {
+                var index = allSessions.FindIndex(s => s.Id == session.Id);
+                if (index >= 0)
+                {
+                    allSessions[index] = session;
+                }
+            }
+        }
+    }
+    
+    private void ToggleCodeExpand(int stepNumber)
+    {
+        if (expandedCodes.Contains(stepNumber))
+            expandedCodes.Remove(stepNumber);
+        else
+            expandedCodes.Add(stepNumber);
+    }
+    
+    private void ToggleResultExpand(int stepNumber)
+    {
+        if (expandedResults.Contains(stepNumber))
+            expandedResults.Remove(stepNumber);
+        else
+            expandedResults.Add(stepNumber);
+    }
+    
+    private void ToggleChatExpand(int index)
+    {
+        if (expandedChats.Contains(index))
+            expandedChats.Remove(index);
+        else
+            expandedChats.Add(index);
+    }
+    
+    private string GetSessionStatusClass(AgentSession session)
+    {
+        if (!session.IsComplete) return "active";
+        return session.WasSuccessful ? "complete" : "failed";
+    }
+    
+    private string GetPhaseClass(AgentPhase phase)
+    {
+        return phase switch
+        {
+            AgentPhase.Preparing => "phase-preparing",
+            AgentPhase.Generating => "phase-generating",
+            AgentPhase.Testing => "phase-testing",
+            AgentPhase.Fixing => "phase-fixing",
+            AgentPhase.Complete => "phase-complete",
+            AgentPhase.Failed => "phase-failed",
+            _ => ""
+        };
+    }
+    
+    private string GetStepPhaseClass(string phase)
+    {
+        return phase.ToLower() switch
+        {
+            "prepare" => "prepare",
+            "generate" => "generate",
+            "fix" => "fix",
+            "test" => "test",
+            _ => ""
+        };
+    }
+    
+    private string TruncateText(string? text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length > maxLength ? text[..maxLength] + "..." : text;
+    }
+    
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

@@ -2,6 +2,10 @@
 @using AIChaos.Brain.Models
 @implements IDisposable
 @inject CodeModerationService CodeModerationService
+@inject CommandQueueService CommandQueue
+@inject AccountService AccountService
+@inject TestClientService TestClientService
+@inject AgenticGameService AgenticGameService
 
 <!-- Pending Code -->
 <div class="card moderation-section">
@@ -13,6 +17,11 @@
             <span style="color: var(--text-dim); font-size: 14px;">Auto (5s)</span>
         </label>
     </div>
+    
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-@statusType" style="margin-bottom: 10px;">@statusMessage</div>
+    }
     
     @if (pendingCode == null || !pendingCode.Any())
     {
@@ -35,8 +44,8 @@
                         <pre style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin-top: 5px;"><code>@codereq.ExecutionCode</code></pre>
                     </details>
                     <div class="image-actions">
-                        <button @onclick="() => ApproveCode(codereq.Id)" class="btn-success btn-small">✅ Approve</button>
-                        <button @onclick="() => DenyCode(codereq.Id)" class="btn-danger btn-small">❌ Deny</button>
+                        <button @onclick="() => ApproveCode(codereq.Id)" class="btn-success btn-small" disabled="@isProcessing">✅ Approve</button>
+                        <button @onclick="() => DenyCode(codereq.Id)" class="btn-danger btn-small" disabled="@isProcessing">❌ Deny</button>
                     </div>
                 </div>
             }
@@ -50,6 +59,9 @@
     
     private List<PendingCodeEntry>? pendingCode;
     private bool autoRefresh = false;
+    private bool isProcessing = false;
+    private string statusMessage = "";
+    private string statusType = "info";
     private System.Threading.Timer? refreshTimer;
     
     protected override async Task OnInitializedAsync()
@@ -90,13 +102,72 @@
     {
         try
         {
-            CodeModerationService.ApproveCode(codeId);
+            isProcessing = true;
+            StateHasChanged();
+            
+            var entry = CodeModerationService.ApproveCode(codeId);
+            if (entry == null)
+            {
+                ShowStatus("Failed to approve code - code not found", "error");
+                return;
+            }
+
+            // Check if this is an agentic intermediate code (negative command ID)
+            if (entry.CommandId.HasValue && entry.CommandId.Value < 0)
+            {
+                // This is intermediate agentic code - resume the session
+                if (AgenticGameService.ResumeSessionAfterModeration(entry.CommandId.Value))
+                {
+                    ShowStatus($"Code approved! Agentic session resumed.", "success");
+                }
+                else
+                {
+                    ShowStatus("Code approved but agentic session not found", "warning");
+                }
+            }
+            // Update the linked command if it exists (regular command)
+            else if (entry.CommandId.HasValue)
+            {
+                var command = CommandQueue.GetCommand(entry.CommandId.Value);
+                if (command != null)
+                {
+                    // Use UpdateCommand to update status and fire HistoryChanged event
+                    CommandQueue.UpdateCommand(
+                        command.Id,
+                        CommandStatus.Queued,
+                        executionCode: entry.ExecutionCode,
+                        undoCode: entry.UndoCode);
+
+                    // Queue for execution
+                    if (TestClientService.IsEnabled)
+                    {
+                        TestClientService.QueueForTesting(command.Id, entry.ExecutionCode, entry.UserPrompt);
+                        ShowStatus($"Code approved! Command #{command.Id} queued for testing.", "success");
+                    }
+                    else
+                    {
+                        CommandQueue.QueueInteractiveCode(command.Id, entry.ExecutionCode);
+                        ShowStatus($"Code approved! Command #{command.Id} queued for execution.", "success");
+                    }
+                }
+            }
+            else
+            {
+                ShowStatus("Code approved but no linked command found", "warning");
+            }
+            
             await RefreshCode();
             await OnCodeProcessed.InvokeAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to approve code: {ex.Message}");
+            ShowStatus($"Error: {ex.Message}", "error");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
         }
     }
     
@@ -104,14 +175,82 @@
     {
         try
         {
-            CodeModerationService.DenyCode(codeId);
+            isProcessing = true;
+            StateHasChanged();
+            
+            var entry = CodeModerationService.DenyCode(codeId);
+            if (entry != null)
+            {
+                // Check if this is an agentic intermediate code (negative command ID)
+                if (entry.CommandId.HasValue && entry.CommandId.Value < 0)
+                {
+                    // This is intermediate agentic code - fail the session
+                    AgenticGameService.DenySessionModeration(entry.CommandId.Value);
+                    
+                    // Refund credits if user ID exists
+                    if (!string.IsNullOrEmpty(entry.UserId))
+                    {
+                        AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                        ShowStatus($"Agentic code denied, session failed, ${Constants.CommandCost:F2} refunded", "success");
+                    }
+                    else
+                    {
+                        ShowStatus("Agentic code denied, session failed", "success");
+                    }
+                }
+                // Refund credits if there's a linked command (regular command)
+                else if (entry.CommandId.HasValue && !string.IsNullOrEmpty(entry.UserId))
+                {
+                    AccountService.AddCredits(entry.UserId, Constants.CommandCost);
+                    
+                    // Update the command status to Failed using UpdateCommand to fire events
+                    CommandQueue.UpdateCommand(
+                        entry.CommandId.Value,
+                        CommandStatus.Failed,
+                        aiResponse: $"❌ Your code was denied by a moderator. Reason: {entry.FilterReason}. Credits have been refunded.");
+                    
+                    ShowStatus($"Code denied and ${Constants.CommandCost:F2} refunded", "success");
+                }
+                else
+                {
+                    ShowStatus("Code denied", "success");
+                }
+            }
+            else
+            {
+                ShowStatus("Failed to deny code", "error");
+            }
+            
             await RefreshCode();
             await OnCodeProcessed.InvokeAsync();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to deny code: {ex.Message}");
+            ShowStatus($"Error: {ex.Message}", "error");
         }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+    
+    private void ShowStatus(string message, string type)
+    {
+        statusMessage = message;
+        statusType = type;
+        StateHasChanged();
+        
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(Constants.MessageDurations.Short);
+            await InvokeAsync(() =>
+            {
+                statusMessage = "";
+                StateHasChanged();
+            });
+        });
     }
     
     public void Dispose()

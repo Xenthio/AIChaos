@@ -1,4 +1,5 @@
 -- ai_chaos_controller.lua
+-- Workshop helpers are now in ai_chaos_workshop_helpers.lua
 
 if SERVER then
     -- Create the test client ConVar first (shared with ai_chaos_test_client.lua)
@@ -50,6 +51,13 @@ if SERVER then
         print("[AI Chaos] Server Initialized!")
         print("[AI Chaos] Polling endpoint: " .. SERVER_URL)
 
+    -- Track current map for level change detection
+    local currentMap = game.GetMap()
+    local isLevelChanging = false
+    
+    -- Forward declaration for ExecuteAICode (used by CheckPendingReruns)
+    local ExecuteAICode
+
     -- 1. Helper Function: Send code to client
     function RunOnClient(codeString)
         net.Start("AI_RunClientCode")
@@ -88,10 +96,84 @@ if SERVER then
             end
         })
     end
+    
+    -- Helper Function: Write shutdown timestamp to file
+    -- This is called during ShutDown - file writes are synchronous so they complete
+    local function WriteShutdownTimestamp()
+        local timestamp = os.time()
+        file.Write("ai_chaos_shutdown.txt", tostring(timestamp))
+        print("[AI Chaos] Shutdown timestamp written: " .. tostring(timestamp))
+    end
+    
+    -- Helper Function: Read and clear shutdown timestamp file
+    -- Returns the timestamp if found, nil otherwise
+    local function ReadAndClearShutdownTimestamp()
+        if file.Exists("ai_chaos_shutdown.txt", "DATA") then
+            local content = file.Read("ai_chaos_shutdown.txt", "DATA")
+            file.Delete("ai_chaos_shutdown.txt")
+            if content and content ~= "" then
+                local timestamp = tonumber(content)
+                if timestamp then
+                    print("[AI Chaos] Found shutdown timestamp: " .. tostring(timestamp))
+                    return timestamp
+                end
+            end
+        end
+        return nil
+    end
+    
+    -- Helper Function: Check for and execute pending re-runs after level load
+    local function CheckPendingReruns()
+        -- Check if there was a shutdown before this load
+        local shutdownTimestamp = ReadAndClearShutdownTimestamp()
+        
+        local rerunsUrl = BASE_URL .. "/pending-reruns"
+        local body = {}
+        
+        if shutdownTimestamp then
+            body.shutdown_timestamp = shutdownTimestamp
+            print("[AI Chaos] Sending shutdown timestamp to server: " .. tostring(shutdownTimestamp))
+        end
+        
+        HTTP({
+            method = "POST",
+            url = rerunsUrl,
+            body = util.TableToJSON(body),
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, responseBody, headers)
+                if code == 200 then
+                    local data = util.JSONToTable(responseBody)
+                    -- Note: ASP.NET Core uses camelCase by default (pendingReruns, not PendingReruns)
+                    local reruns = data and (data.pendingReruns or data.PendingReruns)
+                    if reruns and #reruns > 0 then
+                        print("[AI Chaos] " .. #reruns .. " command(s) to re-run after level load")
+                        for _, rerun in ipairs(reruns) do
+                            -- Schedule the re-run with the specified delay (camelCase: delaySeconds, commandId, code)
+                            local delay = rerun.delaySeconds or rerun.DelaySeconds or 5
+                            local cmdId = rerun.commandId or rerun.CommandId
+                            local cmdCode = rerun.code or rerun.Code
+                            timer.Simple(delay, function()
+                                print("[AI Chaos] Re-running command #" .. tostring(cmdId) .. " after level load")
+                                ExecuteAICode(cmdCode, cmdId)
+                            end)
+                        end
+                    else
+                        print("[AI Chaos] No pending re-runs")
+                    end
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] Failed to check pending reruns: " .. tostring(err))
+            end
+        })
+    end
 
     -- 2. Helper Function: Run the code safely using CompileString + pcall for proper error messages
     -- This approach captures both syntax errors (from CompileString) and runtime errors (from pcall)
-    local function ExecuteAICode(code, commandId)
+    ExecuteAICode = function(code, commandId)
         print("[AI Chaos] Running generated code...")
         
         -- Clear any previous captured data
@@ -139,6 +221,24 @@ if SERVER then
             ReportResult(commandId, false, errorMsg, capturedData)
         end
     end
+    
+    -- Hook for detecting level/map changes (fires when server is shutting down)
+    -- Just write timestamp to file - file writes are synchronous so they complete before exit
+    hook.Add("ShutDown", "AI_Chaos_LevelChange", function()
+        print("[AI Chaos] ShutDown hook fired - writing timestamp to file")
+        isLevelChanging = true
+        WriteShutdownTimestamp()
+    end)
+    
+    -- Check for pending re-runs when script loads (fires after map load/save load)
+    -- Use a 3-second delay to ensure the server has had time to process any previous commands
+    --timer.Simple(3, function()
+        print("[AI Chaos] Checking for pending re-runs after load...")
+        CheckPendingReruns()
+    --end)
+    
+    -- Track map for detecting changes in poll loop (backup detection)
+    local lastKnownMap = game.GetMap()
 
     -- Forward declaration
     local PollServer 

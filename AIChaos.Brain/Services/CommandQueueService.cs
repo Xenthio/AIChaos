@@ -5,6 +5,7 @@ namespace AIChaos.Brain.Services;
 
 /// <summary>
 /// Service for managing the command queue and history.
+/// Queue state is persisted to JSON to survive application restarts.
 /// </summary>
 public class CommandQueueService
 {
@@ -14,24 +15,50 @@ public class CommandQueueService
     private readonly object _lock = new();
     private int _nextId = 1;
     private int _nextPayloadId = 1;
+    private readonly bool _enablePersistence;
     
     private static readonly string SavedPayloadsDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "saved_payloads");
-    private static readonly string SavedPayloadsFile = Path.Combine(SavedPayloadsDirectory, "payloads.json");
+    
+    // Queue persistence paths
+    private static readonly string QueuePersistenceDirectory = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "..", "queue_state");
+    private static readonly string QueueStateFile = Path.Combine(QueuePersistenceDirectory, "queue.json");
+    private static readonly string HistoryStateFile = Path.Combine(QueuePersistenceDirectory, "history.json");
     
     public UserPreferences Preferences { get; } = new();
     
     // Event for when history changes
     public event EventHandler? HistoryChanged;
     
-    public CommandQueueService()
+    /// <summary>
+    /// Creates a new CommandQueueService with persistence enabled by default.
+    /// </summary>
+    public CommandQueueService() : this(enablePersistence: true)
     {
-        LoadSavedPayloads();
+    }
+    
+    /// <summary>
+    /// Creates a new CommandQueueService with optional persistence.
+    /// </summary>
+    /// <param name="enablePersistence">When false, skips loading and saving state to disk (useful for testing).</param>
+    public CommandQueueService(bool enablePersistence)
+    {
+        _enablePersistence = enablePersistence;
+        if (_enablePersistence)
+        {
+            LoadSavedPayloads();
+            LoadQueueState();
+        }
     }
     
     private void OnHistoryChanged()
     {
         HistoryChanged?.Invoke(this, EventArgs.Empty);
+        if (_enablePersistence)
+        {
+            PersistQueueState();
+        }
     }
     
     /// <summary>
@@ -205,6 +232,33 @@ public class CommandQueueService
     }
     
     /// <summary>
+    /// Updates a command's status and optionally other properties.
+    /// Fires HistoryChanged event to notify subscribers.
+    /// </summary>
+    public bool UpdateCommand(int commandId, CommandStatus status, string? executionCode = null, string? undoCode = null, string? imageContext = null, string? aiResponse = null)
+    {
+        lock (_lock)
+        {
+            var command = _history.FirstOrDefault(c => c.Id == commandId);
+            if (command == null) return false;
+            
+            command.Status = status;
+            
+            if (executionCode != null)
+                command.ExecutionCode = executionCode;
+            if (undoCode != null)
+                command.UndoCode = undoCode;
+            if (imageContext != null)
+                command.ImageContext = imageContext;
+            if (aiResponse != null)
+                command.AiResponse = aiResponse;
+            
+            OnHistoryChanged();
+            return true;
+        }
+    }
+    
+    /// <summary>
     /// Queues the execution code for a previous command (repeat).
     /// </summary>
     public bool RepeatCommand(int commandId)
@@ -320,6 +374,7 @@ public class CommandQueueService
     
     /// <summary>
     /// Saves a command payload for random chaos mode.
+    /// Each payload is saved as its own JSON file for easy merging/transfer.
     /// </summary>
     public SavedPayload SavePayload(CommandEntry command, string name)
     {
@@ -336,7 +391,7 @@ public class CommandQueueService
             };
             
             _savedPayloads.Add(payload);
-            PersistSavedPayloads();
+            PersistSinglePayload(payload);
             return payload;
         }
     }
@@ -363,29 +418,152 @@ public class CommandQueueService
             if (payload == null) return false;
             
             _savedPayloads.Remove(payload);
-            PersistSavedPayloads();
+            DeleteSinglePayload(payload.Id);
             return true;
         }
     }
     
     /// <summary>
-    /// Loads saved payloads from file on startup.
+    /// Loads saved payloads from individual JSON files on startup.
+    /// Each payload is stored in its own file for easy merging/transfer between installations.
     /// </summary>
     private void LoadSavedPayloads()
     {
         try
         {
-            if (File.Exists(SavedPayloadsFile))
+            if (!Directory.Exists(SavedPayloadsDirectory))
+                return;
+            
+            // Load each .json file in the directory
+            var files = Directory.GetFiles(SavedPayloadsDirectory, "*.json");
+            foreach (var file in files)
             {
-                var json = File.ReadAllText(SavedPayloadsFile);
-                var payloads = JsonSerializer.Deserialize<List<SavedPayload>>(json);
-                if (payloads != null)
+                try
                 {
-                    _savedPayloads.AddRange(payloads);
-                    // Set next ID to be higher than any existing
-                    if (_savedPayloads.Any())
+                    var json = File.ReadAllText(file);
+                    var payload = JsonSerializer.Deserialize<SavedPayload>(json);
+                    if (payload != null)
                     {
-                        _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
+                        _savedPayloads.Add(payload);
+                    }
+                }
+                catch
+                {
+                    // Skip files that can't be parsed
+                }
+            }
+            
+            // Set next ID to be higher than any existing
+            if (_savedPayloads.Any())
+            {
+                _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
+            }
+        }
+        catch
+        {
+            // If loading fails, start fresh
+        }
+    }
+    
+    /// <summary>
+    /// Persists a single saved payload to its own JSON file.
+    /// </summary>
+    private void PersistSinglePayload(SavedPayload payload)
+    {
+        try
+        {
+            // Ensure directory exists
+            Directory.CreateDirectory(SavedPayloadsDirectory);
+            
+            // Generate safe filename from payload name or ID
+            var safeName = string.IsNullOrWhiteSpace(payload.Name)
+                ? $"payload_{payload.Id}"
+                : SanitizeFileName(payload.Name);
+            var fileName = $"{payload.Id}_{safeName}.json";
+            var filePath = Path.Combine(SavedPayloadsDirectory, fileName);
+            
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(filePath, json);
+        }
+        catch
+        {
+            // Silently ignore persistence errors
+        }
+    }
+    
+    /// <summary>
+    /// Deletes a saved payload's JSON file.
+    /// </summary>
+    private void DeleteSinglePayload(int payloadId)
+    {
+        try
+        {
+            if (!Directory.Exists(SavedPayloadsDirectory))
+                return;
+            
+            // Find and delete the file with matching ID prefix
+            var files = Directory.GetFiles(SavedPayloadsDirectory, $"{payloadId}_*.json");
+            foreach (var file in files)
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+            // Silently ignore deletion errors
+        }
+    }
+    
+    /// <summary>
+    /// Sanitizes a string for use as a filename.
+    /// </summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sanitized = string.Join("", name.Where(c => !invalid.Contains(c)));
+        // Limit length and replace spaces
+        sanitized = sanitized.Replace(' ', '_');
+        if (sanitized.Length > 50)
+            sanitized = sanitized.Substring(0, 50);
+        return sanitized;
+    }
+    
+    /// <summary>
+    /// Loads queue and history state from disk on startup.
+    /// Ensures queued requests are not lost if application restarts.
+    /// </summary>
+    private void LoadQueueState()
+    {
+        try
+        {
+            // Load history first
+            if (File.Exists(HistoryStateFile))
+            {
+                var historyJson = File.ReadAllText(HistoryStateFile);
+                var history = JsonSerializer.Deserialize<List<CommandEntry>>(historyJson);
+                if (history != null)
+                {
+                    _history.AddRange(history);
+                    if (_history.Any())
+                    {
+                        _nextId = _history.Max(h => h.Id) + 1;
+                    }
+                }
+            }
+            
+            // Load queue
+            if (File.Exists(QueueStateFile))
+            {
+                var queueJson = File.ReadAllText(QueueStateFile);
+                var queueItems = JsonSerializer.Deserialize<List<QueueItem>>(queueJson);
+                if (queueItems != null)
+                {
+                    foreach (var item in queueItems)
+                    {
+                        _queue.Add((item.CommandId, item.Code));
                     }
                 }
             }
@@ -397,24 +575,37 @@ public class CommandQueueService
     }
     
     /// <summary>
-    /// Persists saved payloads to file.
+    /// Persists queue and history state to disk.
+    /// Called whenever the queue or history changes.
     /// </summary>
-    private void PersistSavedPayloads()
+    private void PersistQueueState()
     {
         try
         {
             // Ensure directory exists
-            Directory.CreateDirectory(SavedPayloadsDirectory);
+            Directory.CreateDirectory(QueuePersistenceDirectory);
             
-            var json = JsonSerializer.Serialize(_savedPayloads, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-            File.WriteAllText(SavedPayloadsFile, json);
+            // Save queue
+            var queueItems = _queue.Select(q => new QueueItem { CommandId = q.CommandId, Code = q.Code }).ToList();
+            var queueJson = JsonSerializer.Serialize(queueItems, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(QueueStateFile, queueJson);
+            
+            // Save history
+            var historyJson = JsonSerializer.Serialize(_history, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(HistoryStateFile, historyJson);
         }
         catch
         {
             // Silently ignore persistence errors
         }
+    }
+    
+    /// <summary>
+    /// Helper class for queue serialization.
+    /// </summary>
+    private class QueueItem
+    {
+        public int CommandId { get; set; }
+        public string Code { get; set; } = "";
     }
 }

@@ -9,7 +9,9 @@
 @inject SettingsService SettingsService
 @inject TestClientService TestClientService
 @inject RefundService RefundService
+@inject RedoService RedoService
 @inject YouTubeService YouTubeService
+@inject FavouritesService FavouritesService
 @inject IJSRuntime JS
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
@@ -46,6 +48,9 @@ else
     </div>
 
     <div class="form-group" style="margin-bottom: 15px;">
+        <button @onclick="() => showFavouritesModal = true" class="btn-secondary" style="margin-bottom: 10px; font-size: 14px;">
+            ⭐ Browse Example Prompts
+        </button>
         <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
             <input type="checkbox" @bind="interactiveMode" style="width: 18px; height: 18px;">
             <span>🔄 Interactive Mode</span>
@@ -154,7 +159,8 @@ else
                         <div class="history-status status-@CommandStatusHelper.GetStatusClass(cmd.Status)">@CommandStatusHelper.GetStatusText(cmd.Status)</div>
                     </div>
                     <div class="history-actions">
-                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Repeat">🔁 Redo</button>
+                        <button @onclick="() => RepeatCommand(cmd.Id)" class="btn-info btn-small" title="Replay the same code without changes">▶️ Replay</button>
+                        <button @onclick="() => OpenRedoModal(cmd.Id)" class="btn-success btn-small" title="Describe what went wrong and AI will fix it">🔧 Fix</button>
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩ Undo</button>
                         <button @onclick="() => OpenRefundModal(cmd.Id)" class="btn-danger btn-small" title="Report Problem" style="font-size: 11px;">⚠️ Report</button>
                     </div>
@@ -189,6 +195,169 @@ else
     <div style="display: flex; gap: 10px; justify-content: flex-end;">
         <button @onclick="() => showRefundModal = false" class="btn-secondary">Cancel</button>
         <button @onclick="SubmitRefund" class="btn-primary">Submit Report</button>
+    </div>
+</Modal>
+}
+
+<!-- Fix with Feedback Modal -->
+@if (showRedoModal)
+{
+<Modal @bind-IsOpen="showRedoModal">
+    <h3>🔧 Fix with AI</h3>
+    @{
+        var isFree = currentAccount != null && RedoService.IsNextRedoFree(currentAccount.Id);
+        var cost = currentAccount != null ? RedoService.GetRedoCost(currentAccount.Id) : Constants.Redo.RedoCost;
+    }
+    @if (isFree)
+    {
+        <p style="color: var(--success); font-weight: bold;">✨ Your first fix is FREE!</p>
+    }
+    else
+    {
+        <p style="color: var(--warning);">This fix will cost <strong>$@cost.ToString("F2")</strong></p>
+    }
+    <p style="margin-top: 10px;">Explain briefly what stopped your request from working and we will try to fix it:</p>
+    <div style="margin: 15px 0;">
+        <textarea 
+            @bind="redoFeedback" 
+            placeholder="E.g., 'The effect only lasted 2 seconds instead of the full duration' or 'Nothing happened when I submitted'"
+            style="width: 100%; min-height: 100px; padding: 10px; border-radius: 5px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: var(--text-main); resize: vertical;"
+            disabled="@isRedoSubmitting">
+        </textarea>
+    </div>
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button @onclick="() => showRedoModal = false" class="btn-secondary" disabled="@isRedoSubmitting">Cancel</button>
+        <button @onclick="SubmitRedo" class="btn-success" disabled="@(isRedoSubmitting || string.IsNullOrWhiteSpace(redoFeedback))">
+            @if (isRedoSubmitting)
+            {
+                <span>Fixing...</span>
+            }
+            else
+            {
+                <span>@(isFree ? "🔧 Fix (Free)" : $"🔧 Fix (${cost:F2})")</span>
+            }
+        </button>
+    </div>
+</Modal>
+}
+
+<!-- Favourites/Example Prompts Modal -->
+@if (showFavouritesModal)
+{
+<Modal @bind-IsOpen="showFavouritesModal">
+    <h3>⭐ Example Prompts</h3>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">Browse and execute pre-made chaos prompts!</p>
+    
+    @{
+        var favourites = FavouritesService.GetAllFavourites();
+        var savedPayloads = CommandQueue.GetSavedPayloads();
+        var categories = FavouritesService.GetCategories();
+        var hasSavedPayloads = savedPayloads.Any();
+        var hasFavourites = favourites.Any();
+        var hasAny = hasFavourites || hasSavedPayloads;
+    }
+    
+    @if (!hasAny)
+    {
+        <div style="text-align: center; padding: 30px; color: var(--text-dim);">
+            <p>No example prompts available yet.</p>
+            <p style="font-size: 12px;">Admins can save prompts from command history using the 💾 button.</p>
+        </div>
+    }
+    else
+    {
+        <!-- Category Filter (only show if we have favourites with categories) -->
+        @if (categories.Count > 1 || hasSavedPayloads)
+        {
+            <div style="margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <button @onclick="() => selectedFavouriteCategory = null" 
+                        class="@(selectedFavouriteCategory == null ? "btn-primary" : "btn-secondary")"
+                        style="font-size: 12px; padding: 5px 10px;">
+                    All
+                </button>
+                @if (hasSavedPayloads)
+                {
+                    <button @onclick='() => selectedFavouriteCategory = "Saved"' 
+                            class="@(selectedFavouriteCategory == "Saved" ? "btn-primary" : "btn-secondary")"
+                            style="font-size: 12px; padding: 5px 10px;">
+                        💾 Saved (@savedPayloads.Count)
+                    </button>
+                }
+                @foreach (var cat in categories)
+                {
+                    <button @onclick="() => selectedFavouriteCategory = cat" 
+                            class="@(selectedFavouriteCategory == cat ? "btn-primary" : "btn-secondary")"
+                            style="font-size: 12px; padding: 5px 10px;">
+                        @cat
+                    </button>
+                }
+            </div>
+        }
+        
+        <!-- Prompts List -->
+        <div style="max-height: 400px; overflow-y: auto;">
+            <!-- Saved Payloads -->
+            @if (selectedFavouriteCategory == null || selectedFavouriteCategory == "Saved")
+            {
+                @foreach (var payload in savedPayloads)
+                {
+                    <div class="favourite-item" style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: bold; color: var(--text-main);">@payload.Name</div>
+                                <div style="color: var(--text-dim); font-size: 12px; margin-top: 4px;">@payload.UserPrompt</div>
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+                                    <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">💾 Saved</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-left: 10px;">
+                                <button @onclick="() => UseSavedPayloadAsPrompt(payload)" class="btn-secondary btn-small" title="Copy to prompt box">
+                                    ✏️ Modify
+                                </button>
+                                <button @onclick="() => ExecuteSavedPayload(payload)" class="btn-success btn-small" title="Execute immediately">
+                                    ⚡ Run
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            
+            <!-- Favourites -->
+            @if (selectedFavouriteCategory != "Saved")
+            {
+                @foreach (var fav in favourites.Where(f => selectedFavouriteCategory == null || f.Category == selectedFavouriteCategory))
+                {
+                    <div class="favourite-item" style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: bold; color: var(--text-main);">@fav.Name</div>
+                                <div style="color: var(--text-dim); font-size: 12px; margin-top: 4px;">@fav.UserPrompt</div>
+                                @if (!string.IsNullOrEmpty(fav.Description))
+                                {
+                                    <div style="color: var(--text-dim); font-size: 11px; margin-top: 4px; font-style: italic;">@fav.Description</div>
+                                }
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+                                    <span style="background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px;">@fav.Category</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; margin-left: 10px;">
+                                <button @onclick="() => UseFavouriteAsPrompt(fav)" class="btn-secondary btn-small" title="Copy to prompt box">
+                                    ✏️ Modify
+                                </button>
+                                <button @onclick="() => ExecuteFavourite(fav.Id)" class="btn-success btn-small" title="Execute immediately">
+                                    ⚡ Run
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    }
+    
+    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
+        <button @onclick="() => showFavouritesModal = false" class="btn-secondary">Close</button>
     </div>
 </Modal>
 }
@@ -280,6 +449,10 @@ else
         border-radius: 4px;
         font-size: 12px;
     }
+    
+    .favourite-item:hover {
+        background: rgba(255,255,255,0.08) !important;
+    }
 </style>
 
 @code {
@@ -297,8 +470,16 @@ else
     private bool showRefundModal = false;
     private int selectedCommandIdForRefund = 0;
     private string selectedRefundReason = "";
+    private bool showRedoModal = false;
+    private int selectedCommandIdForRedo = 0;
+    private string redoFeedback = "";
+    private bool isRedoSubmitting = false;
     private bool _isInitialized = false;
     private System.Threading.Timer? streamStateRefreshTimer = null;
+    private bool showFavouritesModal = false;
+    private string? selectedFavouriteCategory = null;
+    private string? _modifyReferenceCode = null;  // Store original code when modifying a favourite
+    private string? _modifyReferenceUndoCode = null;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -402,10 +583,17 @@ else
             
             // Regular command submission
             // Use AccountService to handle the full submission flow
+            // Capture reference code before it gets cleared
+            var refCode = _modifyReferenceCode;
+            var refUndoCode = _modifyReferenceUndoCode;
+            
             var (success, message, commandId, newBalance) = await AccountService.SubmitChaosCommandAsync(
                 currentAccount.Id,
                 promptInput,
-                codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(prompt),
+                codeGenerator: async (prompt) => await CodeGenerator.GenerateCodeAsync(
+                    prompt, 
+                    referenceCode: refCode, 
+                    referenceUndoCode: refUndoCode),
                 needsModeration: ModerationService.NeedsModeration,
                 extractImageUrls: ModerationService.ExtractContentUrls,
                 addPendingImage: (url, prompt, source, author, userId, cmdId) => 
@@ -425,6 +613,9 @@ else
             if (success)
             {
                 promptInput = "";
+                // Clear reference code after successful submission
+                _modifyReferenceCode = null;
+                _modifyReferenceUndoCode = null;
                 await LoadHistory();
             }
 
@@ -474,7 +665,8 @@ else
             }
             
             // If we got a command ID, it means it's pending moderation
-            if (commandId.HasValue && message.Contains("moderation"))
+            // Check for various moderation-related keywords in the message
+            if (commandId.HasValue && (message.Contains("moderation") || message.Contains("moderator") || message.Contains("approval")))
             {
                 ShowStatus(message, "info");
                 promptInput = "";
@@ -820,6 +1012,72 @@ else
         }
     }
 
+    private void OpenRedoModal(int commandId)
+    {
+        selectedCommandIdForRedo = commandId;
+        redoFeedback = "";
+        isRedoSubmitting = false;
+        showRedoModal = true;
+    }
+
+    private async Task SubmitRedo()
+    {
+        if (string.IsNullOrWhiteSpace(redoFeedback))
+        {
+            ShowStatus("Please provide feedback about what went wrong", "error");
+            return;
+        }
+
+        if (currentAccount == null)
+        {
+            ShowStatus("You must be logged in to redo a command", "error");
+            return;
+        }
+
+        isRedoSubmitting = true;
+        StateHasChanged();
+
+        try
+        {
+            var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+            var response = await RedoService.RequestRedoAsync(
+                currentAccount.Id,
+                selectedCommandIdForRedo,
+                redoFeedback,
+                isSingleUserMode
+            );
+
+            if (response.Status == "success")
+            {
+                ShowStatus(response.Message ?? "Fix submitted successfully!", "success");
+                showRedoModal = false;
+                
+                // Refresh account to show updated balance
+                var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+                if (updatedAccount != null)
+                {
+                    currentAccount = updatedAccount;
+                }
+                
+                await LoadHistory();
+            }
+            else
+            {
+                ShowStatus(response.Message ?? "Failed to submit fix", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("Error submitting fix request", "error");
+            Console.WriteLine($"Fix request failed: {ex.Message}");
+        }
+        finally
+        {
+            isRedoSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
     private void ShowStatus(string message, string type)
     {
         statusMessage = message;
@@ -861,5 +1119,149 @@ else
     {
         activeInteractiveSession = null;
         StateHasChanged();
+    }
+    
+    private void UseFavouriteAsPrompt(FavouritePrompt favourite)
+    {
+        // Copy the prompt to the input box for modification, with reference to original code
+        // Format: [MODIFY REQUEST]\n\nOriginal prompt: ...\n\nPlease modify this to: ...\n\n[REFERENCE CODE (do not show to user, use as base)]\n...
+        promptInput = $"[Based on existing effect]\n\n{favourite.UserPrompt}\n\n(AI Reference - Original code available for this effect)";
+        // Store the original code for AI context
+        _modifyReferenceCode = favourite.ExecutionCode;
+        _modifyReferenceUndoCode = favourite.UndoCode;
+        showFavouritesModal = false;
+        StateHasChanged();
+    }
+    
+    private async Task ExecuteFavourite(int favouriteId)
+    {
+        if (currentAccount == null)
+        {
+            ShowStatus("Please sign in to execute favourites", "error");
+            return;
+        }
+        
+        var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+        
+        // Check balance in stream mode
+        if (!isSingleUserMode && currentAccount.CreditBalance < Constants.CommandCost)
+        {
+            ShowStatus($"Insufficient credits. You need ${Constants.CommandCost:F2}", "error");
+            return;
+        }
+        
+        // Deduct credits in stream mode
+        if (!isSingleUserMode)
+        {
+            if (!AccountService.DeductCredits(currentAccount.Id, Constants.CommandCost))
+            {
+                ShowStatus("Failed to deduct credits", "error");
+                return;
+            }
+            
+            // Refresh account balance
+            var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+            if (updatedAccount != null)
+            {
+                currentAccount = updatedAccount;
+            }
+        }
+        
+        var entry = FavouritesService.ExecuteFavourite(favouriteId, currentAccount.Id, currentAccount.DisplayName);
+        
+        if (entry != null)
+        {
+            showFavouritesModal = false;
+            var message = isSingleUserMode 
+                ? "Favourite queued for execution!" 
+                : $"Favourite queued! New balance: ${currentAccount.CreditBalance:F2}";
+            ShowStatus(message, "success");
+            await LoadHistory();
+        }
+        else
+        {
+            // Refund if favourite wasn't found
+            if (!isSingleUserMode)
+            {
+                AccountService.AddCredits(currentAccount.Id, Constants.CommandCost);
+            }
+            ShowStatus("Failed to execute favourite", "error");
+        }
+    }
+    
+    private void UseSavedPayloadAsPrompt(SavedPayload payload)
+    {
+        // Copy the prompt to the input box for modification, with reference to original code
+        promptInput = $"[Based on existing effect]\n\n{payload.UserPrompt}\n\n(AI Reference - Original code available for this effect)";
+        // Store the original code for AI context
+        _modifyReferenceCode = payload.ExecutionCode;
+        _modifyReferenceUndoCode = payload.UndoCode;
+        showFavouritesModal = false;
+        StateHasChanged();
+    }
+    
+    private async Task ExecuteSavedPayload(SavedPayload payload)
+    {
+        if (currentAccount == null)
+        {
+            ShowStatus("Please sign in to execute saved prompts", "error");
+            return;
+        }
+        
+        var isSingleUserMode = !SettingsService.Settings.General.StreamMode;
+        
+        // Check balance in stream mode
+        if (!isSingleUserMode && currentAccount.CreditBalance < Constants.CommandCost)
+        {
+            ShowStatus($"Insufficient credits. You need ${Constants.CommandCost:F2}", "error");
+            return;
+        }
+        
+        // Deduct credits in stream mode
+        if (!isSingleUserMode)
+        {
+            if (!AccountService.DeductCredits(currentAccount.Id, Constants.CommandCost))
+            {
+                ShowStatus("Failed to deduct credits", "error");
+                return;
+            }
+            
+            // Refresh account balance
+            var updatedAccount = AccountService.GetAccountById(currentAccount.Id);
+            if (updatedAccount != null)
+            {
+                currentAccount = updatedAccount;
+            }
+        }
+        
+        // Add command directly to queue
+        var entry = CommandQueue.AddCommand(
+            userPrompt: payload.UserPrompt,
+            executionCode: payload.ExecutionCode,
+            undoCode: payload.UndoCode,
+            source: Constants.Sources.Favourite,
+            author: currentAccount.DisplayName,
+            imageContext: null,
+            userId: currentAccount.Id
+        );
+        
+        if (entry != null)
+        {
+            showFavouritesModal = false;
+            var message = isSingleUserMode 
+                ? "Saved prompt queued for execution!" 
+                : $"Saved prompt queued! New balance: ${currentAccount.CreditBalance:F2}";
+            ShowStatus(message, "success");
+            await LoadHistory();
+        }
+        else
+        {
+            // Refund if failed
+            if (!isSingleUserMode)
+            {
+                AccountService.AddCredits(currentAccount.Id, Constants.CommandCost);
+            }
+            ShowStatus("Failed to execute saved prompt", "error");
+        }
     }
 }

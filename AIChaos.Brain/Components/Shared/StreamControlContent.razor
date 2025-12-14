@@ -48,6 +48,7 @@
         
         <!-- Global History Panel -->
         <GlobalHistoryPanel 
+            @ref="historyPanelRef"
             OnStatusMessage="@HandleStatusMessage" 
             OnHistoryChanged="@StateHasChanged" />
     }
@@ -82,6 +83,9 @@
     private int pendingPromptCount = 0;
     private int pendingRefundCount = 0;
     private int pendingCodeCount = 0;
+    
+    // Component references
+    private GlobalHistoryPanel? historyPanelRef;
 
     protected override async Task OnInitializedAsync()
     {
@@ -155,6 +159,12 @@
         {
             var prompts = ModerationService.GetPendingPrompts();
             pendingPromptCount = prompts?.Count ?? 0;
+            
+            // Also refresh history panel to show status changes (e.g., PendingModeration -> Queued)
+            if (historyPanelRef != null)
+            {
+                await historyPanelRef.RefreshHistory();
+            }
         }
         catch (Exception ex)
         {

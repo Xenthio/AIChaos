@@ -82,6 +82,16 @@ public class CodeModerationService
             [@"gui\.OpenURL\s*\("] = "External URL opening (gui.OpenURL)",
             [@"steamworks\.OpenURL\s*\("] = "External URL opening (steamworks.OpenURL)",
             
+            // Workshop download functions - require moderation for external content
+            [@"steamworks\.Download\s*\("] = "Workshop download (steamworks.Download)",
+            [@"steamworks\.DownloadUGC\s*\("] = "Workshop download (steamworks.DownloadUGC)",
+            
+            // AI Chaos Workshop helper functions - require moderation for workshop content
+            [@"DownloadAndSpawnWorkshopModel\s*\("] = "Workshop model download/spawn",
+            [@"DownloadAndMountWorkshopAddon\s*\("] = "Workshop addon download/mount",
+            [@"DownloadAndGetWorkshopAssets\s*\("] = "Workshop assets download",
+            [@"DownloadAndGetWorkshopModel\s*\("] = "Workshop model download",
+            
             // Check for iframes with external sources
             [@"<iframe[^>]*src\s*=\s*[""']https?://"] = "External iframe detected",
             [@"iframe.*src.*http"] = "External iframe detected",
