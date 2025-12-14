@@ -114,8 +114,8 @@ namespace AIChaos.Brain.Migrations
                 name: "DonationRecords",
                 columns: table => new
                 {
-                    PendingChannelCreditsChannelId = table.Column<string>(type: "TEXT", nullable: false),
                     Id = table.Column<int>(type: "INTEGER", nullable: false),
+                    PendingChannelCreditsChannelId = table.Column<string>(type: "TEXT", nullable: false),
                     Timestamp = table.Column<DateTime>(type: "TEXT", nullable: false),
                     Amount = table.Column<decimal>(type: "TEXT", precision: 18, scale: 2, nullable: false),
                     Source = table.Column<string>(type: "TEXT", nullable: false),

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AIChaos.Brain.Migrations
 {
     [DbContext(typeof(AIChaosDbContext))]
-    [Migration("20251214065121_InitialCreate")]
+    [Migration("20251214205336_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />

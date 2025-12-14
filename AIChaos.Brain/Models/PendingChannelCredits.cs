@@ -32,6 +32,7 @@ public class PendingChannelCredits
 /// </summary>
 public class DonationRecord
 {
+    public int Id { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public decimal Amount { get; set; }
     public string Source { get; set; } = "superchat"; // superchat, membership, etc.
