@@ -68,6 +68,9 @@ builder.Services.AddSingleton<IOpenRouterService, OpenRouterService>();
 builder.Services.AddSingleton<OpenRouterService>(sp => (OpenRouterService)sp.GetRequiredService<IOpenRouterService>());
 builder.Services.AddSingleton<FavouritesService>();
 
+// Register DataMigrationService as scoped (needs DbContext)
+builder.Services.AddScoped<DataMigrationService>();
+
 // Configure log capture for admin viewing - use a factory to avoid BuildServiceProvider warning
 builder.Services.AddSingleton<ILoggerProvider>(sp => 
     new LogCaptureProvider(sp.GetRequiredService<LogCaptureService>()));
@@ -85,11 +88,15 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Initialize database (apply migrations)
+// Initialize database (apply migrations and migrate from JSON if needed)
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AIChaosDbContext>();
     dbContext.Database.Migrate();
+    
+    // Migrate data from JSON files if this is a first-time setup
+    var migrationService = scope.ServiceProvider.GetRequiredService<DataMigrationService>();
+    await migrationService.MigrateFromJsonIfNeededAsync();
 }
 
 // Handle X-Forwarded-Prefix from nginx for subdirectory deployment
