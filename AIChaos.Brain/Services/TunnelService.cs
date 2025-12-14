@@ -9,7 +9,7 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public partial class TunnelService : IDisposable
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly ILogger<TunnelService> _logger;
     private readonly HttpClient _httpClient;
     
@@ -21,7 +21,7 @@ public partial class TunnelService : IDisposable
     public string? PublicIp { get; private set; }
     
     public TunnelService(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         ILogger<TunnelService> logger,
         IHttpClientFactory httpClientFactory)
     {

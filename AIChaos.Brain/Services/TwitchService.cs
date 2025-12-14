@@ -14,7 +14,7 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public partial class TwitchService : IDisposable
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly ILogger<TwitchService> _logger;
@@ -26,7 +26,7 @@ public partial class TwitchService : IDisposable
     public string? ConnectedChannel { get; private set; }
     
     public TwitchService(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
         ILogger<TwitchService> logger)

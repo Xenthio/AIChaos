@@ -14,7 +14,7 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public partial class YouTubeService : IDisposable
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly AccountService _accountService;
@@ -36,7 +36,7 @@ public partial class YouTubeService : IDisposable
     public string? LiveChatId { get; private set; }
 
     public YouTubeService(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
         AccountService accountService,
