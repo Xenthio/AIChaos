@@ -42,8 +42,10 @@ builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChao
 
 // Configure Entity Framework Core with SQLite
 var dbPath = Path.Combine(AppContext.BaseDirectory, "aichaos.db");
+// Register DbContextFactory for singleton services (SettingsService, AccountService)
 builder.Services.AddDbContextFactory<AIChaosDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
+// Register DbContext for scoped services (DataMigrationService, controllers)
 builder.Services.AddDbContext<AIChaosDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 

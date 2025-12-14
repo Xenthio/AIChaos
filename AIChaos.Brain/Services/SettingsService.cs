@@ -17,6 +17,9 @@ public class SettingsService : ISettingsService
     private AppSettings _settings;
     private readonly object _lock = new();
     
+    // Settings is a singleton row in the database
+    private const int SINGLETON_SETTINGS_ID = 1;
+    
     public SettingsService(
         IDbContextFactory<AIChaosDbContext> dbContextFactory,
         ILogger<SettingsService> logger)
@@ -54,7 +57,7 @@ public class SettingsService : ISettingsService
             }
             
             _logger.LogInformation("No settings found in database, creating defaults");
-            var newSettings = new AppSettings { Id = 1 };
+            var newSettings = new AppSettings { Id = SINGLETON_SETTINGS_ID };
             context.Settings.Add(newSettings);
             context.SaveChanges();
             return newSettings;
@@ -62,12 +65,12 @@ public class SettingsService : ISettingsService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load settings from database, using defaults");
-            return new AppSettings { Id = 1 };
+            return new AppSettings { Id = SINGLETON_SETTINGS_ID };
         }
     }
     
     /// <summary>
-    /// Saves current settings to database.
+    /// Saves current settings to database using Update for proper upsert.
     /// </summary>
     public void SaveSettings()
     {
@@ -76,19 +79,8 @@ public class SettingsService : ISettingsService
             try
             {
                 using var context = _dbContextFactory.CreateDbContext();
-                var existing = context.Settings.Find(_settings.Id);
-                
-                if (existing != null)
-                {
-                    // Update existing
-                    context.Entry(existing).CurrentValues.SetValues(_settings);
-                }
-                else
-                {
-                    // Add new
-                    context.Settings.Add(_settings);
-                }
-                
+                // Use Update which handles both insert and update scenarios
+                context.Settings.Update(_settings);
                 context.SaveChanges();
                 _logger.LogInformation("Settings saved to database");
             }
