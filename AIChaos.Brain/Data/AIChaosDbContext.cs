@@ -59,7 +59,11 @@ public class AIChaosDbContext : DbContext
         {
             entity.HasKey(p => p.ChannelId);
             entity.Property(p => p.PendingBalance).HasPrecision(18, 2);
-            entity.OwnsMany(p => p.Donations);
+            entity.OwnsMany(p => p.Donations, d =>
+            {
+                d.ToTable("DonationRecords");
+                d.Property(dr => dr.Amount).HasPrecision(18, 2);
+            });
         });
     }
 }
