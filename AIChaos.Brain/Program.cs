@@ -1,8 +1,10 @@
 using AIChaos.Brain.Models;
 using AIChaos.Brain.Services;
 using AIChaos.Brain.Components;
+using AIChaos.Brain.Data;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +39,11 @@ builder.Services.AddRazorComponents()
 
 // Configure settings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChaos"));
+
+// Configure Entity Framework Core with SQLite
+var dbPath = Path.Combine(AppContext.BaseDirectory, "aichaos.db");
+builder.Services.AddDbContext<AIChaosDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
 
 // Register services as singletons
 builder.Services.AddSingleton<LogCaptureService>();
@@ -77,6 +84,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Initialize database (apply migrations)
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AIChaosDbContext>();
+    dbContext.Database.Migrate();
+}
 
 // Handle X-Forwarded-Prefix from nginx for subdirectory deployment
 // This MUST be before UseForwardedHeaders and other middleware
