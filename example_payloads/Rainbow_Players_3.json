@@ -1,0 +1,8 @@
+{
+  "Id": 3,
+  "Name": "Rainbow Players",
+  "UserPrompt": "make all players rainbow colored",
+  "ExecutionCode": "timer.Create(\"rainbow_players\", 0.1, 0, function()\n    for k,v in pairs(player.GetAll()) do\n        v:SetColor(Color(math.random(255), math.random(255), math.random(255)))\n    end\nend)",
+  "UndoCode": "timer.Remove(\"rainbow_players\")\nfor k,v in pairs(player.GetAll()) do\n    v:SetColor(Color(255, 255, 255))\nend",
+  "SavedAt": "2024-12-15T03:10:00Z"
+}

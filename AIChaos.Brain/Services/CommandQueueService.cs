@@ -336,7 +336,7 @@ public class CommandQueueService
             };
             
             _savedPayloads.Add(payload);
-            PersistSavedPayloads();
+            PersistSinglePayload(payload);
             return payload;
         }
     }
@@ -363,30 +363,50 @@ public class CommandQueueService
             if (payload == null) return false;
             
             _savedPayloads.Remove(payload);
-            PersistSavedPayloads();
+            DeletePayloadFile(payload);
             return true;
         }
     }
     
     /// <summary>
-    /// Loads saved payloads from file on startup.
+    /// Loads saved payloads from files on startup.
+    /// Migrates from old payloads.json format if it exists.
     /// </summary>
     private void LoadSavedPayloads()
     {
         try
         {
+            // Check for old format (single payloads.json file) and migrate
             if (File.Exists(SavedPayloadsFile))
             {
-                var json = File.ReadAllText(SavedPayloadsFile);
-                var payloads = JsonSerializer.Deserialize<List<SavedPayload>>(json);
-                if (payloads != null)
+                MigrateFromSingleFile();
+            }
+            
+            // Load all individual payload files
+            if (Directory.Exists(SavedPayloadsDirectory))
+            {
+                var files = Directory.GetFiles(SavedPayloadsDirectory, "*.json");
+                foreach (var file in files)
                 {
-                    _savedPayloads.AddRange(payloads);
-                    // Set next ID to be higher than any existing
-                    if (_savedPayloads.Any())
+                    try
                     {
-                        _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
+                        var json = File.ReadAllText(file);
+                        var payload = JsonSerializer.Deserialize<SavedPayload>(json);
+                        if (payload != null)
+                        {
+                            _savedPayloads.Add(payload);
+                        }
                     }
+                    catch
+                    {
+                        // Skip files that can't be parsed
+                    }
+                }
+                
+                // Set next ID to be higher than any existing
+                if (_savedPayloads.Any())
+                {
+                    _nextPayloadId = _savedPayloads.Max(p => p.Id) + 1;
                 }
             }
         }
@@ -397,24 +417,116 @@ public class CommandQueueService
     }
     
     /// <summary>
-    /// Persists saved payloads to file.
+    /// Migrates from the old single payloads.json file to individual files.
     /// </summary>
-    private void PersistSavedPayloads()
+    private void MigrateFromSingleFile()
+    {
+        try
+        {
+            var json = File.ReadAllText(SavedPayloadsFile);
+            var payloads = JsonSerializer.Deserialize<List<SavedPayload>>(json);
+            if (payloads != null && payloads.Any())
+            {
+                // Save each payload as an individual file
+                foreach (var payload in payloads)
+                {
+                    PersistSinglePayload(payload);
+                }
+            }
+            
+            // Delete the old file after successful migration
+            File.Delete(SavedPayloadsFile);
+        }
+        catch
+        {
+            // If migration fails, we'll just continue without it
+        }
+    }
+    
+    /// <summary>
+    /// Persists a single saved payload to its own file.
+    /// </summary>
+    private void PersistSinglePayload(SavedPayload payload)
     {
         try
         {
             // Ensure directory exists
             Directory.CreateDirectory(SavedPayloadsDirectory);
             
-            var json = JsonSerializer.Serialize(_savedPayloads, new JsonSerializerOptions
+            // Create a filename from the payload name (sanitized)
+            var fileName = SanitizeFileName(payload.Name);
+            var filePath = Path.Combine(SavedPayloadsDirectory, $"{fileName}_{payload.Id}.json");
+            
+            var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
-            File.WriteAllText(SavedPayloadsFile, json);
+            File.WriteAllText(filePath, json);
         }
         catch
         {
             // Silently ignore persistence errors
         }
+    }
+    
+    /// <summary>
+    /// Deletes the file for a saved payload.
+    /// </summary>
+    private void DeletePayloadFile(SavedPayload payload)
+    {
+        try
+        {
+            if (Directory.Exists(SavedPayloadsDirectory))
+            {
+                // Find the file that matches this payload ID
+                var files = Directory.GetFiles(SavedPayloadsDirectory, $"*_{payload.Id}.json");
+                foreach (var file in files)
+                {
+                    File.Delete(file);
+                }
+            }
+        }
+        catch
+        {
+            // Silently ignore deletion errors
+        }
+    }
+    
+    /// <summary>
+    /// Sanitizes a filename by removing invalid characters.
+    /// </summary>
+    private string SanitizeFileName(string fileName)
+    {
+        // Get standard invalid characters plus some additional ones for safety
+        var invalidChars = new HashSet<char>(Path.GetInvalidFileNameChars());
+        // Add additional characters that might cause issues
+        invalidChars.Add(':');
+        invalidChars.Add('/');
+        invalidChars.Add('\\');
+        invalidChars.Add('<');
+        invalidChars.Add('>');
+        invalidChars.Add('"');
+        invalidChars.Add('|');
+        invalidChars.Add('?');
+        invalidChars.Add('*');
+        
+        var sanitized = new string(fileName
+            .Select(c => invalidChars.Contains(c) ? '_' : c)
+            .ToArray());
+        
+        // Limit length and trim whitespace
+        sanitized = sanitized.Trim();
+        if (sanitized.Length > 50)
+        {
+            sanitized = sanitized.Substring(0, 50);
+        }
+        
+        // Replace multiple underscores with single underscore
+        while (sanitized.Contains("__"))
+        {
+            sanitized = sanitized.Replace("__", "_");
+        }
+        
+        return string.IsNullOrWhiteSpace(sanitized) ? "payload" : sanitized;
     }
 }

@@ -1,0 +1,8 @@
+{
+  "Id": 2,
+  "Name": "Change Gravity",
+  "UserPrompt": "set gravity to low",
+  "ExecutionCode": "RunConsoleCommand(\"sv_gravity\", \"200\")",
+  "UndoCode": "RunConsoleCommand(\"sv_gravity\", \"600\")",
+  "SavedAt": "2024-12-15T03:05:00Z"
+}

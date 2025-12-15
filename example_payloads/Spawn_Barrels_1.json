@@ -1,0 +1,8 @@
+{
+  "Id": 1,
+  "Name": "Spawn Barrels",
+  "UserPrompt": "spawn 10 explosive barrels",
+  "ExecutionCode": "for i=1,10 do\n    local ent = ents.Create(\"prop_physics\")\n    ent:SetModel(\"models/props_c17/oildrum001_explosive.mdl\")\n    local ply = player.GetAll()[1]\n    if IsValid(ply) then\n        ent:SetPos(ply:GetPos() + Vector(0, 0, 100) + VectorRand() * 200)\n    end\n    ent:Spawn()\nend",
+  "UndoCode": "for k,v in pairs(ents.FindByClass(\"prop_physics\")) do\n    if v:GetModel() == \"models/props_c17/oildrum001_explosive.mdl\" then\n        v:Remove()\n    end\nend",
+  "SavedAt": "2024-12-15T03:00:00Z"
+}

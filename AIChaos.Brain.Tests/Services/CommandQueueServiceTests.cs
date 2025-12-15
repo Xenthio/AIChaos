@@ -3,8 +3,38 @@ using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Tests.Services;
 
-public class CommandQueueServiceTests
+public class CommandQueueServiceTests : IDisposable
 {
+    private static readonly string TestSavedPayloadsDirectory = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "..", "saved_payloads");
+
+    public CommandQueueServiceTests()
+    {
+        // Clean up before each test
+        CleanupSavedPayloads();
+    }
+
+    public void Dispose()
+    {
+        // Clean up after each test
+        CleanupSavedPayloads();
+    }
+
+    private void CleanupSavedPayloads()
+    {
+        try
+        {
+            if (Directory.Exists(TestSavedPayloadsDirectory))
+            {
+                Directory.Delete(TestSavedPayloadsDirectory, true);
+            }
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+    }
+
     [Fact]
     public void CommandQueueService_Constructor_InitializesEmpty()
     {
@@ -254,5 +284,141 @@ public class CommandQueueServiceTests
         Assert.Equal(1, entry1.Id);
         Assert.Equal(2, entry2.Id);
         Assert.Equal(3, entry3.Id);
+    }
+
+    [Fact]
+    public void SavePayload_CreatesPayload()
+    {
+        // Arrange
+        var service = new CommandQueueService();
+        var entry = service.AddCommand("test prompt", "execution code", "undo code");
+
+        // Act
+        var payload = service.SavePayload(entry, "Test Payload");
+
+        // Assert
+        Assert.NotNull(payload);
+        Assert.Equal("Test Payload", payload.Name);
+        Assert.Equal("test prompt", payload.UserPrompt);
+        Assert.Equal("execution code", payload.ExecutionCode);
+        Assert.Equal("undo code", payload.UndoCode);
+    }
+
+    [Fact]
+    public void GetSavedPayloads_ReturnsAllPayloads()
+    {
+        // Arrange
+        var service = new CommandQueueService();
+        var entry1 = service.AddCommand("first", "code1", "undo1");
+        var entry2 = service.AddCommand("second", "code2", "undo2");
+
+        // Act
+        service.SavePayload(entry1, "Payload 1");
+        service.SavePayload(entry2, "Payload 2");
+        var payloads = service.GetSavedPayloads();
+
+        // Assert
+        Assert.Equal(2, payloads.Count);
+        Assert.Contains(payloads, p => p.Name == "Payload 1");
+        Assert.Contains(payloads, p => p.Name == "Payload 2");
+    }
+
+    [Fact]
+    public void LoadSavedPayloads_MigratesFromOldFormat()
+    {
+        // Arrange - Create old format file
+        Directory.CreateDirectory(TestSavedPayloadsDirectory);
+        var oldFormatFile = Path.Combine(TestSavedPayloadsDirectory, "payloads.json");
+        var oldPayloads = new List<SavedPayload>
+        {
+            new SavedPayload 
+            { 
+                Id = 1, 
+                Name = "Old Payload 1", 
+                UserPrompt = "prompt1", 
+                ExecutionCode = "code1", 
+                UndoCode = "undo1" 
+            },
+            new SavedPayload 
+            { 
+                Id = 2, 
+                Name = "Old Payload 2", 
+                UserPrompt = "prompt2", 
+                ExecutionCode = "code2", 
+                UndoCode = "undo2" 
+            }
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(oldPayloads, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        File.WriteAllText(oldFormatFile, json);
+
+        // Act - Create service which should trigger migration
+        var service = new CommandQueueService();
+        var payloads = service.GetSavedPayloads();
+
+        // Assert
+        Assert.Equal(2, payloads.Count);
+        Assert.Contains(payloads, p => p.Name == "Old Payload 1");
+        Assert.Contains(payloads, p => p.Name == "Old Payload 2");
+        
+        // Verify old file is deleted
+        Assert.False(File.Exists(oldFormatFile));
+        
+        // Verify individual files were created
+        var files = Directory.GetFiles(TestSavedPayloadsDirectory, "*.json");
+        Assert.Equal(2, files.Length);
+    }
+
+    [Fact]
+    public void SavedPayload_FilesHaveSanitizedNames()
+    {
+        // Arrange
+        var service = new CommandQueueService();
+        var entry = service.AddCommand("Test / Invalid : Chars", "code", "undo");
+
+        // Act
+        var payload = service.SavePayload(entry, "Test / Invalid : Chars");
+
+        // Assert
+        var files = Directory.GetFiles(TestSavedPayloadsDirectory, "*.json");
+        Assert.Single(files);
+        
+        // File should have sanitized name (special chars replaced with _)
+        var fileName = Path.GetFileName(files[0]);
+        Assert.DoesNotContain("/", fileName);
+        Assert.DoesNotContain(":", fileName);
+        Assert.Contains("_", fileName);
+    }
+
+    [Fact]
+    public void DeletePayload_RemovesPayload()
+    {
+        // Arrange
+        var service = new CommandQueueService();
+        var entry = service.AddCommand("test", "code", "undo");
+        var payload = service.SavePayload(entry, "Test Payload");
+
+        // Act
+        var result = service.DeletePayload(payload.Id);
+        var payloads = service.GetSavedPayloads();
+
+        // Assert
+        Assert.True(result);
+        Assert.Empty(payloads);
+    }
+
+    [Fact]
+    public void DeletePayload_NonExistent_ReturnsFalse()
+    {
+        // Arrange
+        var service = new CommandQueueService();
+
+        // Act
+        var result = service.DeletePayload(999);
+
+        // Assert
+        Assert.False(result);
     }
 }

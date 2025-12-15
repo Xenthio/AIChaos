@@ -9,6 +9,10 @@ accounts.json
 pending_credits.json
 saved_payloads/
 
+# Test files
+test_payloads/
+test_migration.sh
+
 # .NET build artifacts
 bin/
 obj/
