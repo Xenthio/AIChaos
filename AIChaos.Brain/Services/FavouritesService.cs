@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using AIChaos.Brain.Models;
 
 namespace AIChaos.Brain.Services;
@@ -7,6 +8,7 @@ namespace AIChaos.Brain.Services;
 /// Service for managing favourite/example prompts.
 /// Allows admins to save favourite submissions that users can browse and execute.
 /// Reuses the existing SavedPayload model but adds category/tagging support.
+/// Each favourite is stored in a separate JSON file for easy sharing and merging.
 /// </summary>
 public class FavouritesService
 {
@@ -18,16 +20,31 @@ public class FavouritesService
     private readonly object _lock = new();
     private int _nextId = 1;
     
-    private static readonly string FavouritesDirectory = Path.Combine(
+    private readonly string _favouritesDirectory;
+    private readonly string _legacyFavouritesFile;
+    
+    private static readonly string DefaultFavouritesDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "favourites");
-    private static readonly string FavouritesFile = Path.Combine(FavouritesDirectory, "favourites.json");
 
     public FavouritesService(
         CommandQueueService commandQueue,
         ILogger<FavouritesService> logger)
+        : this(commandQueue, logger, DefaultFavouritesDirectory)
+    {
+    }
+
+    /// <summary>
+    /// Constructor that allows specifying a custom favourites directory (for testing).
+    /// </summary>
+    public FavouritesService(
+        CommandQueueService commandQueue,
+        ILogger<FavouritesService> logger,
+        string favouritesDirectory)
     {
         _commandQueue = commandQueue;
         _logger = logger;
+        _favouritesDirectory = favouritesDirectory;
+        _legacyFavouritesFile = Path.Combine(_favouritesDirectory, "favourites.json");
         LoadFavourites();
     }
 
@@ -63,7 +80,7 @@ public class FavouritesService
             };
             
             _favourites.Add(favourite);
-            PersistFavourites();
+            PersistFavourite(favourite);
             
             _logger.LogInformation("[Favourites] Added favourite '{Name}' (ID: {Id})", favourite.Name, favourite.Id);
             return favourite;
@@ -96,7 +113,7 @@ public class FavouritesService
             };
             
             _favourites.Add(favourite);
-            PersistFavourites();
+            PersistFavourite(favourite);
             
             _logger.LogInformation("[Favourites] Created favourite '{Name}' (ID: {Id})", favourite.Name, favourite.Id);
             return favourite;
@@ -121,6 +138,9 @@ public class FavouritesService
             if (favourite == null)
                 return false;
             
+            // Get old filename before updating (in case name changes)
+            var oldFilePath = GetFavouriteFilePath(favourite);
+            
             if (name != null) favourite.Name = name;
             if (userPrompt != null) favourite.UserPrompt = userPrompt;
             if (executionCode != null) favourite.ExecutionCode = executionCode;
@@ -128,7 +148,23 @@ public class FavouritesService
             if (category != null) favourite.Category = category;
             if (description != null) favourite.Description = description;
             
-            PersistFavourites();
+            // Get new filename after updating
+            var newFilePath = GetFavouriteFilePath(favourite);
+            
+            // If name changed, delete old file
+            if (oldFilePath != newFilePath && File.Exists(oldFilePath))
+            {
+                try
+                {
+                    File.Delete(oldFilePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Favourites] Failed to delete old file '{Path}' during rename", oldFilePath);
+                }
+            }
+            
+            PersistFavourite(favourite);
             return true;
         }
     }
@@ -144,8 +180,21 @@ public class FavouritesService
             if (favourite == null)
                 return false;
             
+            var filePath = GetFavouriteFilePath(favourite);
             _favourites.Remove(favourite);
-            PersistFavourites();
+            
+            // Delete the individual file
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Favourites] Failed to delete file '{Path}'", filePath);
+            }
             
             _logger.LogInformation("[Favourites] Deleted favourite '{Name}' (ID: {Id})", favourite.Name, id);
             return true;
@@ -231,20 +280,39 @@ public class FavouritesService
     {
         try
         {
-            if (File.Exists(FavouritesFile))
+            Directory.CreateDirectory(_favouritesDirectory);
+            
+            // Check for legacy single-file format and migrate if needed
+            if (File.Exists(_legacyFavouritesFile))
             {
-                var json = File.ReadAllText(FavouritesFile);
-                var loaded = JsonSerializer.Deserialize<List<FavouritePrompt>>(json);
-                if (loaded != null)
+                MigrateLegacyFormat();
+            }
+            
+            // Load all individual favourite files
+            var jsonFiles = Directory.GetFiles(_favouritesDirectory, "*.json");
+            foreach (var filePath in jsonFiles)
+            {
+                try
                 {
-                    _favourites.AddRange(loaded);
-                    if (_favourites.Any())
+                    var json = File.ReadAllText(filePath);
+                    var favourite = JsonSerializer.Deserialize<FavouritePrompt>(json);
+                    if (favourite != null)
                     {
-                        _nextId = _favourites.Max(f => f.Id) + 1;
+                        _favourites.Add(favourite);
                     }
-                    _logger.LogInformation("[Favourites] Loaded {Count} favourites from disk", _favourites.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Favourites] Failed to load favourite from '{Path}'", filePath);
                 }
             }
+            
+            if (_favourites.Any())
+            {
+                _nextId = _favourites.Max(f => f.Id) + 1;
+            }
+            
+            _logger.LogInformation("[Favourites] Loaded {Count} favourites from disk", _favourites.Count);
         }
         catch (Exception ex)
         {
@@ -252,21 +320,96 @@ public class FavouritesService
         }
     }
 
-    private void PersistFavourites()
+    /// <summary>
+    /// Migrates from legacy single-file format to individual files.
+    /// </summary>
+    private void MigrateLegacyFormat()
     {
         try
         {
-            Directory.CreateDirectory(FavouritesDirectory);
-            var json = JsonSerializer.Serialize(_favourites, new JsonSerializerOptions
+            var json = File.ReadAllText(_legacyFavouritesFile);
+            var legacyFavourites = JsonSerializer.Deserialize<List<FavouritePrompt>>(json);
+            
+            if (legacyFavourites != null && legacyFavourites.Count > 0)
             {
-                WriteIndented = true
-            });
-            File.WriteAllText(FavouritesFile, json);
+                _logger.LogInformation("[Favourites] Migrating {Count} favourites from legacy format", legacyFavourites.Count);
+                
+                foreach (var favourite in legacyFavourites)
+                {
+                    PersistFavourite(favourite);
+                }
+                
+                // Delete the legacy file after successful migration
+                File.Delete(_legacyFavouritesFile);
+                _logger.LogInformation("[Favourites] Migration complete, deleted legacy file");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Favourites] Failed to persist favourites to disk");
+            _logger.LogError(ex, "[Favourites] Failed to migrate legacy favourites file");
         }
+    }
+
+    /// <summary>
+    /// Persists a single favourite to its individual JSON file.
+    /// </summary>
+    private void PersistFavourite(FavouritePrompt favourite)
+    {
+        try
+        {
+            Directory.CreateDirectory(_favouritesDirectory);
+            var filePath = GetFavouriteFilePath(favourite);
+            var json = JsonSerializer.Serialize(favourite, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+            File.WriteAllText(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Favourites] Failed to persist favourite '{Name}' (ID: {Id})", favourite.Name, favourite.Id);
+        }
+    }
+
+    /// <summary>
+    /// Gets the file path for a favourite.
+    /// Uses ID and sanitized name for easy identification.
+    /// </summary>
+    private string GetFavouriteFilePath(FavouritePrompt favourite)
+    {
+        var sanitizedName = SanitizeFileName(favourite.Name);
+        // Limit the sanitized name to reasonable length
+        if (sanitizedName.Length > 50)
+        {
+            sanitizedName = sanitizedName[..50];
+        }
+        var fileName = $"{favourite.Id}_{sanitizedName}.json";
+        return Path.Combine(_favouritesDirectory, fileName);
+    }
+
+    /// <summary>
+    /// Sanitizes a string for use in a filename.
+    /// </summary>
+    private static string SanitizeFileName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "unnamed";
+        
+        // Replace spaces with underscores
+        var sanitized = name.Replace(' ', '_');
+        
+        // Remove invalid filename characters
+        var invalidChars = Path.GetInvalidFileNameChars();
+        sanitized = Regex.Replace(sanitized, $"[{Regex.Escape(new string(invalidChars))}]", "");
+        
+        // Remove consecutive underscores
+        sanitized = Regex.Replace(sanitized, "_+", "_");
+        
+        // Trim underscores from start and end
+        sanitized = sanitized.Trim('_');
+        
+        // If empty after sanitizing, return default
+        return string.IsNullOrWhiteSpace(sanitized) ? "unnamed" : sanitized.ToLowerInvariant();
     }
 }
 
