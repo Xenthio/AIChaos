@@ -288,10 +288,15 @@ public class FavouritesService
                 MigrateLegacyFormat();
             }
             
-            // Load all individual favourite files
+            // Load all individual favourite files (excluding legacy file if still present)
             var jsonFiles = Directory.GetFiles(_favouritesDirectory, "*.json");
+            var legacyFileName = Path.GetFileName(_legacyFavouritesFile);
             foreach (var filePath in jsonFiles)
             {
+                // Skip legacy file if it still exists (migration may have failed)
+                if (Path.GetFileName(filePath).Equals(legacyFileName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                    
                 try
                 {
                     var json = File.ReadAllText(filePath);
@@ -322,6 +327,7 @@ public class FavouritesService
 
     /// <summary>
     /// Migrates from legacy single-file format to individual files.
+    /// Only deletes the legacy file if all favourites are successfully migrated.
     /// </summary>
     private void MigrateLegacyFormat()
     {
@@ -334,14 +340,37 @@ public class FavouritesService
             {
                 _logger.LogInformation("[Favourites] Migrating {Count} favourites from legacy format", legacyFavourites.Count);
                 
+                var migratedCount = 0;
                 foreach (var favourite in legacyFavourites)
                 {
-                    PersistFavourite(favourite);
+                    try
+                    {
+                        PersistFavourite(favourite);
+                        migratedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "[Favourites] Failed to migrate favourite '{Name}' (ID: {Id})", favourite.Name, favourite.Id);
+                    }
                 }
                 
-                // Delete the legacy file after successful migration
+                // Only delete legacy file if all favourites were migrated
+                if (migratedCount == legacyFavourites.Count)
+                {
+                    File.Delete(_legacyFavouritesFile);
+                    _logger.LogInformation("[Favourites] Migration complete, deleted legacy file");
+                }
+                else
+                {
+                    _logger.LogWarning("[Favourites] Migration incomplete ({Migrated}/{Total}), keeping legacy file for safety", 
+                        migratedCount, legacyFavourites.Count);
+                }
+            }
+            else
+            {
+                // Empty legacy file, just delete it
                 File.Delete(_legacyFavouritesFile);
-                _logger.LogInformation("[Favourites] Migration complete, deleted legacy file");
+                _logger.LogInformation("[Favourites] Removed empty legacy favourites file");
             }
         }
         catch (Exception ex)
