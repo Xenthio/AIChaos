@@ -8,57 +8,85 @@ namespace AIChaos.Brain.Tests.Services;
 public class RedoServiceTests
 {
     private readonly Mock<ILogger<AccountService>> _accountLoggerMock;
+    private readonly Mock<ILogger<RedoService>> _redoLoggerMock;
+    private readonly Mock<ILogger<PromptModerationService>> _promptModerationLoggerMock;
+    private readonly Mock<ILogger<CodeModerationService>> _codeModerationLoggerMock;
+    private readonly Mock<ILogger<SettingsService>> _settingsLoggerMock;
     private readonly AccountService _accountService;
     private readonly CommandQueueService _commandQueue;
+    private readonly PromptModerationService _promptModerationService;
+    private readonly CodeModerationService _codeModerationService;
+    private readonly SettingsService _settingsService;
 
     public RedoServiceTests()
     {
         _accountLoggerMock = new Mock<ILogger<AccountService>>();
+        _redoLoggerMock = new Mock<ILogger<RedoService>>();
+        _promptModerationLoggerMock = new Mock<ILogger<PromptModerationService>>();
+        _codeModerationLoggerMock = new Mock<ILogger<CodeModerationService>>();
+        _settingsLoggerMock = new Mock<ILogger<SettingsService>>();
+        
         _accountService = new AccountService(_accountLoggerMock.Object);
         _commandQueue = new CommandQueueService(enablePersistence: false);
+        _settingsService = new SettingsService(_settingsLoggerMock.Object);
+        _promptModerationService = new PromptModerationService(_settingsService, _promptModerationLoggerMock.Object);
+        _codeModerationService = new CodeModerationService(_codeModerationLoggerMock.Object);
     }
 
     [Fact]
     public void Account_RedoCount_DefaultsToZero()
     {
         // Arrange
-        var (success, _, account) = _accountService.CreateAccount("testuser", "password123");
+        var username = "testuser_" + Guid.NewGuid();
+        var (success, _, account) = _accountService.CreateAccount(username, "password123");
         
         // Assert
         Assert.True(success);
         Assert.NotNull(account);
-        Assert.Equal(0, account.RedoCount);
+        if (account != null)
+        {
+            Assert.Equal(0, account.RedoCount);
+        }
     }
 
     [Fact]
     public void Account_FirstRedo_IsFree()
     {
         // Arrange
-        var (success, _, account) = _accountService.CreateAccount("testuser2", "password123");
+        var username = "testuser_" + Guid.NewGuid();
+        var (success, _, account) = _accountService.CreateAccount(username, "password123");
         Assert.True(success);
         Assert.NotNull(account);
 
-        // Act - First redo should be free (RedoCount == 0)
-        var isFree = account.RedoCount == 0;
+        if (account != null)
+        {
+            // Act - First redo should be free (RedoCount == 0)
+            var isFree = account.RedoCount == 0;
 
-        // Assert
-        Assert.True(isFree);
+            // Assert
+            Assert.True(isFree);
+        }
     }
 
     [Fact]
     public void Account_SubsequentRedo_CostsCredits()
     {
         // Arrange
-        var (success, _, account) = _accountService.CreateAccount("testuser3", "password123");
+        var username = "testuser_" + Guid.NewGuid();
+        var (success, _, account) = _accountService.CreateAccount(username, "password123");
         Assert.True(success);
         Assert.NotNull(account);
-        account.RedoCount = 1; // Simulate one redo used
+        
+        if (account != null)
+        {
+            account.RedoCount = 1; // Simulate one redo used
 
-        // Act - Second+ redo should cost credits
-        var isFree = account.RedoCount == 0;
+            // Act - Second+ redo should cost credits
+            var isFree = account.RedoCount == 0;
 
-        // Assert
-        Assert.False(isFree);
+            // Assert
+            Assert.False(isFree);
+        }
     }
 
     [Fact]
@@ -128,6 +156,78 @@ public class RedoServiceTests
     {
         // Assert
         Assert.Equal(10, Constants.Safety.MaxMovementBlockDurationSeconds);
+    }
+
+    [Fact]
+    public void PromptModerationService_DetectsUrlsInFeedback()
+    {
+        // Arrange
+        var feedback = "It didn't work. Try using this model: https://example.com/malicious.mdl";
+        
+        // Act
+        var needsModeration = _promptModerationService.NeedsModeration(feedback);
+        
+        // Assert
+        Assert.True(needsModeration, "Feedback containing URLs should be detected as needing moderation");
+    }
+
+    [Fact]
+    public void PromptModerationService_ExtractsUrlsFromFeedback()
+    {
+        // Arrange
+        var feedback = "The effect failed. Please use https://example.com/asset1.jpg and https://example.com/asset2.png";
+        
+        // Act
+        var urls = _promptModerationService.ExtractContentUrls(feedback);
+        
+        // Assert
+        Assert.Equal(2, urls.Count);
+        Assert.Contains("https://example.com/asset1.jpg", urls);
+        Assert.Contains("https://example.com/asset2.png", urls);
+    }
+
+    [Fact]
+    public void PromptModerationService_AllowsFeedbackWithoutUrls()
+    {
+        // Arrange
+        var feedback = "The effect only lasted 2 seconds instead of 10 seconds";
+        
+        // Act
+        var needsModeration = _promptModerationService.NeedsModeration(feedback);
+        
+        // Assert
+        Assert.False(needsModeration, "Clean feedback without URLs should not need moderation");
+    }
+
+    [Fact]
+    public void PromptModerationService_DetectsDiscordLinksInFeedback()
+    {
+        // Arrange
+        // Discord.gg links need the full http(s):// prefix to be detected by URL pattern
+        var feedback = "Join my Discord for better models: https://discord.gg/malicious";
+        
+        // Act
+        var urls = _promptModerationService.ExtractContentUrls(feedback);
+        
+        // Assert
+        Assert.NotEmpty(urls);
+        Assert.Contains("https://discord.gg/malicious", urls);
+    }
+
+    [Fact]
+    public void PromptModerationService_DetectsHttpLinks()
+    {
+        // Arrange
+        var feedback = "Use this: http://example.com/model.mdl (not https)";
+        
+        // Act
+        var needsModeration = _promptModerationService.NeedsModeration(feedback);
+        var urls = _promptModerationService.ExtractContentUrls(feedback);
+        
+        // Assert
+        Assert.True(needsModeration, "HTTP links should be detected");
+        Assert.Single(urls);
+        Assert.Contains("http://example.com/model.mdl", urls);
     }
 }
 

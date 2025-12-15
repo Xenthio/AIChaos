@@ -11,17 +11,23 @@ public class RedoService
     private readonly AccountService _accountService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
+    private readonly PromptModerationService _promptModerationService;
+    private readonly CodeModerationService _codeModerationService;
     private readonly ILogger<RedoService> _logger;
 
     public RedoService(
         AccountService accountService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
+        PromptModerationService promptModerationService,
+        CodeModerationService codeModerationService,
         ILogger<RedoService> logger)
     {
         _accountService = accountService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
+        _promptModerationService = promptModerationService;
+        _codeModerationService = codeModerationService;
         _logger = logger;
     }
 
@@ -86,6 +92,24 @@ public class RedoService
             };
         }
 
+        // Security check: Check if feedback contains URLs or external content that needs moderation
+        var feedbackNeedsModeration = _promptModerationService.NeedsModeration(feedback);
+        if (feedbackNeedsModeration)
+        {
+            var urls = _promptModerationService.ExtractContentUrls(feedback);
+            _logger.LogWarning(
+                "[FIX-SECURITY] User {Username} attempted to bypass moderation by including {Count} URL(s) in fix feedback for command #{CommandId}",
+                account.Username, urls.Count, commandId);
+            
+            return new RedoResponse
+            {
+                Status = "error",
+                Message = "Your feedback contains URLs or external links which are not allowed. Please describe the issue without including links.",
+                NewBalance = account.CreditBalance,
+                WasFree = false
+            };
+        }
+
         // Determine if this redo is free
         var isFree = account.RedoCount == 0;
         var cost = isFree ? 0 : Constants.Redo.RedoCost;
@@ -131,8 +155,62 @@ public class RedoService
 
         try
         {
-            var (executionCode, undoCode, _, _) = 
+            var (executionCode, undoCode, codeNeedsModeration, moderationReason) = 
                 await _codeGenerator.GenerateCodeAsync(feedbackPrompt);
+
+            // If the generated code contains filtered patterns, send to code moderation queue
+            if (codeNeedsModeration)
+            {
+                _logger.LogInformation(
+                    "[FIX-SECURITY] Generated code for fix by {Username} requires moderation. Reason: {Reason}",
+                    account.Username, moderationReason);
+                
+                // Create placeholder command with PendingModeration status
+                var placeholderCommand = _commandQueue.AddCommandWithStatus(
+                    userPrompt: originalCommand.UserPrompt,
+                    executionCode: "", // Will be set after approval
+                    undoCode: "",
+                    source: originalCommand.Source,
+                    author: originalCommand.Author,
+                    imageContext: originalCommand.ImageContext,
+                    userId: accountId,
+                    aiResponse: "⏳ Waiting for code moderation approval...",
+                    status: CommandStatus.PendingModeration,
+                    queueForExecution: false); // Don't queue yet
+                
+                // Add to code moderation queue
+                _codeModerationService.AddPendingCode(
+                    originalCommand.UserPrompt,
+                    executionCode,
+                    undoCode,
+                    moderationReason ?? "Filtered content detected",
+                    originalCommand.Source,
+                    originalCommand.Author,
+                    accountId,
+                    placeholderCommand.Id);
+                
+                // Mark as redo
+                placeholderCommand.IsRedo = true;
+                placeholderCommand.OriginalCommandId = commandId;
+                placeholderCommand.RedoFeedback = feedback;
+                
+                var updatedAccount = _accountService.GetAccountById(accountId);
+                
+                _logger.LogInformation(
+                    "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId} pending moderation. Free: {IsFree}", 
+                    account.Username, commandId, placeholderCommand.Id, isFree);
+                
+                return new RedoResponse
+                {
+                    Status = "success",
+                    Message = isFree 
+                        ? "Free fix submitted! The generated code requires moderator approval." 
+                        : $"Fix submitted! ${cost:F2} deducted. The generated code requires moderator approval.",
+                    NewCommandId = placeholderCommand.Id,
+                    NewBalance = updatedAccount?.CreditBalance ?? account.CreditBalance,
+                    WasFree = isFree
+                };
+            }
 
             // Create new command entry as a redo
             var newCommand = _commandQueue.AddCommand(
@@ -151,7 +229,7 @@ public class RedoService
             newCommand.OriginalCommandId = commandId;
             newCommand.RedoFeedback = feedback;
 
-            var updatedAccount = _accountService.GetAccountById(accountId);
+            var finalUpdatedAccount = _accountService.GetAccountById(accountId);
             
             _logger.LogInformation(
                 "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId}. Free: {IsFree}", 
@@ -164,7 +242,7 @@ public class RedoService
                     ? "Free fix submitted! Your next fix will cost credits." 
                     : $"Fix submitted! ${cost:F2} deducted.",
                 NewCommandId = newCommand.Id,
-                NewBalance = updatedAccount?.CreditBalance ?? account.CreditBalance,
+                NewBalance = finalUpdatedAccount?.CreditBalance ?? account.CreditBalance,
                 WasFree = isFree
             };
         }
