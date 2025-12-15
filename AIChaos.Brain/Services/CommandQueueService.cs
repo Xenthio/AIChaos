@@ -497,18 +497,15 @@ public class CommandQueueService
     /// </summary>
     private string SanitizeFileName(string fileName)
     {
-        // Get standard invalid characters plus some additional ones for safety
+        // Get standard invalid characters
         var invalidChars = new HashSet<char>(Path.GetInvalidFileNameChars());
-        // Add additional characters that might cause issues
-        invalidChars.Add(':');
-        invalidChars.Add('/');
-        invalidChars.Add('\\');
-        invalidChars.Add('<');
-        invalidChars.Add('>');
-        invalidChars.Add('"');
-        invalidChars.Add('|');
-        invalidChars.Add('?');
-        invalidChars.Add('*');
+        
+        // Add additional potentially problematic characters for cross-platform safety
+        // These may not be invalid on all systems but can cause issues
+        foreach (var c in new[] { ':', '/', '\\', '<', '>', '"', '|', '?', '*' })
+        {
+            invalidChars.Add(c);
+        }
         
         var sanitized = new string(fileName
             .Select(c => invalidChars.Contains(c) ? '_' : c)
@@ -521,11 +518,8 @@ public class CommandQueueService
             sanitized = sanitized.Substring(0, 50);
         }
         
-        // Replace multiple underscores with single underscore
-        while (sanitized.Contains("__"))
-        {
-            sanitized = sanitized.Replace("__", "_");
-        }
+        // Replace multiple underscores with single underscore using Regex
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, "_+", "_");
         
         return string.IsNullOrWhiteSpace(sanitized) ? "payload" : sanitized;
     }
