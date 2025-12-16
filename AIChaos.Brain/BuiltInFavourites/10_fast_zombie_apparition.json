@@ -1,0 +1,12 @@
+{
+  "Id": 10,
+  "Name": "Fast Zombie Apparition",
+  "UserPrompt": "spawn 20 fast zombies (npc_fastzombie) directly in front of the player all in the same spot, all playing the fast zombie charging sound (npc/fast_zombie/fz_scream1.wav) for about 80 ms and delete them, stopping the sounds immediately too, (stopsound in console).",
+  "ExecutionCode": "_G.ScareZombies = _G.ScareZombies or {}\n\nlocal ply = Entity(1)\nif IsValid(ply) then\n    local spawnPos = ply:EyePos() \u002B ply:GetForward() * 50\n    spawnPos.z = ply:GetPos().z -- Keep them on the same floor level as player mostly\n    \n    for i=1, 20 do\n        local z = ents.Create(\u0022npc_fastzombie\u0022)\n        if IsValid(z) then\n            z:SetPos(spawnPos)\n            z:SetAngles((ply:GetPos() - spawnPos):Angle())\n            z:Spawn()\n            z:Activate()\n            z:SetHealth(1) -- Just in case\n            -- Make them perform the scream\n            z:EmitSound(\u0022npc/fast_zombie/fz_scream1.wav\u0022, 100, 100)\n            table.insert(_G.ScareZombies, z)\n        end\n    end\n\n    timer.Create(\u0022FastZombieScareCleanup\u0022, 0.08, 1, function()\n        if _G.ScareZombies then\n            for _, v in pairs(_G.ScareZombies) do\n                if IsValid(v) then v:Remove() end\n            end\n            _G.ScareZombies = {}\n        end\n        RunOnClient[[ RunConsoleCommand(\u0022stopsound\u0022) ]]\n    end)\nend",
+  "UndoCode": "timer.Remove(\u0022FastZombieScareCleanup\u0022)\nif _G.ScareZombies then\n    for _, v in pairs(_G.ScareZombies) do\n        if IsValid(v) then v:Remove() end\n    end\n    _G.ScareZombies = {}\nend\nRunOnClient[[ RunConsoleCommand(\u0022stopsound\u0022) ]]",
+  "Category": "General",
+  "Description": null,
+  "SavedAt": "2025-12-16T03:46:42.7017712Z",
+  "OriginalCommandId": 263,
+  "IsBuiltIn": true
+}
