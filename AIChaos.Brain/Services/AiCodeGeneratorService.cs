@@ -141,6 +141,10 @@ public class AiCodeGeneratorService
            
         """;
     
+    // Note: GetSystemPromptBase is static and cannot pass logger to GetHudExamples.
+    // This is by design - HUD examples are included in every prompt, so file-not-found
+    // errors are expected in non-production environments and don't need per-call logging.
+    // Critical errors are still logged when GetHudFramework is called from instance methods.
     private static string GetSystemPromptBase() => $"""
         You are an expert Lua scripter for Garry's Mod (GLua). 
         You will receive a request from a livestream chat and the current map name. 
@@ -207,6 +211,10 @@ public class AiCodeGeneratorService
         """;
 
     // Unfiltered prompt for Private Discord Mode - no safety restrictions
+    // Note: GetPrivateDiscordModePromptBase is static and cannot pass logger to GetHudExamples.
+    // This is by design - HUD examples are included in every prompt, so file-not-found
+    // errors are expected in non-production environments and don't need per-call logging.
+    // Critical errors are still logged when GetHudFramework is called from instance methods.
     private static string GetPrivateDiscordModePromptBase() => $"""
         You are an expert Lua scripter for Garry's Mod (GLua). 
         You will receive a request and the current map name. 

@@ -689,6 +689,7 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             
             -- Draw VStack
             local base_height = 36 * scale
+            local stack_start_y
             
             -- Calculate actual base height for stacking
             if col.base_element and col.base_element.GetSize then
