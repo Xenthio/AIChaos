@@ -322,7 +322,7 @@ public class AiCodeGeneratorService
         if (_cachedHudExamples != null)
             return _cachedHudExamples;
 
-        var testLuaPath = GetLuaFilePath(Path.Combine("lua", "autorun", "test.lua"), logger);
+        var testLuaPath = GetLuaFilePath(Path.Combine("lua", "tests", "hudframeworktest.lua"), logger);
         
         if (testLuaPath != null)
         {
@@ -332,7 +332,7 @@ public class AiCodeGeneratorService
                 _cachedHudExamples = $"""
 
                     --- HUD FRAMEWORK EXAMPLES ---
-                    Below are examples from test.lua showing how to use the ChaosHUD framework to create native-looking UI elements:
+                    Below are examples from hudframeworktest.lua showing how to use the ChaosHUD framework to create native-looking UI elements:
                     
                     ```lua
                     {content}
