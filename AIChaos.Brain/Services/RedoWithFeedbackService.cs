@@ -92,6 +92,10 @@ public class RedoService
             };
         }
 
+        // Determine if this redo is free (needed for accurate error responses)
+        var isFree = account.RedoCount == 0;
+        var cost = isFree ? 0 : Constants.Redo.RedoCost;
+
         // Security check: Check if feedback contains URLs or external content that needs moderation
         var feedbackNeedsModeration = _promptModerationService.NeedsModeration(feedback);
         if (feedbackNeedsModeration)
@@ -104,15 +108,11 @@ public class RedoService
             return new RedoResponse
             {
                 Status = "error",
-                Message = "Your feedback contains URLs or external links which are not allowed. Please describe the issue without including links.",
+                Message = "Your feedback contains URLs or external links which are not allowed for security reasons. Please describe the issue in your own words without including links.",
                 NewBalance = account.CreditBalance,
-                WasFree = false
+                WasFree = isFree
             };
         }
-
-        // Determine if this redo is free
-        var isFree = account.RedoCount == 0;
-        var cost = isFree ? 0 : Constants.Redo.RedoCost;
 
         // Check credits if not free and not single user mode
         if (!isSingleUserMode && !isFree && account.CreditBalance < cost)
@@ -166,10 +166,13 @@ public class RedoService
                     account.Username, moderationReason);
                 
                 // Create placeholder command with PendingModeration status
+                // The placeholder uses empty execution/undo code because the actual generated code
+                // is stored in the moderation queue and will be applied to this command upon approval.
+                // This prevents unapproved code from being visible or executable while pending review.
                 var placeholderCommand = _commandQueue.AddCommandWithStatus(
                     userPrompt: originalCommand.UserPrompt,
                     executionCode: "", // Will be set after approval
-                    undoCode: "",
+                    undoCode: "", // Will be set after approval
                     source: originalCommand.Source,
                     author: originalCommand.Author,
                     imageContext: originalCommand.ImageContext,
@@ -178,7 +181,8 @@ public class RedoService
                     status: CommandStatus.PendingModeration,
                     queueForExecution: false); // Don't queue yet
                 
-                // Add to code moderation queue
+                // Add to code moderation queue with the actual generated code
+                // Upon approval, the code will be transferred from the queue to the placeholder command
                 _codeModerationService.AddPendingCode(
                     originalCommand.UserPrompt,
                     executionCode,
@@ -194,7 +198,7 @@ public class RedoService
                 placeholderCommand.OriginalCommandId = commandId;
                 placeholderCommand.RedoFeedback = feedback;
                 
-                var updatedAccount = _accountService.GetAccountById(accountId);
+                var accountAfterModeration = _accountService.GetAccountById(accountId);
                 
                 _logger.LogInformation(
                     "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId} pending moderation. Free: {IsFree}", 
@@ -207,7 +211,7 @@ public class RedoService
                         ? "Free fix submitted! The generated code requires moderator approval." 
                         : $"Fix submitted! ${cost:F2} deducted. The generated code requires moderator approval.",
                     NewCommandId = placeholderCommand.Id,
-                    NewBalance = updatedAccount?.CreditBalance ?? account.CreditBalance,
+                    NewBalance = accountAfterModeration?.CreditBalance ?? account.CreditBalance,
                     WasFree = isFree
                 };
             }
@@ -229,7 +233,7 @@ public class RedoService
             newCommand.OriginalCommandId = commandId;
             newCommand.RedoFeedback = feedback;
 
-            var finalUpdatedAccount = _accountService.GetAccountById(accountId);
+            var updatedAccount = _accountService.GetAccountById(accountId);
             
             _logger.LogInformation(
                 "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId}. Free: {IsFree}", 
@@ -242,7 +246,7 @@ public class RedoService
                     ? "Free fix submitted! Your next fix will cost credits." 
                     : $"Fix submitted! ${cost:F2} deducted.",
                 NewCommandId = newCommand.Id,
-                NewBalance = finalUpdatedAccount?.CreditBalance ?? account.CreditBalance,
+                NewBalance = updatedAccount?.CreditBalance ?? account.CreditBalance,
                 WasFree = isFree
             };
         }

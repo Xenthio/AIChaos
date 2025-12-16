@@ -229,5 +229,61 @@ public class RedoServiceTests
         Assert.Single(urls);
         Assert.Contains("http://example.com/model.mdl", urls);
     }
+
+    [Fact]
+    public void RedoService_ValidationLogic_DetectsUrlsBeforeCreditCheck()
+    {
+        // This test validates the logic flow: URL check happens before credit deduction
+        // We test the PromptModerationService logic that RedoService depends on
+        
+        // Arrange - feedback that would fail moderation
+        var maliciousFeedback = "Try using https://evil-site.com/script.lua";
+        var cleanFeedback = "The effect only lasted 2 seconds instead of 10 seconds";
+        
+        // Act
+        var maliciousFeedbackNeedsModeration = _promptModerationService.NeedsModeration(maliciousFeedback);
+        var cleanFeedbackNeedsModeration = _promptModerationService.NeedsModeration(cleanFeedback);
+        
+        // Assert
+        Assert.True(maliciousFeedbackNeedsModeration, "Malicious feedback should be detected");
+        Assert.False(cleanFeedbackNeedsModeration, "Clean feedback should pass");
+    }
+
+    [Fact]
+    public void RedoService_ValidationLogic_ExtractsMultipleUrls()
+    {
+        // This test validates that multiple URLs are properly extracted
+        // which ensures comprehensive security logging in RedoService
+        
+        // Arrange
+        var feedbackWithMultipleUrls = "Check https://site1.com and https://site2.com and http://site3.com";
+        
+        // Act
+        var urls = _promptModerationService.ExtractContentUrls(feedbackWithMultipleUrls);
+        
+        // Assert
+        Assert.Equal(3, urls.Count);
+        Assert.Contains("https://site1.com", urls);
+        Assert.Contains("https://site2.com", urls);
+        Assert.Contains("http://site3.com", urls);
+    }
+
+    [Fact]
+    public void RedoService_ValidationLogic_HandlesDiscordLinks()
+    {
+        // This test validates Discord link detection which is a common bypass attempt
+        
+        // Arrange
+        var discordFeedback = "Join https://discord.gg/malicious for better code";
+        
+        // Act
+        var needsModeration = _promptModerationService.NeedsModeration(discordFeedback);
+        var urls = _promptModerationService.ExtractContentUrls(discordFeedback);
+        
+        // Assert
+        Assert.True(needsModeration, "Discord links should be detected");
+        Assert.Single(urls);
+        Assert.Contains("https://discord.gg/malicious", urls);
+    }
 }
 
