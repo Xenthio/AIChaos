@@ -7,7 +7,7 @@ namespace AIChaos.Brain.Services;
 /// <summary>
 /// Service for managing favourite/example prompts.
 /// Allows admins to save favourite submissions that users can browse and execute.
-/// Reuses the existing SavedPayload model but adds category/tagging support.
+/// Supports both user favourites (editable) and built-in favourites (read-only, shipped with software).
 /// Each favourite is stored in a separate JSON file for easy sharing and merging.
 /// </summary>
 public class FavouritesService
@@ -20,33 +20,46 @@ public class FavouritesService
     private readonly object _lock = new();
     private int _nextId = 1;
     
-    private readonly string _favouritesDirectory;
+    private readonly string _userFavouritesDirectory;
+    private readonly string _builtInFavouritesDirectory;
     private readonly string _legacyFavouritesFile;
     
-    private static readonly string DefaultFavouritesDirectory = Path.Combine(
+    private static readonly string DefaultUserFavouritesDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "favourites");
+    
+    // Built-in favourites are stored in BuiltInFavourites folder in the project
+    // This folder is included in the published output and source control
+    private static readonly string DefaultBuiltInFavouritesDirectory = Path.Combine(
+        AppDomain.CurrentDomain.BaseDirectory, "BuiltInFavourites");
 
     public FavouritesService(
         CommandQueueService commandQueue,
         ILogger<FavouritesService> logger)
-        : this(commandQueue, logger, DefaultFavouritesDirectory)
+        : this(commandQueue, logger, DefaultUserFavouritesDirectory, DefaultBuiltInFavouritesDirectory)
     {
     }
 
     /// <summary>
-    /// Constructor that allows specifying a custom favourites directory (for testing).
+    /// Constructor that allows specifying custom directories (for testing).
     /// </summary>
     public FavouritesService(
         CommandQueueService commandQueue,
         ILogger<FavouritesService> logger,
-        string favouritesDirectory)
+        string userFavouritesDirectory,
+        string? builtInFavouritesDirectory = null)
     {
         _commandQueue = commandQueue;
         _logger = logger;
-        _favouritesDirectory = favouritesDirectory;
-        _legacyFavouritesFile = Path.Combine(_favouritesDirectory, "favourites.json");
+        _userFavouritesDirectory = userFavouritesDirectory;
+        _builtInFavouritesDirectory = builtInFavouritesDirectory ?? DefaultBuiltInFavouritesDirectory;
+        _legacyFavouritesFile = Path.Combine(_userFavouritesDirectory, "favourites.json");
         LoadFavourites();
     }
+    
+    /// <summary>
+    /// Gets the path to the built-in favourites directory.
+    /// </summary>
+    public string BuiltInFavouritesDirectory => _builtInFavouritesDirectory;
 
     /// <summary>
     /// Adds a command to favourites.
@@ -121,7 +134,7 @@ public class FavouritesService
     }
 
     /// <summary>
-    /// Updates an existing favourite.
+    /// Updates an existing favourite. Built-in favourites cannot be modified.
     /// </summary>
     public bool UpdateFavourite(
         int id,
@@ -137,6 +150,13 @@ public class FavouritesService
             var favourite = _favourites.FirstOrDefault(f => f.Id == id);
             if (favourite == null)
                 return false;
+            
+            // Built-in favourites cannot be modified
+            if (favourite.IsBuiltIn)
+            {
+                _logger.LogWarning("[Favourites] Cannot modify built-in favourite '{Name}' (ID: {Id})", favourite.Name, id);
+                return false;
+            }
             
             // Get old filename before updating (in case name changes)
             var oldFilePath = GetFavouriteFilePath(favourite);
@@ -170,7 +190,7 @@ public class FavouritesService
     }
 
     /// <summary>
-    /// Deletes a favourite.
+    /// Deletes a favourite. Built-in favourites cannot be deleted.
     /// </summary>
     public bool DeleteFavourite(int id)
     {
@@ -179,6 +199,13 @@ public class FavouritesService
             var favourite = _favourites.FirstOrDefault(f => f.Id == id);
             if (favourite == null)
                 return false;
+            
+            // Built-in favourites cannot be deleted
+            if (favourite.IsBuiltIn)
+            {
+                _logger.LogWarning("[Favourites] Cannot delete built-in favourite '{Name}' (ID: {Id})", favourite.Name, id);
+                return false;
+            }
             
             var filePath = GetFavouriteFilePath(favourite);
             _favourites.Remove(favourite);
@@ -197,6 +224,49 @@ public class FavouritesService
             }
             
             _logger.LogInformation("[Favourites] Deleted favourite '{Name}' (ID: {Id})", favourite.Name, id);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Transfers a user favourite to the built-in folder.
+    /// This makes it available in source control and published builds.
+    /// </summary>
+    public bool TransferToBuiltIn(int id)
+    {
+        lock (_lock)
+        {
+            var favourite = _favourites.FirstOrDefault(f => f.Id == id);
+            if (favourite == null)
+                return false;
+            
+            if (favourite.IsBuiltIn)
+            {
+                _logger.LogWarning("[Favourites] Favourite '{Name}' is already built-in", favourite.Name);
+                return false;
+            }
+            
+            // Get old user file path
+            var oldFilePath = GetFavouriteFilePath(favourite, isBuiltIn: false);
+            
+            // Mark as built-in and persist to built-in folder
+            favourite.IsBuiltIn = true;
+            PersistFavourite(favourite, isBuiltIn: true);
+            
+            // Delete the old user file
+            try
+            {
+                if (File.Exists(oldFilePath))
+                {
+                    File.Delete(oldFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Favourites] Failed to delete user file '{Path}' after transfer", oldFilePath);
+            }
+            
+            _logger.LogInformation("[Favourites] Transferred favourite '{Name}' (ID: {Id}) to built-in", favourite.Name, id);
             return true;
         }
     }
@@ -280,7 +350,68 @@ public class FavouritesService
     {
         try
         {
-            Directory.CreateDirectory(_favouritesDirectory);
+            // Load built-in favourites first (read-only, shipped with software)
+            LoadBuiltInFavourites();
+            
+            // Load user favourites (editable)
+            LoadUserFavourites();
+            
+            if (_favourites.Any())
+            {
+                _nextId = _favourites.Max(f => f.Id) + 1;
+            }
+            
+            var builtInCount = _favourites.Count(f => f.IsBuiltIn);
+            var userCount = _favourites.Count(f => !f.IsBuiltIn);
+            _logger.LogInformation("[Favourites] Loaded {Total} favourites ({BuiltIn} built-in, {User} user)", 
+                _favourites.Count, builtInCount, userCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Favourites] Failed to load favourites from disk");
+        }
+    }
+
+    private void LoadBuiltInFavourites()
+    {
+        try
+        {
+            if (!Directory.Exists(_builtInFavouritesDirectory))
+            {
+                _logger.LogDebug("[Favourites] Built-in favourites directory does not exist: {Path}", _builtInFavouritesDirectory);
+                return;
+            }
+            
+            var jsonFiles = Directory.GetFiles(_builtInFavouritesDirectory, "*.json");
+            foreach (var filePath in jsonFiles)
+            {
+                try
+                {
+                    var json = File.ReadAllText(filePath);
+                    var favourite = JsonSerializer.Deserialize<FavouritePrompt>(json);
+                    if (favourite != null)
+                    {
+                        favourite.IsBuiltIn = true; // Mark as built-in
+                        _favourites.Add(favourite);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Favourites] Failed to load built-in favourite from '{Path}'", filePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Favourites] Failed to load built-in favourites");
+        }
+    }
+
+    private void LoadUserFavourites()
+    {
+        try
+        {
+            Directory.CreateDirectory(_userFavouritesDirectory);
             
             // Check for legacy single-file format and migrate if needed
             if (File.Exists(_legacyFavouritesFile))
@@ -289,7 +420,7 @@ public class FavouritesService
             }
             
             // Load all individual favourite files (excluding legacy file if still present)
-            var jsonFiles = Directory.GetFiles(_favouritesDirectory, "*.json");
+            var jsonFiles = Directory.GetFiles(_userFavouritesDirectory, "*.json");
             var legacyFileName = Path.GetFileName(_legacyFavouritesFile);
             foreach (var filePath in jsonFiles)
             {
@@ -303,25 +434,19 @@ public class FavouritesService
                     var favourite = JsonSerializer.Deserialize<FavouritePrompt>(json);
                     if (favourite != null)
                     {
+                        favourite.IsBuiltIn = false; // Mark as user favourite
                         _favourites.Add(favourite);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[Favourites] Failed to load favourite from '{Path}'", filePath);
+                    _logger.LogWarning(ex, "[Favourites] Failed to load user favourite from '{Path}'", filePath);
                 }
             }
-            
-            if (_favourites.Any())
-            {
-                _nextId = _favourites.Max(f => f.Id) + 1;
-            }
-            
-            _logger.LogInformation("[Favourites] Loaded {Count} favourites from disk", _favourites.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[Favourites] Failed to load favourites from disk");
+            _logger.LogWarning(ex, "[Favourites] Failed to load user favourites");
         }
     }
 
@@ -382,12 +507,13 @@ public class FavouritesService
     /// <summary>
     /// Persists a single favourite to its individual JSON file.
     /// </summary>
-    private void PersistFavourite(FavouritePrompt favourite)
+    private void PersistFavourite(FavouritePrompt favourite, bool isBuiltIn = false)
     {
         try
         {
-            Directory.CreateDirectory(_favouritesDirectory);
-            var filePath = GetFavouriteFilePath(favourite);
+            var directory = isBuiltIn ? _builtInFavouritesDirectory : _userFavouritesDirectory;
+            Directory.CreateDirectory(directory);
+            var filePath = GetFavouriteFilePath(favourite, isBuiltIn);
             var json = JsonSerializer.Serialize(favourite, new JsonSerializerOptions
             {
                 WriteIndented = true
@@ -404,7 +530,7 @@ public class FavouritesService
     /// Gets the file path for a favourite.
     /// Uses ID and sanitized name for easy identification.
     /// </summary>
-    private string GetFavouriteFilePath(FavouritePrompt favourite)
+    private string GetFavouriteFilePath(FavouritePrompt favourite, bool isBuiltIn = false)
     {
         var sanitizedName = SanitizeFileName(favourite.Name);
         // Limit the sanitized name to reasonable length
@@ -413,7 +539,8 @@ public class FavouritesService
             sanitizedName = sanitizedName[..50];
         }
         var fileName = $"{favourite.Id}_{sanitizedName}.json";
-        return Path.Combine(_favouritesDirectory, fileName);
+        var directory = isBuiltIn ? _builtInFavouritesDirectory : _userFavouritesDirectory;
+        return Path.Combine(directory, fileName);
     }
 
     /// <summary>
@@ -456,4 +583,10 @@ public class FavouritePrompt
     public string? Description { get; set; }
     public DateTime SavedAt { get; set; } = DateTime.UtcNow;
     public int? OriginalCommandId { get; set; }
+    
+    /// <summary>
+    /// Whether this favourite is built-in (shipped with the software).
+    /// Built-in favourites are read-only and loaded from BuiltInFavourites folder.
+    /// </summary>
+    public bool IsBuiltIn { get; set; } = false;
 }

@@ -1,0 +1,3 @@
+# This folder contains built-in favourites that ship with the software.
+# Each .json file is a single favourite prompt that users can browse and execute.
+# To add new built-in favourites, add .json files here or use the "Make Built-In" feature in the dashboard.

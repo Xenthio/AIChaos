@@ -8,14 +8,17 @@ namespace AIChaos.Brain.Tests.Services;
 public class FavouritesServiceTests : IDisposable
 {
     private readonly string _testDirectory;
+    private readonly string _builtInDirectory;
     private readonly Mock<ILogger<FavouritesService>> _mockLogger;
     private readonly CommandQueueService _commandQueue;
 
     public FavouritesServiceTests()
     {
-        // Create a unique test directory for each test run
+        // Create unique test directories for each test run
         _testDirectory = Path.Combine(Path.GetTempPath(), $"favourites_test_{Guid.NewGuid()}");
+        _builtInDirectory = Path.Combine(Path.GetTempPath(), $"builtin_favourites_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDirectory);
+        Directory.CreateDirectory(_builtInDirectory);
         
         _mockLogger = new Mock<ILogger<FavouritesService>>();
         _commandQueue = new CommandQueueService(enablePersistence: false);
@@ -23,10 +26,14 @@ public class FavouritesServiceTests : IDisposable
 
     public void Dispose()
     {
-        // Clean up test directory
+        // Clean up test directories
         if (Directory.Exists(_testDirectory))
         {
             Directory.Delete(_testDirectory, true);
+        }
+        if (Directory.Exists(_builtInDirectory))
+        {
+            Directory.Delete(_builtInDirectory, true);
         }
     }
 
@@ -264,11 +271,120 @@ public class FavouritesServiceTests : IDisposable
         Assert.Contains("unnamed", files[0]);
     }
 
+    [Fact]
+    public void BuiltInFavourites_AreLoadedAndMarkedAsBuiltIn()
+    {
+        // Arrange - Create a built-in favourite file
+        var builtInFav = new FavouritePrompt { Id = 100, Name = "Built-In Test", UserPrompt = "test", ExecutionCode = "code", UndoCode = "undo" };
+        File.WriteAllText(
+            Path.Combine(_builtInDirectory, "100_built_in_test.json"),
+            System.Text.Json.JsonSerializer.Serialize(builtInFav)
+        );
+        
+        // Act
+        var service = CreateServiceWithTestDirectory();
+
+        // Assert
+        var favourites = service.GetAllFavourites();
+        Assert.Single(favourites);
+        Assert.True(favourites[0].IsBuiltIn);
+        Assert.Equal("Built-In Test", favourites[0].Name);
+    }
+
+    [Fact]
+    public void BuiltInFavourites_CannotBeDeleted()
+    {
+        // Arrange - Create a built-in favourite
+        var builtInFav = new FavouritePrompt { Id = 101, Name = "Cannot Delete", UserPrompt = "test", ExecutionCode = "code", UndoCode = "undo" };
+        File.WriteAllText(
+            Path.Combine(_builtInDirectory, "101_cannot_delete.json"),
+            System.Text.Json.JsonSerializer.Serialize(builtInFav)
+        );
+        var service = CreateServiceWithTestDirectory();
+        
+        // Act
+        var result = service.DeleteFavourite(101);
+
+        // Assert
+        Assert.False(result);
+        Assert.Single(service.GetAllFavourites());
+    }
+
+    [Fact]
+    public void BuiltInFavourites_CannotBeModified()
+    {
+        // Arrange - Create a built-in favourite
+        var builtInFav = new FavouritePrompt { Id = 102, Name = "Cannot Modify", UserPrompt = "test", ExecutionCode = "code", UndoCode = "undo" };
+        File.WriteAllText(
+            Path.Combine(_builtInDirectory, "102_cannot_modify.json"),
+            System.Text.Json.JsonSerializer.Serialize(builtInFav)
+        );
+        var service = CreateServiceWithTestDirectory();
+        
+        // Act
+        var result = service.UpdateFavourite(102, name: "New Name");
+
+        // Assert
+        Assert.False(result);
+        Assert.Equal("Cannot Modify", service.GetFavourite(102)?.Name);
+    }
+
+    [Fact]
+    public void TransferToBuiltIn_MovesFileAndMarksAsBuiltIn()
+    {
+        // Arrange
+        var service = CreateServiceWithTestDirectory();
+        var fav = service.CreateFavourite("User Fav", "prompt", "code", "undo");
+        Assert.False(fav.IsBuiltIn);
+        
+        // Act
+        var result = service.TransferToBuiltIn(fav.Id);
+
+        // Assert
+        Assert.True(result);
+        var updatedFav = service.GetFavourite(fav.Id);
+        Assert.NotNull(updatedFav);
+        Assert.True(updatedFav.IsBuiltIn);
+        
+        // User file should be gone, built-in file should exist
+        var userFiles = Directory.GetFiles(_testDirectory, "*.json");
+        var builtInFiles = Directory.GetFiles(_builtInDirectory, "*.json");
+        Assert.Empty(userFiles);
+        Assert.Single(builtInFiles);
+    }
+
+    [Fact]
+    public void BothUserAndBuiltInFavourites_LoadedTogether()
+    {
+        // Arrange - Create built-in favourite
+        var builtInFav = new FavouritePrompt { Id = 1, Name = "Built-In", UserPrompt = "test", ExecutionCode = "code", UndoCode = "undo", IsBuiltIn = true };
+        File.WriteAllText(
+            Path.Combine(_builtInDirectory, "1_built_in.json"),
+            System.Text.Json.JsonSerializer.Serialize(builtInFav)
+        );
+        
+        // Create user favourite
+        var userFav = new FavouritePrompt { Id = 2, Name = "User", UserPrompt = "test", ExecutionCode = "code", UndoCode = "undo" };
+        File.WriteAllText(
+            Path.Combine(_testDirectory, "2_user.json"),
+            System.Text.Json.JsonSerializer.Serialize(userFav)
+        );
+        
+        // Act
+        var service = CreateServiceWithTestDirectory();
+
+        // Assert
+        var favourites = service.GetAllFavourites();
+        Assert.Equal(2, favourites.Count);
+        Assert.Single(favourites.Where(f => f.IsBuiltIn));
+        Assert.Single(favourites.Where(f => !f.IsBuiltIn));
+    }
+
     /// <summary>
-    /// Creates a FavouritesService that uses the test directory for storage.
+    /// Creates a FavouritesService that uses the test directories for storage.
     /// </summary>
     private FavouritesService CreateServiceWithTestDirectory()
     {
-        return new FavouritesService(_commandQueue, _mockLogger.Object, _testDirectory);
+        return new FavouritesService(_commandQueue, _mockLogger.Object, _testDirectory, _builtInDirectory);
     }
 }
