@@ -62,6 +62,14 @@ function ChaosHUD.UpdateFonts()
         additive = true,
     } )
 
+    surface.CreateFont( "ChaosHUD_NumbersSmall", {
+        font = "Halflife2",
+        size = math.Round(16 * scale),
+        weight = 1000,
+        antialias = true,
+        additive = true,
+    } )
+
     surface.CreateFont( "ChaosHUD_Text", {
         font = "Verdana",
         size = math.Round(8 * scale),
@@ -87,6 +95,9 @@ ChaosHUD.UpdateFonts()
 ChaosHUD.HStack = {}
 ChaosHUD.HStackMap = {} -- Quick lookup by ID
 
+ChaosHUD.RightHStack = {}
+ChaosHUD.RightHStackMap = {}
+
 function ChaosHUD.RegisterColumn(id, width_base, visibility_callback, priority)
     if ChaosHUD.HStackMap[id] then return end -- Already exists
     
@@ -104,6 +115,25 @@ function ChaosHUD.RegisterColumn(id, width_base, visibility_callback, priority)
     
     -- Sort by priority
     table.sort(ChaosHUD.HStack, function(a, b) return a.priority < b.priority end)
+end
+
+function ChaosHUD.RegisterRightColumn(id, width_base, visibility_callback, priority)
+    if ChaosHUD.RightHStackMap[id] then return end -- Already exists
+    
+    local col = {
+        id = id,
+        width_base = width_base,
+        check_visible = visibility_callback or function() return true end,
+        priority = priority or 100,
+        vstack = {},
+        vstack_map = {}
+    }
+    
+    table.insert(ChaosHUD.RightHStack, col)
+    ChaosHUD.RightHStackMap[id] = col
+    
+    -- Sort by priority (Low priority = Closer to Right Edge)
+    table.sort(ChaosHUD.RightHStack, function(a, b) return a.priority < b.priority end)
 end
 
 function ChaosHUD.AddVStackElement(column_id, element_id, element_obj, priority)
@@ -133,8 +163,35 @@ function ChaosHUD.AddVStackElement(column_id, element_id, element_obj, priority)
     table.sort(col.vstack, function(a, b) return a.priority < b.priority end)
 end
 
+function ChaosHUD.AddRightVStackElement(column_id, element_id, element_obj, priority)
+    local col = ChaosHUD.RightHStackMap[column_id]
+    if not col then return end
+    
+    if col.vstack_map[element_id] then
+        -- Update existing?
+        for k, v in ipairs(col.vstack) do
+            if v.id == element_id then
+                col.vstack[k].obj = element_obj
+                col.vstack[k].priority = priority or v.priority
+                break
+            end
+        end
+    else
+        local item = {
+            id = element_id,
+            obj = element_obj,
+            priority = priority or 100,
+            state = { current_h = 0, target_h = 0, speed = 0 } -- Animation state
+        }
+        table.insert(col.vstack, item)
+        col.vstack_map[element_id] = item
+    end
+    
+    table.sort(col.vstack, function(a, b) return a.priority < b.priority end)
+end
+
 function ChaosHUD.RemoveVStackElement(column_id, element_id)
-    local col = ChaosHUD.HStackMap[column_id]
+    local col = ChaosHUD.HStackMap[column_id] or ChaosHUD.RightHStackMap[column_id]
     if not col then return end
     
     if col.vstack_map[element_id] then
@@ -215,8 +272,7 @@ function ChaosHUD.DrawNumericDisplay(x, y, label, value, last_change_time, optio
     local num_x = x + (50 * scale)
     local num_y = y + (2 * scale)
     
-    if value < 100 then num_x = num_x + w_digit end
-    if value < 10 then num_x = num_x + w_digit end
+    -- Left aligned
     
     -- Glow
     if is_low then
@@ -246,6 +302,111 @@ function ChaosHUD.DrawNumericDisplay(x, y, label, value, last_change_time, optio
     surface.SetTextColor(text_color)
     surface.SetTextPos(num_x, num_y)
     surface.DrawText(val_str)
+    
+    return width, height
+end
+
+-- Draws an Ammo Display (Primary + Secondary)
+-- Returns: width, height
+function ChaosHUD.DrawAmmoDisplay(x, y, label, value, value2, last_change_time, last_weapon_change_time, options)
+    options = options or {}
+    local scale = ChaosHUD.GetScale()
+    
+    local show_secondary = (value2 ~= nil)
+    
+    local width = (show_secondary and 132 or 102) * scale
+    local height = 36 * scale
+    
+    -- Animation State
+    local time_since_weapon = CurTime() - (last_weapon_change_time or 0)
+    local pulse_alpha = 0
+    
+    -- Pulse Logic (Background & Text Brightness)
+    -- Native HUD pulses background on weapon switch
+    if time_since_weapon < 0.5 then
+        -- Fade out over 0.5s
+        pulse_alpha = 255 * (1 - (time_since_weapon / 0.5))
+    end
+
+    -- Colors
+    local text_color = ChaosHUD.Colors.Yellow
+    local glow_color = ChaosHUD.Colors.GlowYellow
+    local bg_color = ChaosHUD.Colors.BgStandard
+    
+    -- Red Text if Empty
+    if value == 0 then
+        text_color = ChaosHUD.Colors.Red
+        glow_color = ChaosHUD.Colors.Red -- Glow should also be red? Or maybe keep yellow glow? Native turns red.
+    end
+
+    -- Apply Pulse to Background
+    if pulse_alpha > 0 then
+        -- Lerp from Yellow to Standard BG
+        -- Actually native HUD flashes the BG yellow then fades to dark
+        local r = Lerp(pulse_alpha / 255, bg_color.r, ChaosHUD.Colors.Yellow.r)
+        local g = Lerp(pulse_alpha / 255, bg_color.g, ChaosHUD.Colors.Yellow.g)
+        local b = Lerp(pulse_alpha / 255, bg_color.b, ChaosHUD.Colors.Yellow.b)
+        local a = Lerp(pulse_alpha / 255, bg_color.a, 100) -- Pulse is slightly more opaque
+        bg_color = Color(r, g, b, a)
+        
+        -- Pulse text to be brighter/white? Native just pulses BG mostly.
+        -- But let's make text slightly brighter if needed.
+    end
+    
+    -- Draw BG
+    draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, width, height, bg_color)
+    
+    -- Draw Label
+    surface.SetFont("ChaosHUD_Text")
+    surface.SetTextColor(text_color)
+    surface.SetTextPos(x + (8 * scale), y + (20 * scale))
+    surface.DrawText(label)
+    
+    -- Draw Primary Number
+    local val_str = tostring(value)
+    surface.SetFont("ChaosHUD_Numbers")
+    local w_digit = surface.GetTextSize("0")
+    local num_x = x + (44 * scale)
+    local num_y = y + (2 * scale)
+    
+    -- Left aligned
+    
+    -- Glow Logic (Primary)
+    local time_since = CurTime() - (last_change_time or 0)
+    local blur_alpha = 0
+    if time_since < 0.1 then
+        blur_alpha = 255 * ChaosHUD.InterpLinear(time_since / 0.1)
+    elseif time_since < 2.1 then
+        blur_alpha = 255 * (1 - ChaosHUD.InterpDeaccel((time_since - 0.1) / 2.0))
+    end
+    
+    if blur_alpha > 0 then
+        local c = Color(glow_color.r, glow_color.g, glow_color.b, blur_alpha)
+        surface.SetFont("ChaosHUD_NumbersGlow")
+        surface.SetTextColor(c)
+        surface.SetTextPos(num_x, num_y)
+        surface.DrawText(val_str)
+    end
+    
+    surface.SetFont("ChaosHUD_Numbers")
+    surface.SetTextColor(text_color)
+    surface.SetTextPos(num_x, num_y)
+    surface.DrawText(val_str)
+    
+    -- Draw Secondary Number (if applicable)
+    if show_secondary then
+        local val2_str = tostring(value2)
+        local num2_x = x + (98 * scale)
+        local num2_y = y + (16 * scale)
+        
+        surface.SetFont("ChaosHUD_NumbersSmall")
+        local w_digit_small = surface.GetTextSize("0")
+        
+        -- Adjust X for digits (Right Alignment)
+        surface.SetTextColor(text_color)
+        surface.SetTextPos(num2_x, num2_y)
+        surface.DrawText(val2_str)
+    end
     
     return width, height
 end
@@ -341,6 +502,37 @@ ChaosHUD.RegisterColumn("Suit", 108, function()
     return IsValid(ply) and ply:Armor() > 0 
 end, 20)
 
+-- Register Default Right Columns
+ChaosHUD.RegisterRightColumn("Ammo", 102, nil, 10)
+
+function ChaosHUD.GetNativeAmmoLayout()
+    local ply = LocalPlayer()
+    if not IsValid(ply) or not ply:Alive() then return 0, 0 end
+    
+    local wpn = ply:GetActiveWeapon()
+    if not IsValid(wpn) then return 0, 0 end
+    
+    -- Check if weapon uses ammo
+    if wpn:GetPrimaryAmmoType() == -1 then return 0, 0 end
+    
+    -- Logic from C++
+    local uses_clips = (wpn:GetMaxClip1() ~= -1) -- Approximation
+    local uses_secondary = (wpn:GetSecondaryAmmoType() ~= -1)
+    
+    -- Calculate "Right" offset (how far from right edge the LEFTMOST pixel is)
+    local right_offset = 0
+    
+    if uses_secondary then
+        right_offset = 222 -- r222
+    elseif uses_clips then
+        right_offset = 150 -- r150
+    else
+        right_offset = 118 -- r118
+    end
+    
+    return right_offset, 36 -- Width, Height
+end
+
 hook.Add("HUDPaint", "ChaosHUD_Render", function()
     local ply = LocalPlayer()
     if not IsValid(ply) or not ply:Alive() then return end
@@ -351,6 +543,9 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
     local start_y = ScrH() - (48 * scale)
     local gap = ChaosHUD.Styles.Gap * scale
     
+    -- ------------------------------------------------------------------------
+    -- LEFT STACK RENDER
+    -- ------------------------------------------------------------------------
     local current_x = start_x
     
     for _, col in ipairs(ChaosHUD.HStack) do
@@ -358,19 +553,12 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             local col_width = col.width_base * scale
             
             -- Draw Base Element?
-            -- If it's a custom column, we might want to draw a base element here.
-            -- For now, we assume "Health" and "Suit" are drawn by engine.
-            -- If we add a custom column, we need a way to define its base element.
             if col.base_element then
                 local w, h = col.base_element:Draw(current_x, start_y)
                 col_width = w -- Update width if dynamic
             end
             
             -- Draw VStack
-            -- We need to know the height of the base element to stack on top.
-            -- For Health/Suit, base height is 36 * scale (standard numeric).
-            -- But Suit has native Aux Power which might be visible!
-            
             local base_height = 36 * scale
             local stack_start_y = start_y - (ChaosHUD.Styles.StackGap * scale)
             
@@ -437,6 +625,119 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             current_x = current_x + col_width + gap
         end
     end
+
+    -- ------------------------------------------------------------------------
+    -- RIGHT STACK RENDER
+    -- ------------------------------------------------------------------------
+    local current_x_right = ScrW() - (16 * scale)
+    
+    for _, col in ipairs(ChaosHUD.RightHStack) do
+        if col.check_visible() then
+            local col_width = col.width_base * scale
+            local base_height = 36 * scale
+            
+            -- Special Case: Native Ammo
+            if col.id == "Ammo" then
+                local native_w, native_h = ChaosHUD.GetNativeAmmoLayout()
+                local target_w = native_w * scale
+                
+                -- Animate Width
+                if not col.width_state then col.width_state = { current = 0, target = 0, speed = 0 } end
+                
+                if target_w ~= col.width_state.target then
+                    col.width_state.target = target_w
+                    col.width_state.speed = math.abs(target_w - col.width_state.current) / 0.4
+                end
+                
+                col.width_state.current = math.Approach(
+                    col.width_state.current,
+                    col.width_state.target,
+                    col.width_state.speed * FrameTime()
+                )
+                
+                col_width = col.width_state.current
+                
+                -- If width is 0 (hidden), we might want to skip rendering vstack?
+                -- But maybe we want to keep vstack visible even if ammo is hidden?
+                -- Usually if ammo is hidden, we don't want a gap.
+                if col_width <= 1 then 
+                    -- Skip this column effectively
+                    goto continue_right
+                end
+            else
+                -- Draw Base Element for custom right columns
+                if col.base_element then
+                    -- For right stack, we draw at (current_x_right - width)
+                    -- But we need to know width first.
+                    -- Assuming base_element:GetSize() is available or we use Draw return.
+                    -- Let's assume GetSize is reliable or we do a pre-pass.
+                    -- For now, use col_width as estimate, then correct?
+                    -- Better: Call Draw with x,y.
+                    
+                    -- We need to know width to position X.
+                    -- Let's assume standard width or ask GetSize.
+                    if col.base_element.GetSize then
+                        local w, h = col.base_element:GetSize()
+                        col_width = w
+                    end
+                    
+                    local draw_x = current_x_right - col_width
+                    local w, h = col.base_element:Draw(draw_x, start_y)
+                    col_width = w
+                end
+            end
+            
+            -- Render VStack
+            local stack_start_y = start_y - (ChaosHUD.Styles.StackGap * scale)
+            local current_y = stack_start_y
+            
+            -- VStack is aligned to the RIGHT of the column space?
+            -- Or Left? Usually Right aligned for Right HUD.
+            -- Let's align to the right edge of the column: current_x_right
+            -- But items draw from Top-Left usually.
+            -- So we need to calculate item width.
+            
+            for _, item in ipairs(col.vstack) do
+                local w, target_h = item.obj:GetSize()
+                
+                -- Animate Height
+                if target_h ~= item.state.target_h then
+                    item.state.target_h = target_h
+                    item.state.speed = math.abs(target_h - item.state.current_h) / 0.4
+                end
+                
+                item.state.current_h = math.Approach(
+                    item.state.current_h,
+                    item.state.target_h,
+                    item.state.speed * FrameTime()
+                )
+                
+                if item.state.current_h > 0 then
+                    local draw_y = current_y - item.state.current_h
+                    -- Align Right: x = current_x_right - w
+                    -- But wait, if the column is wider than the item (e.g. Ammo is 222 wide, item is 102 wide)
+                    -- Should it align to the inner edge or outer edge?
+                    -- HL2 HUD usually aligns to the outer edge (screen edge).
+                    -- So align to current_x_right.
+                    
+                    local draw_x = current_x_right - w
+                    
+                    -- Special case: If it's the Ammo column, we might want to align to the primary ammo display?
+                    -- Primary ammo is at r150 (width 132).
+                    -- If we align to r0 (screen edge), we are far right.
+                    -- The native ammo is right-aligned.
+                    -- So aligning to current_x_right is correct.
+                    
+                    item.obj:Draw(draw_x, draw_y, item.state.current_h)
+                    current_y = draw_y - (ChaosHUD.Styles.StackGap * scale)
+                end
+            end
+            
+            current_x_right = current_x_right - col_width - gap
+            
+            ::continue_right::
+        end
+    end
 end)
 
 -- ============================================================================
@@ -496,6 +797,45 @@ function ChaosHUD.CreateAuxElement(label, value_func, items_func)
         self.cur_color.a = math.Approach(self.cur_color.a, target.a, speed * dt)
         
         return ChaosHUD.DrawAuxBar(x, y, label, val, items, h, false, self.cur_color)
+    end
+    
+    return obj
+end
+
+function ChaosHUD.CreateAmmoElement(label, value_func, value2_func, options)
+    local obj = {}
+    obj.last_val = 0
+    obj.last_change = 0
+    obj.last_weapon = nil
+    obj.last_weapon_change = 0
+    
+    function obj:GetSize()
+        local scale = ChaosHUD.GetScale()
+        local val2 = value2_func and value2_func() or nil
+        local width = (val2 ~= nil and 132 or 102) * scale
+        return width, 36 * scale
+    end
+    
+    function obj:Draw(x, y, h)
+        local val = value_func()
+        local val2 = value2_func and value2_func() or nil
+        
+        if val ~= self.last_val then
+            self.last_change = CurTime()
+            self.last_val = val
+        end
+        
+        -- Check for weapon change
+        local ply = LocalPlayer()
+        if IsValid(ply) then
+            local wpn = ply:GetActiveWeapon()
+            if wpn ~= self.last_weapon then
+                self.last_weapon_change = CurTime()
+                self.last_weapon = wpn
+            end
+        end
+        
+        return ChaosHUD.DrawAmmoDisplay(x, y, label, val, val2, self.last_change, self.last_weapon_change, options)
     end
     
     return obj

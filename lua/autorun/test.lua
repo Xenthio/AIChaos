@@ -196,5 +196,131 @@ timer.Simple(0.1, function()
         ChaosHUD.HStackMap["GnomeCol"].base_element = gnome_elem
     end
 
+
+    -- 9. Test adding a custom Ammo Counter above the native one
+    local custom_ammo = ChaosHUD.CreateAmmoElement("CUSTOM", function()
+        local ply = LocalPlayer()
+        local wpn = ply:GetActiveWeapon()
+        if IsValid(wpn) then return wpn:Clip1() end
+        return 0
+    end, function()
+        local ply = LocalPlayer()
+        local wpn = ply:GetActiveWeapon()
+        if IsValid(wpn) then return ply:GetAmmoCount(wpn:GetPrimaryAmmoType()) end
+        return nil
+    end)
+
+    ChaosHUD.AddRightVStackElement("Ammo", "CustomAmmo", custom_ammo, 20)
+
+    -- 10. WACKY TEST: Speedometer Column
+    -- Always show column so Wanted level can persist
+    ChaosHUD.RegisterColumn("Speed", 102, function() return true end, 50)
+
+    local speed_real = ChaosHUD.CreateNumericElement("VELOCITY", function()
+        return math.Round(LocalPlayer():GetVelocity():Length())
+    end, { warn_low = false })
+
+    -- Proxy to hide Velocity when not moving, but keep column alive
+    local speed_proxy = {}
+    function speed_proxy:Draw(x, y)
+        if LocalPlayer():InVehicle() or LocalPlayer():GetVelocity():Length() > 100 then
+            return speed_real:Draw(x, y)
+        else
+            -- Hidden, but reserve width so column doesn't collapse
+            return 102 * ChaosHUD.GetScale(), 0
+        end
+    end
+
+    if ChaosHUD.HStackMap["Speed"] then
+        ChaosHUD.HStackMap["Speed"].base_element = speed_proxy
+    end
+
+    -- 11. WACKY TEST: "Wanted Level" (Custom Star Renderer)
+    local wanted_elem = {}
+    function wanted_elem:GetSize()
+        return 102 * ChaosHUD.GetScale(), 30 * ChaosHUD.GetScale()
+    end
+    function wanted_elem:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        h = h or (30 * scale)
+        local draw_y = y
+        
+        -- Draw BG
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, draw_y, 102 * scale, h, ChaosHUD.Colors.BgStandard)
+        
+        -- Draw Label
+        surface.SetFont("ChaosHUD_Text")
+        surface.SetTextColor(ChaosHUD.Colors.Yellow)
+        surface.SetTextPos(x + (8 * scale), draw_y + (4 * scale))
+        surface.DrawText("WANTED")
+        
+        -- Draw Stars
+        local star_size = 16 * scale
+        local start_x = x + (10 * scale)
+        local star_y = draw_y + (12 * scale)
+        local level = math.floor(CurTime() % 6) -- Cycle 0-5 stars
+        
+        for i = 1, 5 do
+            local sx = start_x + ((i-1) * (18 * scale))
+            local col = (i <= level) and ChaosHUD.Colors.Yellow or Color(50, 50, 50, 200)
+            
+            draw.NoTexture()
+            surface.SetDrawColor(col)
+            -- Simple diamond shape for star
+            local poly = {
+                { x = sx + star_size/2, y = star_y },
+                { x = sx + star_size, y = star_y + star_size/2 },
+                { x = sx + star_size/2, y = star_y + star_size },
+                { x = sx, y = star_y + star_size/2 }
+            }
+            surface.DrawPoly(poly)
+        end
+        
+        return 102 * scale, h
+    end
+    
+    ChaosHUD.AddVStackElement("Speed", "WantedLevel", wanted_elem, 10)
+
+    -- 12. WACKY TEST: Compass (Text Based)
+    local compass_elem = {}
+    function compass_elem:GetSize() return 102 * ChaosHUD.GetScale(), 24 * ChaosHUD.GetScale() end
+    function compass_elem:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        h = h or (24 * scale)
+        local draw_y = y
+        
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, draw_y, 102 * scale, h, ChaosHUD.Colors.BgStandard)
+        
+        local ang = LocalPlayer():EyeAngles().y
+        local dirs = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+        local idx = math.Round( ((ang + 180) % 360) / 45 )
+        if idx == 0 then idx = 8 end -- Fix wrap
+        -- Actually (ang + 180) / 45 -> 0..8. 
+        -- Let's just do simple math
+        -- 0 = N (in Source? No, 0 is East usually, 90 North)
+        -- Source: 0=East, 90=North, 180=West, -90=South
+        
+        local dir_str = "N"
+        if ang > -22.5 and ang <= 22.5 then dir_str = "E"
+        elseif ang > 22.5 and ang <= 67.5 then dir_str = "NE"
+        elseif ang > 67.5 and ang <= 112.5 then dir_str = "N"
+        elseif ang > 112.5 and ang <= 157.5 then dir_str = "NW"
+        elseif ang > 157.5 or ang <= -157.5 then dir_str = "W"
+        elseif ang > -157.5 and ang <= -112.5 then dir_str = "SW"
+        elseif ang > -112.5 and ang <= -67.5 then dir_str = "S"
+        elseif ang > -67.5 and ang <= -22.5 then dir_str = "SE"
+        end
+        
+        surface.SetFont("ChaosHUD_Text")
+        surface.SetTextColor(ChaosHUD.Colors.Yellow)
+        local w, _ = surface.GetTextSize(dir_str)
+        surface.SetTextPos(x + (51 * scale) - (w/2), draw_y + (4 * scale))
+        surface.DrawText(dir_str)
+        
+        return 102 * scale, h
+    end
+    
+    ChaosHUD.AddVStackElement("Health", "Compass", compass_elem, 5) -- Very top of Health stack
+
     print("[AIChaos] HUD Test Initialized.")
 end)
