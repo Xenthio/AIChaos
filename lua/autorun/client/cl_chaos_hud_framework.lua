@@ -689,7 +689,6 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             
             -- Draw VStack
             local base_height = 36 * scale
-            local stack_start_y
             
             -- Calculate actual base height for stacking
             if col.base_element and col.base_element.GetSize then
@@ -767,7 +766,12 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
                 -- Draw
                 if item.state.current_h > 0 then
                     local draw_y = current_y - item.state.current_h
+                    
+                    -- Clip to bounds
+                    render.SetScissorRect(current_x, draw_y, current_x + w, draw_y + item.state.current_h, true)
                     item.obj:Draw(current_x, draw_y, item.state.current_h)
+                    render.SetScissorRect(0, 0, 0, 0, false)
+                    
                     current_y = draw_y - (ChaosHUD.Styles.StackGap * scale)
                 end
             end
@@ -791,12 +795,26 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
                 local native_w, native_h = ChaosHUD.GetNativeAmmoLayout()
                 local target_w = native_w * scale
                 
-                -- Animate Width
+                -- Adjust for the fact that our layout starts at 16px margin, 
+                -- but native_w is from the screen edge (0px).
+                if target_w > 0 then
+                    target_w = math.max(0, target_w - (16 * scale))
+                end
+                
+                -- Calculate target TOTAL space (Width + Gap)
+                -- If the element is visible, we need the width AND the gap.
+                -- If it's hidden, we need 0 space.
+                local target_space = 0
+                if target_w > 0 then
+                    target_space = target_w + gap
+                end
+                
+                -- Animate the total space
                 if not col.width_state then col.width_state = { current = 0, target = 0, speed = 0 } end
                 
-                if target_w ~= col.width_state.target then
-                    col.width_state.target = target_w
-                    col.width_state.speed = math.abs(target_w - col.width_state.current) / 0.4
+                if target_space ~= col.width_state.target then
+                    col.width_state.target = target_space
+                    col.width_state.speed = math.abs(target_space - col.width_state.current) / 0.4
                 end
                 
                 col.width_state.current = math.Approach(
@@ -805,15 +823,8 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
                     col.width_state.speed * FrameTime()
                 )
                 
-                col_width = col.width_state.current
-                
-                -- If width is 0 (hidden), we might want to skip rendering vstack?
-                -- But maybe we want to keep vstack visible even if ammo is hidden?
-                -- Usually if ammo is hidden, we don't want a gap.
-                if col_width <= 1 then 
-                    -- Skip this column effectively
-                    goto continue_right
-                end
+                -- Back-calculate col_width so that (col_width + gap) equals our animated space
+                col_width = col.width_state.current - gap
             else
                 -- Draw Base Element for custom right columns
                 if col.base_element then
@@ -885,7 +896,11 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
                     -- The native ammo is right-aligned.
                     -- So aligning to current_x_right is correct.
                     
+                    -- Clip to bounds
+                    render.SetScissorRect(draw_x, draw_y, draw_x + w, draw_y + item.state.current_h, true)
                     item.obj:Draw(draw_x, draw_y, item.state.current_h)
+                    render.SetScissorRect(0, 0, 0, 0, false)
+                    
                     current_y = draw_y - (ChaosHUD.Styles.StackGap * scale)
                 end
             end
@@ -921,8 +936,13 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
         -- Draw
         if item.state.current_h > 0 then
             local draw_y = center_y - item.state.current_h
-            -- Center align: x - w/2
-            item.obj:Draw(center_x - (w / 2), draw_y, item.state.current_h)
+            local draw_x = center_x - (w / 2)
+            
+            -- Clip to bounds
+            render.SetScissorRect(draw_x, draw_y, draw_x + w, draw_y + item.state.current_h, true)
+            item.obj:Draw(draw_x, draw_y, item.state.current_h)
+            render.SetScissorRect(0, 0, 0, 0, false)
+            
             center_y = draw_y - (ChaosHUD.Styles.StackGap * scale)
         end
     end
@@ -948,7 +968,11 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
         )
         
         if item.state.current_h > 0 then
+            -- Clip to bounds
+            render.SetScissorRect(tl_x, tl_y, tl_x + w, tl_y + item.state.current_h, true)
             item.obj:Draw(tl_x, tl_y, item.state.current_h)
+            render.SetScissorRect(0, 0, 0, 0, false)
+            
             tl_y = tl_y + item.state.current_h + (ChaosHUD.Styles.StackGap * scale)
         end
     end
@@ -975,7 +999,12 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
         
         if item.state.current_h > 0 then
             local draw_x = tr_right_edge - w
+            
+            -- Clip to bounds
+            render.SetScissorRect(draw_x, tr_y, draw_x + w, tr_y + item.state.current_h, true)
             item.obj:Draw(draw_x, tr_y, item.state.current_h)
+            render.SetScissorRect(0, 0, 0, 0, false)
+            
             tr_y = tr_y + item.state.current_h + (ChaosHUD.Styles.StackGap * scale)
         end
     end
@@ -1077,6 +1106,140 @@ function ChaosHUD.CreateAmmoElement(label, value_func, value2_func, options)
         end
         
         return ChaosHUD.DrawAmmoDisplay(x, y, label, val, val2, self.last_change, self.last_weapon_change, options)
+    end
+    
+    return obj
+end
+
+-- ============================================================================
+--  LOCATOR SYSTEM (Ported from CHudLocator)
+-- ============================================================================
+
+ChaosHUD.Locator = {}
+ChaosHUD.Locator.Targets = {} -- { { pos = Vector(), icon = "icon_path", label = "Label" } }
+ChaosHUD.Locator.FOV = 350 -- hud_locator_fov default
+ChaosHUD.Locator.Alpha = 230 -- hud_locator_alpha default
+
+-- Materials
+ChaosHUD.Locator.MatBigTick = Material("vgui/icons/tick_long")
+ChaosHUD.Locator.MatSmallTick = Material("vgui/icons/tick_short")
+-- Default icon if none provided
+ChaosHUD.Locator.MatJalopy = Material("vgui/icons/icon_jalopy") 
+
+function ChaosHUD.AddLocatorTarget(id, pos, icon, label)
+    ChaosHUD.Locator.Targets[id] = { pos = pos, icon = icon, label = label }
+end
+
+function ChaosHUD.RemoveLocatorTarget(id)
+    ChaosHUD.Locator.Targets[id] = nil
+end
+
+function ChaosHUD.DrawLocator(x, y, w, h)
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return end
+    
+    local fov = ChaosHUD.Locator.FOV / 2
+    local eye_ang = ply:EyeAngles()
+    local yaw_player = eye_ang.y
+    
+    -- Draw Graduations (Ticks)
+    local num_graduations = 16
+    local angle_step = 360.0 / num_graduations
+    local tall_line = true
+    
+    surface.SetDrawColor(255, 255, 255, ChaosHUD.Locator.Alpha)
+    
+    for angle = -180, 180, angle_step do
+        local diff = math.AngleDifference(yaw_player, angle)
+        
+        if math.abs(diff) <= fov then
+            -- Calculate X Position
+            -- Remap diff from [-fov, fov] to [-90, 90] degrees for sine projection
+            local remapped = math.Remap(diff, -fov, fov, -90, 90)
+            local cosine = math.sin(math.rad(remapped)) -- Original code uses sin of remapped angle
+            
+            local pos_x = (w / 2) + ((w / 2) * cosine)
+            local draw_x = x + pos_x
+            
+            -- Draw Tick
+            local mat = tall_line and ChaosHUD.Locator.MatBigTick or ChaosHUD.Locator.MatSmallTick
+            surface.SetMaterial(mat)
+            
+            -- Adjust tick size (HL2 ticks are small)
+            local tick_w = 6 * ChaosHUD.GetScale()
+            local tick_h = (tall_line and 6 or 6) * ChaosHUD.GetScale()
+            
+            -- Center tick
+            surface.DrawTexturedRect(draw_x - (tick_w/2), y + (h-26) - (tick_h/2), tick_w, tick_h)
+        end
+        
+        tall_line = not tall_line
+    end
+    
+    -- Draw Targets
+    for id, target in pairs(ChaosHUD.Locator.Targets) do
+        local vec_to = target.pos - ply:GetPos()
+        local ang_to = vec_to:Angle()
+        local yaw_diff = math.AngleDifference(yaw_player, ang_to.y)
+        
+        if math.abs(yaw_diff) < fov then
+            -- Calculate Position
+            local remapped = math.Remap(yaw_diff, -fov, fov, -90, 90)
+            local cosine = math.sin(math.rad(remapped))
+            local pos_x = (w / 2) + ((w / 2) * cosine)
+            local draw_x = x + pos_x
+            
+            -- Calculate Scale (Fade out at edges)
+            local abs_diff = math.abs(yaw_diff)
+            local scale = 1.0
+            -- RemapValClamped( yawDiff, (fov/4), fov, 1.0f, 0.25f );
+            if abs_diff > (fov/4) then
+                scale = math.Remap(abs_diff, fov/4, fov, 1.0, 0.25)
+                scale = math.Clamp(scale, 0.25, 1.0)
+            end
+            
+            -- Draw Icon
+            -- Only scale width!
+            local base_size = h * 1.25
+            local icon_w = base_size * scale
+            local icon_h = base_size
+            
+            local mat = target.icon and Material(target.icon) or ChaosHUD.Locator.MatJalopy
+            
+            surface.SetMaterial(mat)
+            surface.SetDrawColor(255, 255, 255, ChaosHUD.Locator.Alpha)
+            surface.DrawTexturedRect(draw_x - (icon_w/2), y + (h/2) - (icon_h/2), icon_w, icon_h)
+            
+            -- Optional Label
+            if target.label then
+                surface.SetFont("ChaosHUD_SmallText")
+                local tw, th = surface.GetTextSize(target.label)
+                surface.SetTextColor(255, 220, 0, ChaosHUD.Locator.Alpha * scale)
+                surface.SetTextPos(draw_x - (tw/2), y + (8) + (icon_h/2))
+                surface.DrawText(target.label)
+            end
+        end
+    end
+end
+
+-- Helper to create a Locator Element for the HUD stack
+function ChaosHUD.CreateLocatorElement(height_override)
+    local obj = {}
+    
+    function obj:GetSize()
+        local scale = ChaosHUD.GetScale()
+        -- Layout from HudLocator: wide 64, tall 24
+        return 64 * scale, (height_override or 24) * scale
+    end
+    
+    function obj:Draw(x, y, h)
+        local w, _ = self:GetSize()
+        
+        -- PaintBackgroundType "2" -> Rounded Box
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, w, h, ChaosHUD.Colors.BgStandard)
+        
+        ChaosHUD.DrawLocator(x, y, w, h)
+        return w, h
     end
     
     return obj

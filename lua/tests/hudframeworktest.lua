@@ -403,5 +403,32 @@ timer.Simple(0.1, function()
     end
     ChaosHUD.AddTopRightElement("Notification2", notif_elem2, 20)
 
+    -- 16. TEST: New Right Column (to test sliding)
+    -- Priority 20 means it will be to the LEFT of the Ammo column (Priority 10)
+    ChaosHUD.RegisterRightColumn("RightTestCol", 102, function() return true end, 20)
+    
+    local right_test_elem = ChaosHUD.CreateNumericElement("SLIDE", function()
+        return math.random(0, 100)
+    end, { warn_low = true })
+    
+    if ChaosHUD.RightHStackMap["RightTestCol"] then
+        ChaosHUD.RightHStackMap["RightTestCol"].base_element = right_test_elem
+    end
+
+    -- 17. TEST: Locator Element (Compass/Radar)
+    -- Add some targets
+    ChaosHUD.AddLocatorTarget("Origin", Vector(0,0,0), nil, "ORIGIN")
+    
+    -- Add a moving target
+    timer.Create("ChaosHUD_Test_LocatorMove", 0.1, 0, function()
+        local t = CurTime()
+        local pos = Vector(math.sin(t)*500, math.cos(t)*500, 0)
+        ChaosHUD.AddLocatorTarget("Orbiter", pos, "vgui/icons/icon_jalopy", "ORBIT")
+    end)
+
+    local locator_elem = ChaosHUD.CreateLocatorElement()
+    -- Priority 5 means it will be at the very bottom of the center stack
+    ChaosHUD.AddCenterElement("Locator", locator_elem, 5)
+
     print("[AIChaos] HUD Test Initialized.")
 end)
