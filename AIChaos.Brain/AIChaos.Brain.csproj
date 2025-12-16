@@ -14,9 +14,9 @@
     <PackageReference Include="Google.Apis.YouTube.v3" Version="1.69.0.3742" />
   </ItemGroup>
 
-  <!-- Include BuiltInFavourites folder in build output -->
+  <!-- Copy BuiltInFavourites folder to build output (use Update instead of Include to avoid duplicates) -->
   <ItemGroup>
-    <Content Include="BuiltInFavourites\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="BuiltInFavourites\**\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
