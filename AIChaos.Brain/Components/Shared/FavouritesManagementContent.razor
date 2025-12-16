@@ -54,7 +54,7 @@
         {
             <div class="empty-state">
                 <p>No favourites found.</p>
-                <p style="font-size: 12px;">Create new favourites or save them from command history using the 💾 button.</p>
+                <p style="font-size: 12px;">Create new favourites or save them from command history using the ⭐ button.</p>
             </div>
         }
         else
@@ -113,7 +113,6 @@
                                     @for (int i = 0; i < fav.Variations.Count; i++)
                                     {
                                         var variation = fav.Variations[i];
-                                        var variationIndex = i;
                                         <div class="variation-item">
                                             <div class="variation-header">
                                                 <strong>Variation @(i + 1)@(string.IsNullOrEmpty(variation.Name) ? "" : $": {variation.Name}")</strong>
@@ -438,7 +437,7 @@
     private List<FavouritePrompt> favourites = new();
     private List<string> categories = new();
     private string? selectedCategory = null;
-    private HashSet<int> expandedFavourites = new();
+    private readonly HashSet<int> expandedFavourites = new();
     
     private string alertMessage = "";
     private string alertType = "info";
@@ -518,7 +517,8 @@
         editExecutionCode = fav.ExecutionCode;
         editUndoCode = fav.UndoCode;
         // Deep copy variations so edits don't affect the original until saved
-        editVariations = fav.Variations.Select(v => new FavouriteVariation
+        // Use null-coalescing to handle potential null from old JSON files
+        editVariations = (fav.Variations ?? new List<FavouriteVariation>()).Select(v => new FavouriteVariation
         {
             Name = v.Name,
             ExecutionCode = v.ExecutionCode,

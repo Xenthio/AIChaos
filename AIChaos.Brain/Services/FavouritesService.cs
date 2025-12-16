@@ -503,12 +503,10 @@ public class FavouritesService
             // Load all individual favourite files (excluding legacy file if still present)
             var jsonFiles = Directory.GetFiles(_userFavouritesDirectory, "*.json");
             var legacyFileName = Path.GetFileName(_legacyFavouritesFile);
-            foreach (var filePath in jsonFiles)
+            
+            // Filter out legacy file explicitly using .Where() for clearer intent
+            foreach (var filePath in jsonFiles.Where(f => !Path.GetFileName(f).Equals(legacyFileName, StringComparison.OrdinalIgnoreCase)))
             {
-                // Skip legacy file if it still exists (migration may have failed)
-                if (Path.GetFileName(filePath).Equals(legacyFileName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                    
                 try
                 {
                     var json = File.ReadAllText(filePath);
@@ -626,16 +624,10 @@ public class FavouritesService
         }
         var fileName = $"{favourite.Id}_{sanitizedName}.json";
         
-        string directory;
-        if (isBuiltIn)
-        {
-            // For saving, use source directory (project folder). For loading, use build output directory.
-            directory = forSaving ? _sourceBuiltInFavouritesDirectory : _builtInFavouritesDirectory;
-        }
-        else
-        {
-            directory = _userFavouritesDirectory;
-        }
+        // Use ternary for clearer intent
+        string directory = isBuiltIn
+            ? (forSaving ? _sourceBuiltInFavouritesDirectory : _builtInFavouritesDirectory)
+            : _userFavouritesDirectory;
         
         return Path.Combine(directory, fileName);
     }
@@ -690,8 +682,14 @@ public class FavouritePrompt
     /// <summary>
     /// Alternative variations of this favourite's code that are randomly chosen when executed.
     /// If empty, the main ExecutionCode/UndoCode is used.
+    /// Uses a backing field with null-coalescing to handle deserialization from old JSON files.
     /// </summary>
-    public List<FavouriteVariation> Variations { get; set; } = new();
+    private List<FavouriteVariation>? _variations = new();
+    public List<FavouriteVariation> Variations
+    {
+        get => _variations ??= new List<FavouriteVariation>();
+        set => _variations = value;
+    }
     
     /// <summary>
     /// Gets a random variation (or the main code if no variations exist).
@@ -699,12 +697,13 @@ public class FavouritePrompt
     /// </summary>
     public (string ExecutionCode, string UndoCode) GetRandomVariation()
     {
+        // Early return when no variations exist for clarity
         if (Variations.Count == 0)
             return (ExecutionCode, UndoCode);
         
         // Include the main code as one of the options
-        var random = new Random();
-        var index = random.Next(Variations.Count + 1);
+        // Use Random.Shared for better randomness (avoids same-seed issues with rapid calls)
+        var index = Random.Shared.Next(Variations.Count + 1);
         
         if (index == Variations.Count)
             return (ExecutionCode, UndoCode); // Main variation

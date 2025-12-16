@@ -127,7 +127,7 @@ public class FavouritesServiceTests : IDisposable
         var service = CreateServiceWithTestDirectory();
         
         // Act - Create favourite with characters that are invalid in filenames
-        var favourite = service.CreateFavourite(
+        service.CreateFavourite(
             name: "Test/With\\Invalid<>Characters|\"*?",
             userPrompt: "prompt",
             executionCode: "code",
@@ -149,7 +149,7 @@ public class FavouritesServiceTests : IDisposable
         var longName = new string('a', 100); // 100 character name
         
         // Act
-        var favourite = service.CreateFavourite(longName, "prompt", "code", "undo");
+        service.CreateFavourite(longName, "prompt", "code", "undo");
 
         // Assert
         var files = Directory.GetFiles(_testDirectory, "*.json");
@@ -263,7 +263,7 @@ public class FavouritesServiceTests : IDisposable
         var service = CreateServiceWithTestDirectory();
         
         // Act
-        var favourite = service.CreateFavourite("", "prompt", "code", "undo");
+        service.CreateFavourite("", "prompt", "code", "undo");
 
         // Assert
         var files = Directory.GetFiles(_testDirectory, "*.json");
@@ -379,6 +379,128 @@ public class FavouritesServiceTests : IDisposable
         Assert.Single(favourites.Where(f => f.IsBuiltIn));
         Assert.Single(favourites.Where(f => !f.IsBuiltIn));
     }
+    
+    #region Variations Tests
+    
+    [Fact]
+    public void CreateFavourite_WithVariations_PersistsCorrectly()
+    {
+        // Arrange
+        var service = CreateServiceWithTestDirectory();
+        var variations = new List<FavouriteVariation>
+        {
+            new() { Name = "Blue Version", ExecutionCode = "-- blue code", UndoCode = "-- blue undo" },
+            new() { Name = "Red Version", ExecutionCode = "-- red code", UndoCode = "" }
+        };
+        
+        // Act
+        var favourite = service.CreateFavourite(
+            "Test With Variations",
+            "prompt",
+            "-- main code",
+            "-- main undo",
+            "Fun",
+            "Description",
+            variations
+        );
+        
+        // Assert
+        Assert.Equal(2, favourite.Variations.Count);
+        Assert.Equal("Blue Version", favourite.Variations[0].Name);
+        Assert.Equal("-- blue code", favourite.Variations[0].ExecutionCode);
+        Assert.Equal("Red Version", favourite.Variations[1].Name);
+        
+        // Verify persistence
+        var files = Directory.GetFiles(_testDirectory, "*.json");
+        var json = File.ReadAllText(files[0]);
+        Assert.Contains("Blue Version", json);
+        Assert.Contains("Red Version", json);
+    }
+    
+    [Fact]
+    public void UpdateFavourite_WithVariations_UpdatesCorrectly()
+    {
+        // Arrange
+        var service = CreateServiceWithTestDirectory();
+        var favourite = service.CreateFavourite("Original", "prompt", "code", "undo");
+        
+        var newVariations = new List<FavouriteVariation>
+        {
+            new() { Name = "Variation A", ExecutionCode = "-- var A", UndoCode = "" }
+        };
+        
+        // Act
+        var result = service.UpdateFavourite(
+            favourite.Id,
+            variations: newVariations
+        );
+        
+        // Assert
+        Assert.True(result);
+        var updated = service.GetAllFavourites().First(f => f.Id == favourite.Id);
+        Assert.Single(updated.Variations);
+        Assert.Equal("Variation A", updated.Variations[0].Name);
+    }
+    
+    [Fact]
+    public void GetRandomVariation_WithNoVariations_ReturnsMainCode()
+    {
+        // Arrange
+        var favourite = new FavouritePrompt
+        {
+            ExecutionCode = "-- main exec",
+            UndoCode = "-- main undo"
+        };
+        
+        // Act
+        var (exec, undo) = favourite.GetRandomVariation();
+        
+        // Assert
+        Assert.Equal("-- main exec", exec);
+        Assert.Equal("-- main undo", undo);
+    }
+    
+    [Fact]
+    public void GetRandomVariation_WithVariations_ReturnsValidCode()
+    {
+        // Arrange
+        var favourite = new FavouritePrompt
+        {
+            ExecutionCode = "-- main exec",
+            UndoCode = "-- main undo",
+            Variations = new List<FavouriteVariation>
+            {
+                new() { ExecutionCode = "-- var1 exec", UndoCode = "-- var1 undo" },
+                new() { ExecutionCode = "-- var2 exec", UndoCode = "-- var2 undo" }
+            }
+        };
+        
+        var validExecCodes = new HashSet<string> { "-- main exec", "-- var1 exec", "-- var2 exec" };
+        
+        // Act - run multiple times to ensure we're getting valid results
+        for (int i = 0; i < 10; i++)
+        {
+            var (exec, _) = favourite.GetRandomVariation();
+            Assert.Contains(exec, validExecCodes);
+        }
+    }
+    
+    [Fact]
+    public void FavouritePrompt_Variations_NeverNull()
+    {
+        // Arrange - simulate deserialization by not setting Variations
+        var favourite = new FavouritePrompt
+        {
+            Name = "Test",
+            ExecutionCode = "code"
+        };
+        
+        // Act & Assert - should not throw and should return valid list
+        Assert.NotNull(favourite.Variations);
+        Assert.Empty(favourite.Variations);
+    }
+    
+    #endregion
 
     /// <summary>
     /// Creates a FavouritesService that uses the test directories for storage.
