@@ -1,0 +1,12 @@
+{
+  "Id": 7,
+  "Name": "Squashable bug on screen",
+  "UserPrompt": "put a bug in a random spot on screen that requires the player to click it to squash it (play squash sound too!) (they can enable their cursor with tab so dont make it popup and take away control) (theres a 16x16 bug icon in gmod\u0027s files)",
+  "ExecutionCode": "RunOnClient([[\n    local screenW, screenH = ScrW(), ScrH()\n    local bugSize = 32\n    local bugX = math.random(bugSize, screenW - bugSize)\n    local bugY = math.random(bugSize, screenH - bugSize)\n    \n    -- Create bug panel\n    local bugPanel = vgui.Create(\u0022DButton\u0022)\n    bugPanel:SetSize(bugSize, bugSize)\n    bugPanel:SetPos(bugX, bugY)\n    bugPanel:SetText(\u0022\u0022)\n    bugPanel:SetDrawBackground(false)\n    bugPanel:SetCursor(\u0022hand\u0022)\n    \n    -- Paint bug icon\n    function bugPanel:Paint(w, h)\n        surface.SetDrawColor(255, 255, 255, 255)\n        surface.SetMaterial(Material(\u0022materials/icon16/bug.png\u0022))\n        surface.DrawTexturedRect(0, 0, w, h)\n    end\n    \n    -- Click handler\n    function bugPanel:DoClick()\n        local squashSounds = {\n            \u0022physics/flesh/flesh_squishy_impact_hard1.wav\u0022,\n            \u0022physics/flesh/flesh_squishy_impact_hard2.wav\u0022,\n            \u0022physics/flesh/flesh_squishy_impact_hard3.wav\u0022,\n            \u0022physics/flesh/flesh_squishy_impact_hard4.wav\u0022,\n            \u0022physics/flesh/fist_hit_01.wav\u0022,\n            \u0022physics/flesh/fist_hit_02.wav\u0022,\n            \u0022physics/flesh/fist_hit_03.wav\u0022\n        }\n        local squashSound = squashSounds[math.random(#squashSounds)]\n        surface.PlaySound(squashSound)\n        self:Remove()\n    end\n    \n    -- Store reference for potential cleanup\n    _G.BugPanel = bugPanel\n]]) ",
+  "UndoCode": "RunOnClient([[\n    if _G.BugPanel and IsValid(_G.BugPanel) then\n        _G.BugPanel:Remove()\n    end\n    _G.BugPanel = nil\n]])",
+  "Category": "Fun",
+  "Description": null,
+  "SavedAt": "2025-12-01T07:10:33.3921737Z",
+  "OriginalCommandId": null,
+  "IsBuiltIn": true
+}

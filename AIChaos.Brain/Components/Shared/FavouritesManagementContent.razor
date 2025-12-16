@@ -1,0 +1,682 @@
+@inject FavouritesService FavouritesService
+@inject IJSRuntime JS
+@using AIChaos.Brain.Models
+@using AIChaos.Brain.Components.Shared
+
+<div class="card">
+    <h2>⭐ Manage Favourites</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        View, edit, and manage favourite prompts. Built-in favourites (🔒) ship with the software and are read-only.
+    </p>
+    
+    @if (!string.IsNullOrEmpty(alertMessage))
+    {
+        <div class="alert alert-@alertType">@alertMessage</div>
+    }
+    
+    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+        <button @onclick="LoadFavourites" class="btn-secondary">🔄 Refresh</button>
+        <button @onclick="OpenCreateModal" class="btn-success">➕ Create New</button>
+    </div>
+    
+    <!-- Category Filter -->
+    @if (categories.Any())
+    {
+        <div style="margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap;">
+            <button @onclick="() => selectedCategory = null" 
+                    class="@(selectedCategory == null ? "btn-primary" : "btn-secondary")"
+                    style="font-size: 12px; padding: 5px 10px;">
+                All (@favourites.Count)
+            </button>
+            <button @onclick='() => selectedCategory = "_user"' 
+                    class="@(selectedCategory == "_user" ? "btn-primary" : "btn-secondary")"
+                    style="font-size: 12px; padding: 5px 10px;">
+                👤 User (@favourites.Count(f => !f.IsBuiltIn))
+            </button>
+            <button @onclick='() => selectedCategory = "_builtin"' 
+                    class="@(selectedCategory == "_builtin" ? "btn-primary" : "btn-secondary")"
+                    style="font-size: 12px; padding: 5px 10px;">
+                🔒 Built-In (@favourites.Count(f => f.IsBuiltIn))
+            </button>
+            @foreach (var cat in categories)
+            {
+                <button @onclick="() => selectedCategory = cat" 
+                        class="@(selectedCategory == cat ? "btn-primary" : "btn-secondary")"
+                        style="font-size: 12px; padding: 5px 10px;">
+                    @cat (@favourites.Count(f => f.Category == cat))
+                </button>
+            }
+        </div>
+    }
+    
+    <div class="favourites-list">
+        @if (!filteredFavourites.Any())
+        {
+            <div class="empty-state">
+                <p>No favourites found.</p>
+                <p style="font-size: 12px;">Create new favourites or save them from command history using the ⭐ button.</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var fav in filteredFavourites)
+            {
+                <div class="favourite-item">
+                    <div class="favourite-header">
+                        <div class="favourite-title">
+                            @if (fav.IsBuiltIn)
+                            {
+                                <span class="badge badge-builtin" title="Built-in (read-only)">🔒</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-user" title="User favourite">👤</span>
+                            }
+                            <strong>@fav.Name</strong>
+                            <span class="badge badge-category">@fav.Category</span>
+                        </div>
+                        <div class="favourite-id">#@fav.Id</div>
+                    </div>
+                    
+                    <div class="favourite-prompt">@fav.UserPrompt</div>
+                    
+                    @if (!string.IsNullOrEmpty(fav.Description))
+                    {
+                        <div class="favourite-description">@fav.Description</div>
+                    }
+                    
+                    @if (fav.Variations.Count > 0)
+                    {
+                        <div class="favourite-variations-badge">
+                            🎲 @(fav.Variations.Count + 1) variations (randomly selected)
+                        </div>
+                    }
+                    
+                    @if (expandedFavourites.Contains(fav.Id))
+                    {
+                        <div class="favourite-code">
+                            <details open>
+                                <summary>Main Execution Code</summary>
+                                <pre><code>@fav.ExecutionCode</code></pre>
+                            </details>
+                            @if (!string.IsNullOrEmpty(fav.UndoCode))
+                            {
+                                <details open>
+                                    <summary>Main Undo Code</summary>
+                                    <pre><code>@fav.UndoCode</code></pre>
+                                </details>
+                            }
+                            @if (fav.Variations.Count > 0)
+                            {
+                                <details>
+                                    <summary>🎲 Variations (@fav.Variations.Count)</summary>
+                                    @for (int i = 0; i < fav.Variations.Count; i++)
+                                    {
+                                        var variation = fav.Variations[i];
+                                        <div class="variation-item">
+                                            <div class="variation-header">
+                                                <strong>Variation @(i + 1)@(string.IsNullOrEmpty(variation.Name) ? "" : $": {variation.Name}")</strong>
+                                            </div>
+                                            <pre><code>@variation.ExecutionCode</code></pre>
+                                            @if (!string.IsNullOrEmpty(variation.UndoCode))
+                                            {
+                                                <div class="variation-undo">Undo:</div>
+                                                <pre><code>@variation.UndoCode</code></pre>
+                                            }
+                                        </div>
+                                    }
+                                </details>
+                            }
+                        </div>
+                    }
+                    
+                    <div class="favourite-meta">
+                        <span>Saved: @fav.SavedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                    </div>
+                    
+                    <div class="favourite-actions">
+                        <button @onclick="() => ToggleExpand(fav.Id)" class="btn-secondary btn-small" title="Show/Hide Code">
+                            @(expandedFavourites.Contains(fav.Id) ? "🔼 Hide Code" : "🔽 Show Code")
+                        </button>
+                        
+                        @if (!fav.IsBuiltIn)
+                        {
+                            <button @onclick="() => OpenEditModal(fav)" class="btn-info btn-small" title="Edit">
+                                ✏️ Edit
+                            </button>
+                            <button @onclick="() => TransferToBuiltIn(fav)" class="btn-success btn-small" title="Make this a built-in favourite">
+                                📦 Make Built-In
+                            </button>
+                            <button @onclick="() => DeleteFavourite(fav)" class="btn-danger btn-small" title="Delete">
+                                🗑️ Delete
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="readonly-notice">Read-only (built-in)</span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<!-- Create/Edit Modal -->
+@if (showEditModal)
+{
+    <Modal @bind-IsOpen="showEditModal">
+        <h3>@(editingFavourite == null ? "➕ Create Favourite" : "✏️ Edit Favourite")</h3>
+        
+        <div class="form-group">
+            <label>Name</label>
+            <input type="text" @bind="editName" placeholder="Enter a name for this favourite" />
+        </div>
+        
+        <div class="form-group">
+            <label>Category</label>
+            <input type="text" @bind="editCategory" placeholder="e.g., Fun, Chaos, Helpful" />
+        </div>
+        
+        <div class="form-group">
+            <label>User Prompt</label>
+            <textarea @bind="editPrompt" placeholder="The original user prompt" rows="2"></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Description (optional)</label>
+            <input type="text" @bind="editDescription" placeholder="Brief description" />
+        </div>
+        
+        <div class="form-group">
+            <label>Main Execution Code (Lua)</label>
+            <textarea @bind="editExecutionCode" placeholder="-- Lua code to execute" rows="8" style="font-family: monospace;"></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label>Main Undo Code (Lua, optional)</label>
+            <textarea @bind="editUndoCode" placeholder="-- Lua code to undo the effect" rows="4" style="font-family: monospace;"></textarea>
+        </div>
+        
+        <!-- Variations Section -->
+        <div class="variations-section">
+            <div class="variations-header">
+                <label>🎲 Variations (randomly selected when executed)</label>
+                <button type="button" @onclick="AddNewVariation" class="btn-success btn-small">➕ Add Variation</button>
+            </div>
+            
+            @if (editVariations.Count > 0)
+            {
+                <p style="font-size: 12px; color: var(--text-dim); margin: 5px 0;">
+                    When executed, one of the @(editVariations.Count + 1) variations (including main) will be randomly chosen.
+                </p>
+                
+                @for (int i = 0; i < editVariations.Count; i++)
+                {
+                    var index = i;
+                    <div class="variation-edit-item">
+                        <div class="variation-edit-header">
+                            <strong>Variation @(i + 1)</strong>
+                            <button type="button" @onclick="() => RemoveVariation(index)" class="btn-danger btn-small">🗑️</button>
+                        </div>
+                        <div class="form-group">
+                            <label>Name (optional)</label>
+                            <input type="text" @bind="editVariations[index].Name" placeholder="e.g., Blue version, Fast version" />
+                        </div>
+                        <div class="form-group">
+                            <label>Execution Code</label>
+                            <textarea @bind="editVariations[index].ExecutionCode" placeholder="-- Variation code" rows="5" style="font-family: monospace;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Undo Code (optional)</label>
+                            <textarea @bind="editVariations[index].UndoCode" placeholder="-- Undo code" rows="3" style="font-family: monospace;"></textarea>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <p style="font-size: 12px; color: var(--text-dim); margin: 10px 0;">
+                    No variations yet. Add variations to have the system randomly choose between different code options when this favourite is executed.
+                </p>
+            }
+        </div>
+        
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+            <button @onclick="CloseEditModal" class="btn-secondary">Cancel</button>
+            <button @onclick="SaveFavourite" class="btn-primary">
+                @(editingFavourite == null ? "➕ Create" : "💾 Save")
+            </button>
+        </div>
+    </Modal>
+}
+
+<style>
+    .favourites-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .favourite-item {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .favourite-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .favourite-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .favourite-id {
+        color: var(--text-dim);
+        font-size: 12px;
+    }
+
+    .favourite-prompt {
+        color: var(--text);
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
+    .favourite-description {
+        color: var(--text-dim);
+        font-size: 12px;
+        font-style: italic;
+        margin-bottom: 8px;
+    }
+
+    .favourite-code {
+        margin: 10px 0;
+    }
+
+    .favourite-code details {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 4px;
+        margin-bottom: 8px;
+    }
+
+    .favourite-code summary {
+        cursor: pointer;
+        padding: 8px 12px;
+        color: var(--accent);
+        font-size: 12px;
+    }
+
+    .favourite-code pre {
+        margin: 0;
+        padding: 12px;
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .favourite-meta {
+        color: var(--text-dim);
+        font-size: 11px;
+        margin-bottom: 10px;
+    }
+
+    .favourite-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .badge-builtin {
+        background: #6c757d;
+        color: white;
+    }
+
+    .badge-user {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .badge-category {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text-dim);
+    }
+
+    .readonly-notice {
+        color: var(--text-dim);
+        font-size: 12px;
+        font-style: italic;
+    }
+
+    .btn-small {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: var(--text-dim);
+    }
+    
+    .favourite-variations-badge {
+        display: inline-block;
+        background: rgba(138, 43, 226, 0.3);
+        color: #a855f7;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-bottom: 8px;
+    }
+    
+    .variation-item {
+        background: rgba(0, 0, 0, 0.2);
+        border-left: 3px solid #a855f7;
+        padding: 10px;
+        margin: 8px 0;
+        border-radius: 0 4px 4px 0;
+    }
+    
+    .variation-header {
+        color: #a855f7;
+        font-size: 12px;
+        margin-bottom: 5px;
+    }
+    
+    .variation-undo {
+        color: var(--text-dim);
+        font-size: 11px;
+        margin-top: 5px;
+    }
+    
+    .variations-section {
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .variations-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    .variation-edit-item {
+        background: rgba(138, 43, 226, 0.1);
+        border: 1px solid rgba(138, 43, 226, 0.3);
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+    }
+    
+    .variation-edit-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        color: #a855f7;
+    }
+</style>
+
+@code {
+    private List<FavouritePrompt> favourites = new();
+    private List<string> categories = new();
+    private string? selectedCategory = null;
+    private readonly HashSet<int> expandedFavourites = new();
+    
+    private string alertMessage = "";
+    private string alertType = "info";
+    
+    // Modal state
+    private bool showEditModal = false;
+    private FavouritePrompt? editingFavourite = null;
+    private string editName = "";
+    private string editCategory = "";
+    private string editPrompt = "";
+    private string editDescription = "";
+    private string editExecutionCode = "";
+    private string editUndoCode = "";
+    private List<FavouriteVariation> editVariations = new();
+
+    private IEnumerable<FavouritePrompt> filteredFavourites => selectedCategory switch
+    {
+        null => favourites,
+        "_user" => favourites.Where(f => !f.IsBuiltIn),
+        "_builtin" => favourites.Where(f => f.IsBuiltIn),
+        _ => favourites.Where(f => f.Category == selectedCategory)
+    };
+
+    protected override Task OnInitializedAsync()
+    {
+        LoadFavourites();
+        return Task.CompletedTask;
+    }
+
+    private void LoadFavourites()
+    {
+        try
+        {
+            // Order: built-in favourites first, then user favourites, alphabetically within each group
+            favourites = FavouritesService.GetAllFavourites()
+                .OrderByDescending(f => f.IsBuiltIn) // Built-in first
+                .ThenBy(f => f.Name)
+                .ToList();
+            categories = FavouritesService.GetCategories();
+            alertMessage = "";
+        }
+        catch (Exception ex)
+        {
+            alertMessage = $"Failed to load favourites: {ex.Message}";
+            alertType = "error";
+        }
+    }
+
+    private void ToggleExpand(int id)
+    {
+        if (expandedFavourites.Contains(id))
+            expandedFavourites.Remove(id);
+        else
+            expandedFavourites.Add(id);
+    }
+
+    private void OpenCreateModal()
+    {
+        editingFavourite = null;
+        editName = "";
+        editCategory = "General";
+        editPrompt = "";
+        editDescription = "";
+        editExecutionCode = "";
+        editUndoCode = "";
+        editVariations = new List<FavouriteVariation>();
+        showEditModal = true;
+    }
+
+    private void OpenEditModal(FavouritePrompt fav)
+    {
+        editingFavourite = fav;
+        editName = fav.Name;
+        editCategory = fav.Category;
+        editPrompt = fav.UserPrompt;
+        editDescription = fav.Description ?? "";
+        editExecutionCode = fav.ExecutionCode;
+        editUndoCode = fav.UndoCode;
+        // Deep copy variations so edits don't affect the original until saved
+        // Use null-coalescing to handle potential null from old JSON files
+        editVariations = (fav.Variations ?? new List<FavouriteVariation>()).Select(v => new FavouriteVariation
+        {
+            Name = v.Name,
+            ExecutionCode = v.ExecutionCode,
+            UndoCode = v.UndoCode
+        }).ToList();
+        showEditModal = true;
+    }
+    
+    private void AddNewVariation()
+    {
+        editVariations.Add(new FavouriteVariation());
+    }
+    
+    private void RemoveVariation(int index)
+    {
+        if (index >= 0 && index < editVariations.Count)
+        {
+            editVariations.RemoveAt(index);
+        }
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+        editingFavourite = null;
+    }
+
+    private async Task SaveFavourite()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(editName))
+            {
+                alertMessage = "Name is required";
+                alertType = "error";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(editExecutionCode))
+            {
+                alertMessage = "Execution code is required";
+                alertType = "error";
+                return;
+            }
+            
+            // Filter out empty variations
+            var validVariations = editVariations
+                .Where(v => !string.IsNullOrWhiteSpace(v.ExecutionCode))
+                .ToList();
+
+            if (editingFavourite == null)
+            {
+                // Create new
+                FavouritesService.CreateFavourite(
+                    editName,
+                    editPrompt,
+                    editExecutionCode,
+                    editUndoCode,
+                    editCategory,
+                    string.IsNullOrWhiteSpace(editDescription) ? null : editDescription,
+                    validVariations
+                );
+                alertMessage = "Favourite created successfully";
+            }
+            else
+            {
+                // Update existing
+                FavouritesService.UpdateFavourite(
+                    editingFavourite.Id,
+                    editName,
+                    editPrompt,
+                    editExecutionCode,
+                    editUndoCode,
+                    editCategory,
+                    string.IsNullOrWhiteSpace(editDescription) ? null : editDescription,
+                    validVariations
+                );
+                alertMessage = "Favourite updated successfully";
+            }
+
+            alertType = "success";
+            CloseEditModal();
+            LoadFavourites();
+            
+            await ClearAlertAfterDelay();
+        }
+        catch (Exception ex)
+        {
+            alertMessage = $"Failed to save favourite: {ex.Message}";
+            alertType = "error";
+        }
+    }
+
+    private async Task DeleteFavourite(FavouritePrompt fav)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{fav.Name}'? This action cannot be undone.");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            if (FavouritesService.DeleteFavourite(fav.Id))
+            {
+                alertMessage = $"Favourite '{fav.Name}' deleted";
+                alertType = "success";
+                LoadFavourites();
+            }
+            else
+            {
+                alertMessage = "Failed to delete favourite";
+                alertType = "error";
+            }
+            
+            await ClearAlertAfterDelay();
+        }
+        catch (Exception ex)
+        {
+            alertMessage = $"Error deleting favourite: {ex.Message}";
+            alertType = "error";
+        }
+    }
+
+    private async Task TransferToBuiltIn(FavouritePrompt fav)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", 
+            $"Transfer '{fav.Name}' to built-in favourites?\n\nThis will make it available in source control and published builds. The favourite will become read-only.");
+        
+        if (!confirmed)
+            return;
+
+        try
+        {
+            if (FavouritesService.TransferToBuiltIn(fav.Id))
+            {
+                alertMessage = $"'{fav.Name}' is now a built-in favourite";
+                alertType = "success";
+                LoadFavourites();
+            }
+            else
+            {
+                alertMessage = "Failed to transfer favourite";
+                alertType = "error";
+            }
+            
+            await ClearAlertAfterDelay();
+        }
+        catch (Exception ex)
+        {
+            alertMessage = $"Error transferring favourite: {ex.Message}";
+            alertType = "error";
+        }
+    }
+
+    private async Task ClearAlertAfterDelay()
+    {
+        await Task.Delay(3000);
+        alertMessage = "";
+        StateHasChanged();
+    }
+}

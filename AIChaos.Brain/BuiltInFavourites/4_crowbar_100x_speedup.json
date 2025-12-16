@@ -1,0 +1,12 @@
+{
+  "Id": 4,
+  "Name": "Crowbar 100x speedup",
+  "UserPrompt": "Make the crowbar swing 100x faster",
+  "ExecutionCode": "hook.Add(\u0022EntityFireBullets\u0022, \u0022CrowbarSpeedHack\u0022, function(ent, data)\n    if IsValid(ent) and ent:IsPlayer() then\n        local wep = ent:GetActiveWeapon()\n        if IsValid(wep) and wep:GetClass() == \u0022weapon_crowbar\u0022 then\n            wep:SetNextPrimaryFire(CurTime())\n            wep:SetNextSecondaryFire(CurTime())\n        end\n    end\nend)\n\nhook.Add(\u0022Think\u0022, \u0022CrowbarSpeedThink\u0022, function()\n    for _, ply in pairs(player.GetAll()) do\n        local wep = ply:GetActiveWeapon()\n        if IsValid(wep) and wep:GetClass() == \u0022weapon_crowbar\u0022 then\n            wep:SetNextPrimaryFire(CurTime())\n            wep:SetNextSecondaryFire(CurTime())\n        end\n    end\nend)",
+  "UndoCode": "hook.Remove(\u0022EntityFireBullets\u0022, \u0022CrowbarSpeedHack\u0022)\nhook.Remove(\u0022Think\u0022, \u0022CrowbarSpeedThink\u0022)",
+  "Category": "Fun",
+  "Description": null,
+  "SavedAt": "2025-11-30T07:37:49.6949748Z",
+  "OriginalCommandId": null,
+  "IsBuiltIn": true
+}

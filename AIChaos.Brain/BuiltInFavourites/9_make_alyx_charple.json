@@ -1,0 +1,12 @@
+{
+  "Id": 9,
+  "Name": "Make Alyx Charple",
+  "UserPrompt": "change alyx\u0027s model into models/humans/charple01.mdl and play ambient/alarms/razortrain_horn1.wav",
+  "ExecutionCode": "local alyx = nil\nfor _, v in pairs(ents.GetAll()) do\n    if v:IsNPC() and v:GetClass() == \u0022npc_alyx\u0022 then\n        alyx = v\n        break\n    end\nend\n\nif IsValid(alyx) then\n    alyx:SetModel(\u0022models/humans/charple01.mdl\u0022)\n    alyx:EmitSound(\u0022ambient/alarms/razortrain_horn1.wav\u0022, 75, 100)\nend",
+  "UndoCode": "local alyx = nil\nfor _, v in pairs(ents.GetAll()) do\n    if v:IsNPC() and v:GetClass() == \u0022npc_alyx\u0022 then\n        alyx = v\n        break\n    end\nend\n\nif IsValid(alyx) then\n    alyx:SetModel(\u0022models/humans/alyx.mdl\u0022)\n    alyx:StopAllSounds()\nend",
+  "Category": "Dumb",
+  "Description": null,
+  "SavedAt": "2025-12-01T09:02:56.7968096Z",
+  "OriginalCommandId": null,
+  "IsBuiltIn": true
+}
