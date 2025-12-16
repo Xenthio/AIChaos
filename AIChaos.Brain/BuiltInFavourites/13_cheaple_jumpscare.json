@@ -1,0 +1,13 @@
+{
+  "Id": 13,
+  "Name": "Cheaple Jumpscare",
+  "UserPrompt": "1 second of male cheaple (models/humans/male/group01/male_cheaple_sheet) face texture (lower bottom right quadrant of that texture) fullscreen and play stalker scream sound (npc/stalker/go_alert2.wav)\n",
+  "ExecutionCode": "RunOnClient([=[\n    surface.CreateFont(\u0022JumpscareDummy\u0022, {font = \u0022Arial\u0022, size = 1})\n    \n    local jumpscarePanel = vgui.Create(\u0022DPanel\u0022)\n    jumpscarePanel:SetSize(ScrW(), ScrH())\n    jumpscarePanel:SetPos(0, 0)\n    jumpscarePanel:SetZPos(32767)\n    \n    local matPath = \u0022models/humans/male/group01/male_cheaple_sheet\u0022\n    local mat = Material(matPath)\n    \n    jumpscarePanel.Paint = function(self, w, h)\n        surface.SetDrawColor(0, 0, 0, 255)\n        surface.DrawRect(0, 0, w, h)\n        \n        surface.SetMaterial(mat)\n        surface.SetDrawColor(255, 255, 255, 255)\n        \n        local texW = mat:GetTexture(\u0022$basetexture\u0022):Width()\n        local texH = mat:GetTexture(\u0022$basetexture\u0022):Height()\n        \n        local u0, v0 = 0.5, 0.5\n        local u1, v1 = 1.0, 1.0\n        \n        local quadSize = math.max(w, h) * 1.2\n        local startX = (w - quadSize) / 2\n        local startY = (h - quadSize) / 2\n        \n        surface.DrawTexturedRectUV(startX, startY, quadSize, quadSize, u0, v0, u1, v1)\n    end\n    \n    surface.PlaySound(\u0022npc/stalker/go_alert2.wav\u0022)\n    \n    timer.Simple(1, function()\n        if IsValid(jumpscarePanel) then\n            jumpscarePanel:Remove()\n        end\n    end)\n]=])",
+  "UndoCode": "RunOnClient([=[\n    for _, panel in pairs(vgui.GetAll()) do\n        if IsValid(panel) and panel:GetClassName() == \u0022DPanel\u0022 and panel:GetZPos() == 32767 then\n            panel:Remove()\n        end\n    end\n]=])",
+  "Category": "Dumb",
+  "Description": null,
+  "SavedAt": "2025-12-16T04:15:57.9768973Z",
+  "OriginalCommandId": 277,
+  "IsBuiltIn": true,
+  "Variations": []
+}
