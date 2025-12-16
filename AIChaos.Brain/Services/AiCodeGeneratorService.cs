@@ -15,6 +15,13 @@ public class AiCodeGeneratorService
     private readonly CommandQueueService _commandQueue;
     private readonly ILogger<AiCodeGeneratorService> _logger;
     
+    // Lazy-loaded HUD framework content
+    private static string? _cachedHudExamples;
+    private static string? _cachedHudFramework;
+    
+    // Keywords that trigger HUD framework inclusion
+    private static readonly string[] HudKeywords = { "HUD", "health bar", "ammo display", "UI element", "overlay" };
+    
     /// <summary>
     /// Shared ground rules for GLua code generation that can be used by other services.
     /// These rules define the server/client architecture, safety rules, and best practices.
@@ -134,7 +141,11 @@ public class AiCodeGeneratorService
            
         """;
     
-    private static readonly string SystemPrompt = $"""
+    // Note: GetSystemPromptBase is static and cannot pass logger to GetHudExamples.
+    // This is by design - HUD examples are included in every prompt, so file-not-found
+    // errors are expected in non-production environments and don't need per-call logging.
+    // Critical errors are still logged when GetHudFramework is called from instance methods.
+    private static string GetSystemPromptBase() => $"""
         You are an expert Lua scripter for Garry's Mod (GLua). 
         You will receive a request from a livestream chat and the current map name. 
         The chat is controlling the streamer's playthrough of Half-Life 2 via your generated scripts.
@@ -147,6 +158,7 @@ public class AiCodeGeneratorService
         The undo code should completely reverse any changes, stop timers, remove entities, restore original values, etc.
 
         {GroundRules}
+        {GetHudExamples()}
 
         **Output:** RETURN ONLY THE RAW LUA CODE. Do not include markdown backticks (```lua) or explanations.
            Format: EXECUTION_CODE
@@ -199,7 +211,11 @@ public class AiCodeGeneratorService
         """;
 
     // Unfiltered prompt for Private Discord Mode - no safety restrictions
-    private const string PrivateDiscordModePrompt = """
+    // Note: GetPrivateDiscordModePromptBase is static and cannot pass logger to GetHudExamples.
+    // This is by design - HUD examples are included in every prompt, so file-not-found
+    // errors are expected in non-production environments and don't need per-call logging.
+    // Critical errors are still logged when GetHudFramework is called from instance methods.
+    private static string GetPrivateDiscordModePromptBase() => $"""
         You are an expert Lua scripter for Garry's Mod (GLua). 
         You will receive a request and the current map name. 
         Generate valid GLua code to execute that request immediately.
@@ -222,6 +238,8 @@ public class AiCodeGeneratorService
 
         2. **UI:** Make sure you can interact with UI elements and popups that require it! (MakePopup())
            -You can do advanced UI in HTML, for better effects and fancy styling and js.
+
+        {GetHudExamples()}
 
         3. **Output:** RETURN ONLY THE RAW LUA CODE. Do not include markdown backticks (```lua) or explanations.
            Format: EXECUTION_CODE
@@ -265,6 +283,120 @@ public class AiCodeGeneratorService
         _settingsService = settingsService;
         _commandQueue = commandQueue;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Builds the path to a Lua file relative to the executing assembly.
+    /// Handles different build output structures robustly.
+    /// </summary>
+    private static string? GetLuaFilePath(string relativePath, ILogger? logger = null)
+    {
+        try
+        {
+            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            var fullPath = Path.Combine(basePath, "..", "..", "..", relativePath);
+            fullPath = Path.GetFullPath(fullPath);
+
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+            
+            // If not found, try from solution root (for different build configurations)
+            fullPath = Path.Combine(basePath, "..", "..", "..", "..", relativePath);
+            fullPath = Path.GetFullPath(fullPath);
+            
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+
+            logger?.LogDebug("Lua file not found at expected locations: {RelativePath}", relativePath);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(ex, "Error accessing Lua file: {RelativePath}", relativePath);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Gets the HUD framework examples from test.lua file.
+    /// Content is cached after first load.
+    /// </summary>
+    private static string GetHudExamples(ILogger? logger = null)
+    {
+        if (_cachedHudExamples != null)
+            return _cachedHudExamples;
+
+        var testLuaPath = GetLuaFilePath(Path.Combine("lua", "tests", "hudframeworktest.lua"), logger);
+        
+        if (testLuaPath != null)
+        {
+            try
+            {
+                var content = File.ReadAllText(testLuaPath);
+                _cachedHudExamples = $"""
+
+                    --- HUD FRAMEWORK EXAMPLES ---
+                    Below are examples from hudframeworktest.lua showing how to use the ChaosHUD framework to create native-looking UI elements:
+                    
+                    ```lua
+                    {content}
+                    ```
+                    
+                    """;
+                return _cachedHudExamples;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(ex, "Failed to read HUD examples from {Path}", testLuaPath);
+            }
+        }
+
+        _cachedHudExamples = string.Empty;
+        return _cachedHudExamples;
+    }
+
+    /// <summary>
+    /// Gets the full HUD framework implementation from cl_chaos_hud_framework.lua.
+    /// Content is cached after first load.
+    /// </summary>
+    private static string GetHudFramework(ILogger? logger = null)
+    {
+        if (_cachedHudFramework != null)
+            return _cachedHudFramework;
+
+        var frameworkPath = GetLuaFilePath(Path.Combine("lua", "autorun", "client", "cl_chaos_hud_framework.lua"), logger);
+        
+        if (frameworkPath != null)
+        {
+            try
+            {
+                var content = File.ReadAllText(frameworkPath);
+                _cachedHudFramework = $"""
+
+                    --- FULL HUD FRAMEWORK IMPLEMENTATION ---
+                    Below is the complete ChaosHUD framework code showing how to style HUD elements like native HL2 ones:
+                    
+                    ```lua
+                    {content}
+                    ```
+                    
+                    Use this framework to create professional-looking HUD elements that match the Half-Life 2 visual style.
+                    
+                    """;
+                return _cachedHudFramework;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(ex, "Failed to read HUD framework from {Path}", frameworkPath);
+            }
+        }
+
+        _cachedHudFramework = string.Empty;
+        return _cachedHudFramework;
     }
 
     /// <summary>
@@ -318,8 +450,31 @@ public class AiCodeGeneratorService
             _logger.LogDebug("[API] Generating code via OpenRouterService");
             
             var settings = _settingsService.Settings;
-            // Use unfiltered prompt when Private Discord Mode is enabled
-            var activePrompt = settings.Safety.PrivateDiscordMode ? PrivateDiscordModePrompt : SystemPrompt;
+            
+            // Check if any HUD-related keywords are mentioned in the user request (case-insensitive)
+            var includeHudFramework = HudKeywords.Any(keyword => 
+                userRequest.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+            
+            // Build the appropriate prompt with conditional HUD framework inclusion
+            string activePrompt;
+            if (settings.Safety.PrivateDiscordMode)
+            {
+                activePrompt = GetPrivateDiscordModePromptBase();
+                if (includeHudFramework)
+                {
+                    _logger.LogDebug("Including HUD framework in prompt due to keyword match");
+                    activePrompt += GetHudFramework(_logger);
+                }
+            }
+            else
+            {
+                activePrompt = GetSystemPromptBase();
+                if (includeHudFramework)
+                {
+                    _logger.LogDebug("Including HUD framework in prompt due to keyword match");
+                    activePrompt += GetHudFramework(_logger);
+                }
+            }
 
             var messages = new List<ChatMessage>
             {

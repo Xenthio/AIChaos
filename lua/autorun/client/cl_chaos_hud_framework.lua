@@ -77,6 +77,14 @@ function ChaosHUD.UpdateFonts()
         antialias = true,
         additive = true,
     } )
+
+    surface.CreateFont( "ChaosHUD_SmallText", {
+        font = "Verdana",
+        size = math.Round(6 * scale),
+        weight = 700,
+        antialias = true,
+        additive = true,
+    } )
 end
 
 hook.Add("OnScreenSizeChanged", "ChaosHUD_UpdateFonts", ChaosHUD.UpdateFonts)
@@ -97,6 +105,15 @@ ChaosHUD.HStackMap = {} -- Quick lookup by ID
 
 ChaosHUD.RightHStack = {}
 ChaosHUD.RightHStackMap = {}
+
+ChaosHUD.CenterVStack = {}
+ChaosHUD.CenterVStackMap = {}
+
+ChaosHUD.TopLeftVStack = {}
+ChaosHUD.TopLeftVStackMap = {}
+
+ChaosHUD.TopRightVStack = {}
+ChaosHUD.TopRightVStackMap = {}
 
 function ChaosHUD.RegisterColumn(id, width_base, visibility_callback, priority)
     if ChaosHUD.HStackMap[id] then return end -- Already exists
@@ -199,6 +216,109 @@ function ChaosHUD.RemoveVStackElement(column_id, element_id)
         for k, v in ipairs(col.vstack) do
             if v.id == element_id then
                 table.remove(col.vstack, k)
+                break
+            end
+        end
+    end
+end
+
+function ChaosHUD.AddCenterElement(element_id, element_obj, priority)
+    if ChaosHUD.CenterVStackMap[element_id] then
+        -- Update existing
+        for k, v in ipairs(ChaosHUD.CenterVStack) do
+            if v.id == element_id then
+                v.obj = element_obj
+                v.priority = priority or v.priority
+                break
+            end
+        end
+    else
+        local item = {
+            id = element_id,
+            obj = element_obj,
+            priority = priority or 100,
+            state = { current_h = 0, target_h = 0, speed = 0 }
+        }
+        table.insert(ChaosHUD.CenterVStack, item)
+        ChaosHUD.CenterVStackMap[element_id] = item
+    end
+    table.sort(ChaosHUD.CenterVStack, function(a, b) return a.priority < b.priority end)
+end
+
+function ChaosHUD.RemoveCenterElement(element_id)
+    if ChaosHUD.CenterVStackMap[element_id] then
+        ChaosHUD.CenterVStackMap[element_id] = nil
+        for k, v in ipairs(ChaosHUD.CenterVStack) do
+            if v.id == element_id then
+                table.remove(ChaosHUD.CenterVStack, k)
+                break
+            end
+        end
+    end
+end
+
+function ChaosHUD.AddTopLeftElement(element_id, element_obj, priority)
+    if ChaosHUD.TopLeftVStackMap[element_id] then
+        for k, v in ipairs(ChaosHUD.TopLeftVStack) do
+            if v.id == element_id then
+                v.obj = element_obj
+                v.priority = priority or v.priority
+                break
+            end
+        end
+    else
+        local item = {
+            id = element_id,
+            obj = element_obj,
+            priority = priority or 100,
+            state = { current_h = 0, target_h = 0, speed = 0 }
+        }
+        table.insert(ChaosHUD.TopLeftVStack, item)
+        ChaosHUD.TopLeftVStackMap[element_id] = item
+    end
+    table.sort(ChaosHUD.TopLeftVStack, function(a, b) return a.priority < b.priority end)
+end
+
+function ChaosHUD.RemoveTopLeftElement(element_id)
+    if ChaosHUD.TopLeftVStackMap[element_id] then
+        ChaosHUD.TopLeftVStackMap[element_id] = nil
+        for k, v in ipairs(ChaosHUD.TopLeftVStack) do
+            if v.id == element_id then
+                table.remove(ChaosHUD.TopLeftVStack, k)
+                break
+            end
+        end
+    end
+end
+
+function ChaosHUD.AddTopRightElement(element_id, element_obj, priority)
+    if ChaosHUD.TopRightVStackMap[element_id] then
+        for k, v in ipairs(ChaosHUD.TopRightVStack) do
+            if v.id == element_id then
+                v.obj = element_obj
+                v.priority = priority or v.priority
+                break
+            end
+        end
+    else
+        local item = {
+            id = element_id,
+            obj = element_obj,
+            priority = priority or 100,
+            state = { current_h = 0, target_h = 0, speed = 0 }
+        }
+        table.insert(ChaosHUD.TopRightVStack, item)
+        ChaosHUD.TopRightVStackMap[element_id] = item
+    end
+    table.sort(ChaosHUD.TopRightVStack, function(a, b) return a.priority < b.priority end)
+end
+
+function ChaosHUD.RemoveTopRightElement(element_id)
+    if ChaosHUD.TopRightVStackMap[element_id] then
+        ChaosHUD.TopRightVStackMap[element_id] = nil
+        for k, v in ipairs(ChaosHUD.TopRightVStack) do
+            if v.id == element_id then
+                table.remove(ChaosHUD.TopRightVStack, k)
                 break
             end
         end
@@ -554,13 +674,43 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             
             -- Draw Base Element?
             if col.base_element then
-                local w, h = col.base_element:Draw(current_x, start_y)
+                local draw_y = start_y
+                
+                -- Bottom Align if GetSize is available
+                if col.base_element.GetSize then
+                    local _, h = col.base_element:GetSize()
+                    local standard_h = 36 * scale
+                    draw_y = start_y + (standard_h - h)
+                end
+                
+                local w, h = col.base_element:Draw(current_x, draw_y)
                 col_width = w -- Update width if dynamic
             end
             
             -- Draw VStack
             local base_height = 36 * scale
-            local stack_start_y = start_y - (ChaosHUD.Styles.StackGap * scale)
+            local stack_start_y
+            
+            -- Calculate actual base height for stacking
+            if col.base_element and col.base_element.GetSize then
+                local _, h = col.base_element:GetSize()
+                -- If base element is taller than standard, we need to start stacking from higher up
+                -- But wait, start_y is the TOP of the base element row? 
+                -- No, start_y is the TOP of the standard 36px row.
+                -- If an element is 50px tall, it draws from start_y + (36 - 50) = start_y - 14.
+                -- So the top of the element is at start_y - 14.
+                -- The stack should start above that.
+                
+                -- Let's find the visual top of the base element
+                local visual_top = start_y + (36 * scale - h)
+                base_height = h -- Not used directly but good to know
+                
+                -- Stack starts above the visual top
+                stack_start_y = visual_top - (ChaosHUD.Styles.StackGap * scale)
+            else
+                -- Standard behavior
+                stack_start_y = start_y - (ChaosHUD.Styles.StackGap * scale)
+            end
             
             -- Special Case: Native Aux Power on Health
             if col.id == "Health" then
@@ -667,28 +817,35 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             else
                 -- Draw Base Element for custom right columns
                 if col.base_element then
-                    -- For right stack, we draw at (current_x_right - width)
-                    -- But we need to know width first.
-                    -- Assuming base_element:GetSize() is available or we use Draw return.
-                    -- Let's assume GetSize is reliable or we do a pre-pass.
-                    -- For now, use col_width as estimate, then correct?
-                    -- Better: Call Draw with x,y.
+                    local draw_y = start_y
                     
                     -- We need to know width to position X.
                     -- Let's assume standard width or ask GetSize.
                     if col.base_element.GetSize then
                         local w, h = col.base_element:GetSize()
                         col_width = w
+                        
+                        -- Bottom Align
+                        local standard_h = 36 * scale
+                        draw_y = start_y + (standard_h - h)
                     end
                     
                     local draw_x = current_x_right - col_width
-                    local w, h = col.base_element:Draw(draw_x, start_y)
+                    local w, h = col.base_element:Draw(draw_x, draw_y)
                     col_width = w
                 end
             end
             
             -- Render VStack
             local stack_start_y = start_y - (ChaosHUD.Styles.StackGap * scale)
+            
+            -- Adjust stack start for tall base elements (Right Side)
+            if col.base_element and col.base_element.GetSize then
+                local _, h = col.base_element:GetSize()
+                local visual_top = start_y + (36 * scale - h)
+                stack_start_y = visual_top - (ChaosHUD.Styles.StackGap * scale)
+            end
+            
             local current_y = stack_start_y
             
             -- VStack is aligned to the RIGHT of the column space?
@@ -736,6 +893,90 @@ hook.Add("HUDPaint", "ChaosHUD_Render", function()
             current_x_right = current_x_right - col_width - gap
             
             ::continue_right::
+        end
+    end
+
+    -- ------------------------------------------------------------------------
+    -- CENTER STACK RENDER
+    -- ------------------------------------------------------------------------
+    local center_x = ScrW() / 2
+    local center_y = start_y -- Same baseline as others
+    
+    for _, item in ipairs(ChaosHUD.CenterVStack) do
+        -- Calculate Target Height
+        local w, target_h = item.obj:GetSize()
+        
+        -- Animate Height
+        if target_h ~= item.state.target_h then
+            item.state.target_h = target_h
+            item.state.speed = math.abs(target_h - item.state.current_h) / 0.4
+        end
+        
+        item.state.current_h = math.Approach(
+            item.state.current_h,
+            item.state.target_h,
+            item.state.speed * FrameTime()
+        )
+        
+        -- Draw
+        if item.state.current_h > 0 then
+            local draw_y = center_y - item.state.current_h
+            -- Center align: x - w/2
+            item.obj:Draw(center_x - (w / 2), draw_y, item.state.current_h)
+            center_y = draw_y - (ChaosHUD.Styles.StackGap * scale)
+        end
+    end
+
+    -- ------------------------------------------------------------------------
+    -- TOP LEFT STACK RENDER
+    -- ------------------------------------------------------------------------
+    local tl_x = 16 * scale
+    local tl_y = 16 * scale
+    
+    for _, item in ipairs(ChaosHUD.TopLeftVStack) do
+        local w, target_h = item.obj:GetSize()
+        
+        if target_h ~= item.state.target_h then
+            item.state.target_h = target_h
+            item.state.speed = math.abs(target_h - item.state.current_h) / 0.4
+        end
+        
+        item.state.current_h = math.Approach(
+            item.state.current_h,
+            item.state.target_h,
+            item.state.speed * FrameTime()
+        )
+        
+        if item.state.current_h > 0 then
+            item.obj:Draw(tl_x, tl_y, item.state.current_h)
+            tl_y = tl_y + item.state.current_h + (ChaosHUD.Styles.StackGap * scale)
+        end
+    end
+
+    -- ------------------------------------------------------------------------
+    -- TOP RIGHT STACK RENDER
+    -- ------------------------------------------------------------------------
+    local tr_right_edge = ScrW() - (16 * scale)
+    local tr_y = 16 * scale
+    
+    for _, item in ipairs(ChaosHUD.TopRightVStack) do
+        local w, target_h = item.obj:GetSize()
+        
+        if target_h ~= item.state.target_h then
+            item.state.target_h = target_h
+            item.state.speed = math.abs(target_h - item.state.current_h) / 0.4
+        end
+        
+        item.state.current_h = math.Approach(
+            item.state.current_h,
+            item.state.target_h,
+            item.state.speed * FrameTime()
+        )
+        
+        if item.state.current_h > 0 then
+            local draw_x = tr_right_edge - w
+            item.obj:Draw(draw_x, tr_y, item.state.current_h)
+            tr_y = tr_y + item.state.current_h + (ChaosHUD.Styles.StackGap * scale)
         end
     end
 end)

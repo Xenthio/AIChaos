@@ -60,12 +60,12 @@ timer.Simple(0.1, function()
 
     ChaosHUD.AddVStackElement("Chaos", "ChaosPower", aux1, 10)
 
-    -- Element 2: "SPUNK METER" (Static)
-    local aux2 = ChaosHUD.CreateAuxElement("SPUNK METER", function()
+    -- Element 2: "METER" (Static)
+    local aux2 = ChaosHUD.CreateAuxElement("METER", function()
         return 80
     end, nil)
 
-    ChaosHUD.AddVStackElement("Chaos", "SpunkMeter", aux2, 20)
+    ChaosHUD.AddVStackElement("Chaos", "Meter", aux2, 20)
 
     -- 4. Test adding something to the Vanilla "Health" stack too!
     -- Let s add a small bar above Health just to prove we can.
@@ -150,7 +150,7 @@ timer.Simple(0.1, function()
         h = h or (80 * scale) -- Default height if not provided (e.g. base element)
         
         -- Align bottom with standard elements (36 units high)
-        local draw_y = y + (36 * scale) - h
+        local draw_y = y
 
         -- Draw Background
         draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, draw_y, w, h, ChaosHUD.Colors.BgStandard)
@@ -321,6 +321,87 @@ timer.Simple(0.1, function()
     end
     
     ChaosHUD.AddVStackElement("Health", "Compass", compass_elem, 5) -- Very top of Health stack
+
+    -- 13. CENTER STACK TEST: Stamina Bar
+    local stamina_elem = {}
+    function stamina_elem:GetSize()
+        return 200 * ChaosHUD.GetScale(), 20 * ChaosHUD.GetScale()
+    end
+    function stamina_elem:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        h = h or (20 * scale)
+        local w = 200 * scale
+        
+        -- Only show if sprinting or low stamina
+        local ply = LocalPlayer()
+        local stamina = ply:GetSuitPower() -- Using Suit Power as fake stamina for test
+        -- Or just use a sine wave
+        stamina = 50 + math.sin(CurTime() * 2) * 50
+        
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, w, h, ChaosHUD.Colors.BgStandard)
+        
+        -- Bar
+        local bar_w = (w - 8 * scale) * (stamina / 100)
+        draw.RoundedBox(4, x + 4 * scale, y + 4 * scale, bar_w, h - 8 * scale, ChaosHUD.Colors.Yellow)
+        
+        -- Label
+        draw.SimpleText("STAMINA", "ChaosHUD_Text", x + w/2, y + h/2, Color(0,0,0,200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        
+        return w, h
+    end
+    
+    ChaosHUD.AddCenterElement("Stamina", stamina_elem, 10)
+
+    -- 14. TOP LEFT STACK TEST: Server Info
+    local server_info_elem = {}
+    function server_info_elem:GetSize()
+        return 200 * ChaosHUD.GetScale(), 60 * ChaosHUD.GetScale()
+    end
+    function server_info_elem:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        local w = 200 * scale
+        
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, w, h, ChaosHUD.Colors.BgStandard)
+        
+        draw.SimpleText("AI CHAOS SERVER", "ChaosHUD_Text", x + 10*scale, y + 10*scale, ChaosHUD.Colors.Yellow, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        draw.SimpleText("Map: " .. game.GetMap(), "ChaosHUD_SmallText", x + 10*scale, y + 30*scale, color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        
+        return w, h
+    end
+    ChaosHUD.AddTopLeftElement("ServerInfo", server_info_elem, 10)
+
+    -- 15. TOP RIGHT STACK TEST: Kill Feed / Notifications
+    local notif_elem = {}
+    function notif_elem:GetSize()
+        return 250 * ChaosHUD.GetScale(), 40 * ChaosHUD.GetScale()
+    end
+    function notif_elem:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        local w = 250 * scale
+        
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, w, h, ChaosHUD.Colors.BgStandard)
+        
+        draw.SimpleText("PLAYER CONNECTED", "ChaosHUD_Text", x + 10*scale, y + h/2, ChaosHUD.Colors.Yellow, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        
+        return w, h
+    end
+    ChaosHUD.AddTopRightElement("Notification1", notif_elem, 10)
+    
+    local notif_elem2 = {}
+    function notif_elem2:GetSize()
+        return 250 * ChaosHUD.GetScale(), 40 * ChaosHUD.GetScale()
+    end
+    function notif_elem2:Draw(x, y, h)
+        local scale = ChaosHUD.GetScale()
+        local w = 250 * scale
+        
+        draw.RoundedBox(ChaosHUD.Styles.CornerRadius, x, y, w, h, ChaosHUD.Colors.BgStandard)
+        
+        draw.SimpleText("EVENT STARTED", "ChaosHUD_Text", x + 10*scale, y + h/2, Color(255, 100, 100), TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        
+        return w, h
+    end
+    ChaosHUD.AddTopRightElement("Notification2", notif_elem2, 20)
 
     print("[AIChaos] HUD Test Initialized.")
 end)
