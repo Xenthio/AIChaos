@@ -119,7 +119,8 @@ public class FavouritesService
         string executionCode,
         string undoCode,
         string? category = null,
-        string? description = null)
+        string? description = null,
+        List<FavouriteVariation>? variations = null)
     {
         lock (_lock)
         {
@@ -132,13 +133,15 @@ public class FavouritesService
                 UndoCode = undoCode,
                 Category = category ?? "General",
                 Description = description,
-                SavedAt = DateTime.UtcNow
+                SavedAt = DateTime.UtcNow,
+                Variations = variations ?? new List<FavouriteVariation>()
             };
             
             _favourites.Add(favourite);
             PersistFavourite(favourite);
             
-            _logger.LogInformation("[Favourites] Created favourite '{Name}' (ID: {Id})", favourite.Name, favourite.Id);
+            _logger.LogInformation("[Favourites] Created favourite '{Name}' (ID: {Id}) with {VariationCount} variations", 
+                favourite.Name, favourite.Id, favourite.Variations.Count);
             return favourite;
         }
     }
@@ -153,7 +156,8 @@ public class FavouritesService
         string? executionCode = null,
         string? undoCode = null,
         string? category = null,
-        string? description = null)
+        string? description = null,
+        List<FavouriteVariation>? variations = null)
     {
         lock (_lock)
         {
@@ -177,6 +181,7 @@ public class FavouritesService
             if (undoCode != null) favourite.UndoCode = undoCode;
             if (category != null) favourite.Category = category;
             if (description != null) favourite.Description = description;
+            if (variations != null) favourite.Variations = variations;
             
             // Get new filename after updating
             var newFilePath = GetFavouriteFilePath(favourite);
@@ -195,6 +200,65 @@ public class FavouritesService
             }
             
             PersistFavourite(favourite);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Adds a variation to a favourite. Built-in favourites cannot be modified.
+    /// </summary>
+    public bool AddVariation(int favouriteId, string executionCode, string undoCode, string? name = null)
+    {
+        lock (_lock)
+        {
+            var favourite = _favourites.FirstOrDefault(f => f.Id == favouriteId);
+            if (favourite == null)
+                return false;
+            
+            if (favourite.IsBuiltIn)
+            {
+                _logger.LogWarning("[Favourites] Cannot modify built-in favourite '{Name}'", favourite.Name);
+                return false;
+            }
+            
+            favourite.Variations.Add(new FavouriteVariation
+            {
+                Name = name,
+                ExecutionCode = executionCode,
+                UndoCode = undoCode
+            });
+            
+            PersistFavourite(favourite);
+            _logger.LogInformation("[Favourites] Added variation to favourite '{Name}' (now {Count} variations)", 
+                favourite.Name, favourite.Variations.Count);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Removes a variation from a favourite by index. Built-in favourites cannot be modified.
+    /// </summary>
+    public bool RemoveVariation(int favouriteId, int variationIndex)
+    {
+        lock (_lock)
+        {
+            var favourite = _favourites.FirstOrDefault(f => f.Id == favouriteId);
+            if (favourite == null)
+                return false;
+            
+            if (favourite.IsBuiltIn)
+            {
+                _logger.LogWarning("[Favourites] Cannot modify built-in favourite '{Name}'", favourite.Name);
+                return false;
+            }
+            
+            if (variationIndex < 0 || variationIndex >= favourite.Variations.Count)
+                return false;
+            
+            favourite.Variations.RemoveAt(variationIndex);
+            PersistFavourite(favourite);
+            _logger.LogInformation("[Favourites] Removed variation {Index} from favourite '{Name}'", 
+                variationIndex, favourite.Name);
             return true;
         }
     }
@@ -327,6 +391,7 @@ public class FavouritesService
 
     /// <summary>
     /// Executes a favourite prompt by adding it to the queue.
+    /// If the favourite has variations, one is randomly selected.
     /// </summary>
     public CommandEntry? ExecuteFavourite(int favouriteId, string userId, string displayName)
     {
@@ -339,19 +404,25 @@ public class FavouritesService
         if (favourite == null)
             return null;
         
+        // Get a random variation (or main code if no variations)
+        var (executionCode, undoCode) = favourite.GetRandomVariation();
+        
         // Add command to queue
         var entry = _commandQueue.AddCommand(
             userPrompt: favourite.UserPrompt,
-            executionCode: favourite.ExecutionCode,
-            undoCode: favourite.UndoCode,
+            executionCode: executionCode,
+            undoCode: undoCode,
             source: Constants.Sources.Favourite,
             author: displayName,
             imageContext: null,
             userId: userId
         );
         
-        _logger.LogInformation("[Favourites] User {User} executed favourite '{Name}' as command #{Id}", 
-            displayName, favourite.Name, entry.Id);
+        var variationInfo = favourite.Variations.Count > 0 
+            ? $" (random variation from {favourite.Variations.Count + 1} options)" 
+            : "";
+        _logger.LogInformation("[Favourites] User {User} executed favourite '{Name}'{VariationInfo} as command #{Id}", 
+            displayName, favourite.Name, variationInfo, entry.Id);
         
         return entry;
     }
@@ -615,4 +686,50 @@ public class FavouritePrompt
     /// Built-in favourites are read-only and loaded from BuiltInFavourites folder.
     /// </summary>
     public bool IsBuiltIn { get; set; } = false;
+    
+    /// <summary>
+    /// Alternative variations of this favourite's code that are randomly chosen when executed.
+    /// If empty, the main ExecutionCode/UndoCode is used.
+    /// </summary>
+    public List<FavouriteVariation> Variations { get; set; } = new();
+    
+    /// <summary>
+    /// Gets a random variation (or the main code if no variations exist).
+    /// Returns the execution code and undo code as a tuple.
+    /// </summary>
+    public (string ExecutionCode, string UndoCode) GetRandomVariation()
+    {
+        if (Variations.Count == 0)
+            return (ExecutionCode, UndoCode);
+        
+        // Include the main code as one of the options
+        var random = new Random();
+        var index = random.Next(Variations.Count + 1);
+        
+        if (index == Variations.Count)
+            return (ExecutionCode, UndoCode); // Main variation
+        
+        return (Variations[index].ExecutionCode, Variations[index].UndoCode);
+    }
+}
+
+/// <summary>
+/// A variation of a favourite's code that can be randomly selected.
+/// </summary>
+public class FavouriteVariation
+{
+    /// <summary>
+    /// Optional name/label for this variation (for display purposes).
+    /// </summary>
+    public string? Name { get; set; }
+    
+    /// <summary>
+    /// The Lua code to execute for this variation.
+    /// </summary>
+    public string ExecutionCode { get; set; } = "";
+    
+    /// <summary>
+    /// The Lua code to undo this variation.
+    /// </summary>
+    public string UndoCode { get; set; } = "";
 }
