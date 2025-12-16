@@ -3,6 +3,7 @@
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
 @inject PromptModerationService ModerationService
+@inject FavouritesService FavouritesService
 @inject IJSRuntime JS
 @implements IDisposable
 @using AIChaos.Brain.Models
@@ -69,7 +70,7 @@
                         <button @onclick="() => UndoCommand(cmd.Id)" class="btn-warning btn-small" title="Undo">↩</button>
                         <button @onclick="() => ForceUndoCommand(cmd.Id)" class="btn-danger btn-small" title="Force Undo (Auto-generated)">🔧</button>
                         <button @onclick="() => ToggleCodeView(cmd.Id)" class="btn-secondary btn-small" title="Show/Hide Code">👁️</button>
-                        <button @onclick="() => OpenSavePayloadModal(cmd.Id)" class="btn-success btn-small" title="Save Payload">💾</button>
+                        <button @onclick="() => OpenSavePayloadModal(cmd.Id)" class="btn-success btn-small" title="Save as Favourite">⭐</button>
                     </div>
                 </div>
             }
@@ -82,14 +83,23 @@
 {
     <div class="modal active">
         <div class="modal-content">
-            <h3>💾 Save Payload</h3>
-            <p>Enter a name for this saved payload:</p>
+            <h3>⭐ Save as Favourite</h3>
+            <p>Save this command as a favourite prompt:</p>
             <div class="form-group">
-                <input type="text" @bind="payloadName" placeholder="Payload name..." style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+                <label style="font-size: 12px; color: var(--text-dim);">Name</label>
+                <input type="text" @bind="payloadName" placeholder="Favourite name..." style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label style="font-size: 12px; color: var(--text-dim);">Category</label>
+                <input type="text" @bind="payloadCategory" placeholder="e.g., Fun, Chaos, Helpful" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label style="font-size: 12px; color: var(--text-dim);">Description (optional)</label>
+                <input type="text" @bind="payloadDescription" placeholder="Brief description..." style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); border: 1px solid var(--border); border-radius: 5px; color: var(--text);">
             </div>
             <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 15px;">
                 <button @onclick="CloseSavePayloadModal" class="btn-secondary">Cancel</button>
-                <button @onclick="SavePayload" class="btn-primary">💾 Save</button>
+                <button @onclick="SavePayload" class="btn-primary">⭐ Save to Favourites</button>
             </div>
         </div>
     </div>
@@ -179,6 +189,8 @@
     private bool showSavePayloadModal = false;
     private int selectedCommandIdForPayload = 0;
     private string payloadName = "";
+    private string payloadCategory = "General";
+    private string payloadDescription = "";
 
     protected override void OnInitialized()
     {
@@ -406,6 +418,8 @@
         selectedCommandIdForPayload = commandId;
         var command = CommandQueue.GetCommand(commandId);
         payloadName = command?.UserPrompt ?? "";
+        payloadCategory = "General";
+        payloadDescription = "";
         showSavePayloadModal = true;
     }
 
@@ -414,6 +428,8 @@
         showSavePayloadModal = false;
         selectedCommandIdForPayload = 0;
         payloadName = "";
+        payloadCategory = "General";
+        payloadDescription = "";
     }
 
     private void SavePayload()
@@ -423,17 +439,27 @@
             if (selectedCommandIdForPayload == 0 || string.IsNullOrWhiteSpace(payloadName))
                 return;
 
-            var command = CommandQueue.GetCommand(selectedCommandIdForPayload);
-            if (command != null)
+            // Use FavouritesService.AddFavourite to save to the favourites system
+            var favourite = FavouritesService.AddFavourite(
+                selectedCommandIdForPayload, 
+                payloadName,
+                string.IsNullOrWhiteSpace(payloadCategory) ? "General" : payloadCategory,
+                string.IsNullOrWhiteSpace(payloadDescription) ? null : payloadDescription
+            );
+            
+            if (favourite != null)
             {
-                CommandQueue.SavePayload(command, payloadName);
-                Console.WriteLine($"[HISTORY] Saved payload: {payloadName}");
+                Console.WriteLine($"[HISTORY] Saved favourite: {payloadName} (ID: {favourite.Id})");
                 CloseSavePayloadModal();
+            }
+            else
+            {
+                Console.WriteLine($"[HISTORY] Failed to save favourite: command not found");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Save payload failed: {ex.Message}");
+            Console.WriteLine($"Save favourite failed: {ex.Message}");
         }
     }
 
