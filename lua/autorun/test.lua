@@ -42,8 +42,28 @@ if SERVER then
         net.Start("AIChaos_Mirror_Stop")
         net.Send(ply)
         
+        -- Trigger physics chaos for the stop sequence too
+        local duration = 4.0
+        local startTime = CurTime()
+        local nextSlap = CurTime() + 1
+        
         local uniqueName = hook_name .. "_ServerSpin_" .. ply:SteamID64()
-        hook.Remove("Think", uniqueName)
+        
+        hook.Add("Think", uniqueName, function()
+            if not IsValid(ply) then hook.Remove("Think", uniqueName) return end
+            
+            local t = CurTime() - startTime
+            if t > duration then
+                hook.Remove("Think", uniqueName)
+                return
+            end
+            
+            if CurTime() > nextSlap then
+                local vel = Vector(math.random(-500, 500), math.random(-500, 500), math.random(200, 300))
+                ply:SetVelocity(vel)
+                nextSlap = CurTime() + math.random(1, 1)
+            end
+        end)
     end)
 end
 
@@ -61,26 +81,17 @@ if CLIENT then
 -- State Variables
 local MirrorActive = false
 local SpinActive = false
+local SpinReverse = false
 local SpinStartTime = 0
 local SpinDuration = 4.0 -- Total duration of the spin effect
 local SpinPeakTime = 2.0 -- When the spin is fastest (and when we swap)
 local SpinMaxSpeed = 40  -- Max degrees per tick
 local SpinDirection = 1  -- 1 or -1
 
--- Global Functions to Control the Effect
-function AIChaos_StartMirrorChaos()
-    MirrorActive = false -- Start normal
-    SpinActive = true
-    SpinStartTime = CurTime()
-    SpinDirection = math.random(0, 1) == 1 and 1 or -1
-    
-    -- Play a sound?
-    surface.PlaySound("ambient/machines/spinup.wav")
-end
-
-function AIChaos_StopMirrorChaos()
+local function CleanupMirror()
     MirrorActive = false
     SpinActive = false
+    SpinReverse = false
     
     -- Clean up any entities that might still have the callback
     local ply = LocalPlayer()
@@ -98,6 +109,31 @@ function AIChaos_StopMirrorChaos()
             hands.AIChaos_FlipSetup = false
             hands.AIChaos_FlipCallbackID = nil
         end
+    end
+end
+
+-- Global Functions to Control the Effect
+function AIChaos_StartMirrorChaos()
+    MirrorActive = false -- Start normal
+    SpinActive = true
+    SpinReverse = false
+    SpinStartTime = CurTime()
+    SpinDirection = math.random(0, 1) == 1 and 1 or -1
+    
+    -- Play a sound?
+    surface.PlaySound("ambient/machines/spinup.wav")
+end
+
+function AIChaos_StopMirrorChaos()
+    if MirrorActive then
+        -- Trigger reverse spin sequence
+        SpinActive = true
+        SpinReverse = true
+        SpinStartTime = CurTime()
+        SpinDirection = math.random(0, 1) == 1 and 1 or -1
+        surface.PlaySound("ambient/machines/spinup.wav")
+    else
+        CleanupMirror()
     end
 end
 
@@ -141,16 +177,30 @@ hook.Add("CreateMove", hook_name, function(cmd)
             -- Ease Out Quad
             speed = SpinMaxSpeed * (1 - (progress * progress))
             
-            -- Activate Mirror Mode at the peak
-            if not MirrorActive then
-                MirrorActive = true
-                SpinDirection = -SpinDirection -- Invert spin so it looks consistent through the mirror
-                surface.PlaySound("buttons/combine_button7.wav") -- Glitch sound
+            -- Handle Transition at Peak
+            if not SpinReverse then
+                -- STARTING: Activate Mirror Mode
+                if not MirrorActive then
+                    MirrorActive = true
+                    SpinDirection = -SpinDirection
+                    surface.PlaySound("buttons/combine_button7.wav")
+                end
+            else
+                -- STOPPING: Deactivate Mirror Mode
+                if MirrorActive then
+                    MirrorActive = false
+                    SpinDirection = -SpinDirection
+                    surface.PlaySound("buttons/combine_button7.wav")
+                end
             end
         else
             -- End Spin
             SpinActive = false
             speed = 0
+            
+            if SpinReverse then
+                CleanupMirror()
+            end
         end
         
         -- Apply Spin
