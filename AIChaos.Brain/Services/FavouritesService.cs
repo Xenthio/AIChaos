@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using AIChaos.Brain.Models;
+using Microsoft.AspNetCore.Hosting;
 
 namespace AIChaos.Brain.Services;
 
@@ -22,20 +23,22 @@ public class FavouritesService
     
     private readonly string _userFavouritesDirectory;
     private readonly string _builtInFavouritesDirectory;
+    private readonly string _sourceBuiltInFavouritesDirectory; // For "Make Built-In" feature - saves to source folder
     private readonly string _legacyFavouritesFile;
     
     private static readonly string DefaultUserFavouritesDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "..", "favourites");
     
-    // Built-in favourites are stored in BuiltInFavourites folder in the project
-    // This folder is included in the published output and source control
+    // Built-in favourites are loaded from BuiltInFavourites folder in the build output
     private static readonly string DefaultBuiltInFavouritesDirectory = Path.Combine(
         AppDomain.CurrentDomain.BaseDirectory, "BuiltInFavourites");
 
     public FavouritesService(
         CommandQueueService commandQueue,
-        ILogger<FavouritesService> logger)
-        : this(commandQueue, logger, DefaultUserFavouritesDirectory, DefaultBuiltInFavouritesDirectory)
+        ILogger<FavouritesService> logger,
+        IWebHostEnvironment environment)
+        : this(commandQueue, logger, DefaultUserFavouritesDirectory, DefaultBuiltInFavouritesDirectory, 
+               Path.Combine(environment.ContentRootPath, "BuiltInFavourites"))
     {
     }
 
@@ -46,20 +49,27 @@ public class FavouritesService
         CommandQueueService commandQueue,
         ILogger<FavouritesService> logger,
         string userFavouritesDirectory,
-        string? builtInFavouritesDirectory = null)
+        string? builtInFavouritesDirectory = null,
+        string? sourceBuiltInFavouritesDirectory = null)
     {
         _commandQueue = commandQueue;
         _logger = logger;
         _userFavouritesDirectory = userFavouritesDirectory;
         _builtInFavouritesDirectory = builtInFavouritesDirectory ?? DefaultBuiltInFavouritesDirectory;
+        _sourceBuiltInFavouritesDirectory = sourceBuiltInFavouritesDirectory ?? _builtInFavouritesDirectory;
         _legacyFavouritesFile = Path.Combine(_userFavouritesDirectory, "favourites.json");
         LoadFavourites();
     }
     
     /// <summary>
-    /// Gets the path to the built-in favourites directory.
+    /// Gets the path to the built-in favourites directory (in build output, for loading).
     /// </summary>
     public string BuiltInFavouritesDirectory => _builtInFavouritesDirectory;
+    
+    /// <summary>
+    /// Gets the path to the source built-in favourites directory (in project folder, for saving).
+    /// </summary>
+    public string SourceBuiltInFavouritesDirectory => _sourceBuiltInFavouritesDirectory;
 
     /// <summary>
     /// Adds a command to favourites.
@@ -511,14 +521,16 @@ public class FavouritesService
     {
         try
         {
-            var directory = isBuiltIn ? _builtInFavouritesDirectory : _userFavouritesDirectory;
+            // When saving to built-in, use the source directory (project folder) so it can be committed to git
+            var directory = isBuiltIn ? _sourceBuiltInFavouritesDirectory : _userFavouritesDirectory;
             Directory.CreateDirectory(directory);
-            var filePath = GetFavouriteFilePath(favourite, isBuiltIn);
+            var filePath = GetFavouriteFilePath(favourite, isBuiltIn, forSaving: true);
             var json = JsonSerializer.Serialize(favourite, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
             File.WriteAllText(filePath, json);
+            _logger.LogInformation("[Favourites] Saved favourite to '{Path}'", filePath);
         }
         catch (Exception ex)
         {
@@ -530,7 +542,10 @@ public class FavouritesService
     /// Gets the file path for a favourite.
     /// Uses ID and sanitized name for easy identification.
     /// </summary>
-    private string GetFavouriteFilePath(FavouritePrompt favourite, bool isBuiltIn = false)
+    /// <param name="favourite">The favourite to get the path for</param>
+    /// <param name="isBuiltIn">Whether this is a built-in favourite</param>
+    /// <param name="forSaving">If true, uses source directory for built-in favourites (for saving to project folder)</param>
+    private string GetFavouriteFilePath(FavouritePrompt favourite, bool isBuiltIn = false, bool forSaving = false)
     {
         var sanitizedName = SanitizeFileName(favourite.Name);
         // Limit the sanitized name to reasonable length
@@ -539,7 +554,18 @@ public class FavouritesService
             sanitizedName = sanitizedName[..50];
         }
         var fileName = $"{favourite.Id}_{sanitizedName}.json";
-        var directory = isBuiltIn ? _builtInFavouritesDirectory : _userFavouritesDirectory;
+        
+        string directory;
+        if (isBuiltIn)
+        {
+            // For saving, use source directory (project folder). For loading, use build output directory.
+            directory = forSaving ? _sourceBuiltInFavouritesDirectory : _builtInFavouritesDirectory;
+        }
+        else
+        {
+            directory = _userFavouritesDirectory;
+        }
+        
         return Path.Combine(directory, fileName);
     }
 

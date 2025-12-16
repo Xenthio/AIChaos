@@ -385,6 +385,7 @@ public class FavouritesServiceTests : IDisposable
     /// </summary>
     private FavouritesService CreateServiceWithTestDirectory()
     {
-        return new FavouritesService(_commandQueue, _mockLogger.Object, _testDirectory, _builtInDirectory);
+        // Use the same directory for both builtIn and sourceBuiltIn in tests
+        return new FavouritesService(_commandQueue, _mockLogger.Object, _testDirectory, _builtInDirectory, _builtInDirectory);
     }
 }
