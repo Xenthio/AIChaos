@@ -19,6 +19,9 @@ public class AiCodeGeneratorService
     private static string? _cachedHudExamples;
     private static string? _cachedHudFramework;
     
+    // Keywords that trigger HUD framework inclusion
+    private static readonly string[] HudKeywords = { "HUD", "health bar", "ammo display", "UI element", "overlay" };
+    
     /// <summary>
     /// Shared ground rules for GLua code generation that can be used by other services.
     /// These rules define the server/client architecture, safety rules, and best practices.
@@ -275,22 +278,55 @@ public class AiCodeGeneratorService
     }
 
     /// <summary>
+    /// Builds the path to a Lua file relative to the executing assembly.
+    /// Handles different build output structures robustly.
+    /// </summary>
+    private static string? GetLuaFilePath(string relativePath, ILogger? logger = null)
+    {
+        try
+        {
+            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            var fullPath = Path.Combine(basePath, "..", "..", "..", relativePath);
+            fullPath = Path.GetFullPath(fullPath);
+
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+            
+            // If not found, try from solution root (for different build configurations)
+            fullPath = Path.Combine(basePath, "..", "..", "..", "..", relativePath);
+            fullPath = Path.GetFullPath(fullPath);
+            
+            if (File.Exists(fullPath))
+            {
+                return fullPath;
+            }
+
+            logger?.LogDebug("Lua file not found at expected locations: {RelativePath}", relativePath);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger?.LogWarning(ex, "Error accessing Lua file: {RelativePath}", relativePath);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Gets the HUD framework examples from test.lua file.
     /// Content is cached after first load.
     /// </summary>
-    private static string GetHudExamples()
+    private static string GetHudExamples(ILogger? logger = null)
     {
         if (_cachedHudExamples != null)
             return _cachedHudExamples;
 
-        try
+        var testLuaPath = GetLuaFilePath(Path.Combine("lua", "autorun", "test.lua"), logger);
+        
+        if (testLuaPath != null)
         {
-            // Path relative to the executing assembly (AIChaos.Brain.dll location)
-            var basePath = AppDomain.CurrentDomain.BaseDirectory;
-            var testLuaPath = Path.Combine(basePath, "..", "..", "..", "lua", "autorun", "test.lua");
-            testLuaPath = Path.GetFullPath(testLuaPath);
-
-            if (File.Exists(testLuaPath))
+            try
             {
                 var content = File.ReadAllText(testLuaPath);
                 _cachedHudExamples = $"""
@@ -305,10 +341,10 @@ public class AiCodeGeneratorService
                     """;
                 return _cachedHudExamples;
             }
-        }
-        catch (Exception)
-        {
-            // Silently fail if file not found - not critical
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(ex, "Failed to read HUD examples from {Path}", testLuaPath);
+            }
         }
 
         _cachedHudExamples = string.Empty;
@@ -319,18 +355,16 @@ public class AiCodeGeneratorService
     /// Gets the full HUD framework implementation from cl_chaos_hud_framework.lua.
     /// Content is cached after first load.
     /// </summary>
-    private static string GetHudFramework()
+    private static string GetHudFramework(ILogger? logger = null)
     {
         if (_cachedHudFramework != null)
             return _cachedHudFramework;
 
-        try
+        var frameworkPath = GetLuaFilePath(Path.Combine("lua", "autorun", "client", "cl_chaos_hud_framework.lua"), logger);
+        
+        if (frameworkPath != null)
         {
-            var basePath = AppDomain.CurrentDomain.BaseDirectory;
-            var frameworkPath = Path.Combine(basePath, "..", "..", "..", "lua", "autorun", "client", "cl_chaos_hud_framework.lua");
-            frameworkPath = Path.GetFullPath(frameworkPath);
-
-            if (File.Exists(frameworkPath))
+            try
             {
                 var content = File.ReadAllText(frameworkPath);
                 _cachedHudFramework = $"""
@@ -347,10 +381,10 @@ public class AiCodeGeneratorService
                     """;
                 return _cachedHudFramework;
             }
-        }
-        catch (Exception)
-        {
-            // Silently fail if file not found - not critical
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger?.LogWarning(ex, "Failed to read HUD framework from {Path}", frameworkPath);
+            }
         }
 
         _cachedHudFramework = string.Empty;
@@ -409,10 +443,9 @@ public class AiCodeGeneratorService
             
             var settings = _settingsService.Settings;
             
-            // Check if "HUD" is mentioned in the user request (case-insensitive)
-            var includeHudFramework = userRequest.Contains("HUD", StringComparison.OrdinalIgnoreCase) ||
-                                     userRequest.Contains("health bar", StringComparison.OrdinalIgnoreCase) ||
-                                     userRequest.Contains("ammo display", StringComparison.OrdinalIgnoreCase);
+            // Check if any HUD-related keywords are mentioned in the user request (case-insensitive)
+            var includeHudFramework = HudKeywords.Any(keyword => 
+                userRequest.Contains(keyword, StringComparison.OrdinalIgnoreCase));
             
             // Build the appropriate prompt with conditional HUD framework inclusion
             string activePrompt;
@@ -421,7 +454,8 @@ public class AiCodeGeneratorService
                 activePrompt = GetPrivateDiscordModePromptBase();
                 if (includeHudFramework)
                 {
-                    activePrompt += GetHudFramework();
+                    _logger.LogDebug("Including HUD framework in prompt due to keyword match");
+                    activePrompt += GetHudFramework(_logger);
                 }
             }
             else
@@ -429,7 +463,8 @@ public class AiCodeGeneratorService
                 activePrompt = GetSystemPromptBase();
                 if (includeHudFramework)
                 {
-                    activePrompt += GetHudFramework();
+                    _logger.LogDebug("Including HUD framework in prompt due to keyword match");
+                    activePrompt += GetHudFramework(_logger);
                 }
             }
 
