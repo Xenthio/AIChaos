@@ -285,6 +285,33 @@ public class AiCodeGeneratorService
         _logger = logger;
     }
 
+    private string GetBannedConceptsPrompt()
+    {
+        var safety = _settingsService.Settings.Safety;
+        var bannedCategories = new List<string>();
+        
+        if (safety.HardBans != null)
+        {
+            foreach (var category in safety.HardBans)
+            {
+                if (category.Enabled) bannedCategories.Add(category.Name);
+            }
+        }
+        
+        if (safety.SoftBans != null)
+        {
+            foreach (var category in safety.SoftBans)
+            {
+                if (category.Enabled) bannedCategories.Add(category.Name);
+            }
+        }
+
+        if (!bannedCategories.Any())
+            return "";
+
+        return $"\n        14. **BANNED CONCEPTS:** The following concepts are STRICTLY FORBIDDEN. Do not generate code related to: {string.Join(", ", bannedCategories)}. If requested, generate a harmless prank instead (e.g. spawn a melon) or no code at all (saves token costs).";
+    }
+
     /// <summary>
     /// Builds the path to a Lua file relative to the executing assembly.
     /// Handles different build output structures robustly.
@@ -468,7 +495,7 @@ public class AiCodeGeneratorService
             }
             else
             {
-                activePrompt = GetSystemPromptBase();
+                activePrompt = GetSystemPromptBase() + GetBannedConceptsPrompt();
                 if (includeHudFramework)
                 {
                     _logger.LogDebug("Including HUD framework in prompt due to keyword match");

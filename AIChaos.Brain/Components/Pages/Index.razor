@@ -559,6 +559,29 @@ else
         if (currentAccount == null || string.IsNullOrWhiteSpace(promptInput) || isSubmitting)
             return;
         
+        // Check for banned concepts
+        var (isBanned, isHardBan, category, reason) = ModerationService.CheckBannedConcepts(promptInput);
+        if (isBanned)
+        {
+            if (isHardBan)
+            {
+                if (!string.IsNullOrEmpty(reason) && !reason.StartsWith("Contains banned concept:"))
+                {
+                    ShowStatus($"⛔ {reason}", "error");
+                }
+                else
+                {
+                    ShowStatus($"⛔ Request blocked: '{category}' is not allowed.", "error");
+                }
+            }
+            else
+            {
+                // Soft ban: "Be funnier"
+                ShowStatus("😐 Be funnier.", "warning");
+            }
+            return;
+        }
+        
         isSubmitting = true;
         StateHasChanged();
         

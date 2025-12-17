@@ -59,6 +59,52 @@ public class SafetySettings
     public List<string> AllowedDomains { get; set; } = new() { "i.imgur.com", "imgur.com" };
     public List<string> Moderators { get; set; } = new();
     public bool PrivateDiscordMode { get; set; } = false;
+    
+    // Soft bans show a "Be funnier" popup, and aren't executed.
+    public List<BanCategory> SoftBans { get; set; } = new()
+    {
+        // All included by default for convenience, but disabled by default.
+        new() { Enabled=false, Name = "Quizzes (Overdone joke)", Keywords = new() { "quizzes", "quiz", "popquiz" } },
+        new() { Enabled=false, Name = "Dating Sims (Overdone joke)", Keywords = new() { "dating sims", "dating sim", "visual novel", "eroge" } },
+        new() { Enabled=false, Name = "Rhythm Games (Overdone joke)", Keywords = new() { "dance dance revolution", "ddr", "osu", "rhythm game" } },
+        new() { Enabled=false, Name = "Gambling (Only if it is uncreative or takes away control from the game)", Keywords = new() { } },
+        new() { Enabled=false, Name = "Sexual", Keywords = new() { "sexuality", "sex", "sexual", "cum", "jizz", "spunk" } }
+    };
+
+    // Hard bans show the full list of banned concepts, and aren't executed.
+    public List<BanCategory> HardBans { get; set; } = new()
+    {
+        new() { Enabled=false, Name = "Sexuality", Keywords = new() { "gay", "bisexual", "lesbian", "homosexual", "homosex" } },
+        new() { 
+            Enabled=false, 
+            Name = "Potentially Divisive or Sensitive Content", 
+            Keywords = new() { "trans rights", "trans", "pride", "black lives matter", "acab" },
+            CustomMessage = "To keep the stream atmosphere light and focused on the game, we are avoiding sensitive or complex real-world topics. Please try a different idea!",
+            // ------------------------------------
+            // Readme note for future maintainers:
+            // ------------------------------------
+            Description = """
+            Hi person reading this, I know this is a sensitive topic.
+            But this is an optional filter that we include for users who want to avoid a potentially stirred up chat in their stream.
+            It's also potentially leads to AI-generated content that conforms to harmful stereotypes, which everyone wants to avoid.
+            It's disabled by default, so you have to opt-in to use it.
+            I understand if you feel strongly about this and want to remove it from the repo entirely, 
+            but I felt it was important to include considering this program is built for streams. Also felt like I needed to have my reasoning here.
+            """
+            // ------------------------------------
+        },
+        new() { Enabled=true, Name = "Politics", Keywords = new() { "politics", "political", "election", "trump", "elon" } },
+        new() { Enabled=true, Name = "Hate Speech", Keywords = new() { "racism", "racist", "black people", "white people", "hate speech", "hatecrime", "hate crime" } }
+    };
+}
+
+public class BanCategory
+{
+    public bool Enabled { get; set; } = true;
+    public string Name { get; set; } = "";
+    public List<string> Keywords { get; set; } = new();
+    public string? CustomMessage { get; set; }
+    public string? Description { get; set; }
 }
 
 public class GeneralSettings

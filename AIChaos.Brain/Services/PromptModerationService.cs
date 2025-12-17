@@ -89,6 +89,60 @@ public class PromptModerationService
     }
     
     /// <summary>
+    /// Checks if the prompt contains any banned concepts.
+    /// Returns tuple with ban details.
+    /// </summary>
+    public (bool IsBanned, bool IsHardBan, string? Category, string? Reason) CheckBannedConcepts(string prompt)
+    {
+        var settings = _settingsService.Settings.Safety;
+        
+        // Helper to check for whole words only using Regex word boundaries
+        bool ContainsWholeWord(string text, string keyword)
+        {
+            // Escape the keyword to handle special characters safely
+            // \b ensures we match "word" but not "sword" or "words"
+            var pattern = $@"\b{Regex.Escape(keyword)}\b";
+            return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase);
+        }
+        
+        // Check Hard Bans first
+        if (settings.HardBans != null)
+        {
+            foreach (var category in settings.HardBans)
+            {
+                if (!category.Enabled) continue;
+                
+                foreach (var keyword in category.Keywords)
+                {
+                    if (ContainsWholeWord(prompt, keyword))
+                    {
+                        return (true, true, category.Name, category.CustomMessage ?? $"Contains banned concept: {keyword}");
+                    }
+                }
+            }
+        }
+        
+        // Check Soft Bans
+        if (settings.SoftBans != null)
+        {
+            foreach (var category in settings.SoftBans)
+            {
+                if (!category.Enabled) continue;
+                
+                foreach (var keyword in category.Keywords)
+                {
+                    if (ContainsWholeWord(prompt, keyword))
+                    {
+                        return (true, false, category.Name, "Be funnier");
+                    }
+                }
+            }
+        }
+        
+        return (false, false, null, null);
+    }
+
+    /// <summary>
     /// Checks if a prompt contains filtered patterns that require moderation.
     /// Returns the reason if filtered content is found, null otherwise.
     /// </summary>

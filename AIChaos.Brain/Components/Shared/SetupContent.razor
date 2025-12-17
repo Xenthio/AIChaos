@@ -68,6 +68,90 @@
     <button @onclick="SaveGeneralSettings">💾 Save General Settings</button>
 </div>
 
+<!-- Safety Settings -->
+<div class="card">
+    <h2>🛡️ Safety Settings</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Configure content moderation and banned concepts.
+    </p>
+
+    <div class="form-group">
+        <label>Soft Bans (Shows "Be funnier" popup)</label>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+            @foreach (var ban in softBansList)
+            {
+                <div style="display: flex; flex-direction: column; gap: 5px; padding: 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="checkbox" @bind="ban.Enabled" title="Enable/Disable" style="width: 20px; height: 20px;" />
+                        <input type="text" @bind="ban.Name" placeholder="Category Name" style="width: 250px; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #222; color: white;" />
+                        <input type="text" @bind="ban.Keywords" placeholder="Keywords (comma separated)" style="flex: 1; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #222; color: white;" />
+                        
+                        @if (!string.IsNullOrWhiteSpace(ban.Description))
+                        {
+                            <span title="@ban.Description" style="cursor: help; font-size: 18px;">ℹ️</span>
+                        }
+                        
+                        <button @onclick="() => ban.ShowDetails = !ban.ShowDetails" title="Edit Details" style="background: #333; border: 1px solid #555; color: #ddd; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;">📝</button>
+                        <button @onclick="() => softBansList.Remove(ban)" title="Remove" style="background: #442222; border: 1px solid #663333; color: #ff8888; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;">🗑️</button>
+                    </div>
+                    
+                    @if (ban.ShowDetails)
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;">
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="color: #888; font-size: 12px; width: 120px;">Internal Note:</span>
+                                <input type="text" @bind="ban.Description" placeholder="Reasoning for this ban (Admin only)" style="flex: 1; padding: 6px; border: 1px solid #444; border-radius: 4px; background: #222; color: #ddd; font-size: 13px;" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <button class="btn-secondary" @onclick="() => softBansList.Add(new BanCategoryEditModel())" style="background: #333; border: 1px solid #555; color: #ddd; padding: 5px 10px; font-size: 12px;">+ Add Soft Ban Category</button>
+    </div>
+
+    <div class="form-group" style="margin-top: 25px;">
+        <label>Hard Bans (Shows full ban list)</label>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px;">
+            @foreach (var ban in hardBansList)
+            {
+                <div style="display: flex; flex-direction: column; gap: 5px; padding: 10px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="checkbox" @bind="ban.Enabled" title="Enable/Disable" style="width: 20px; height: 20px;" />
+                        <input type="text" @bind="ban.Name" placeholder="Category Name" style="width: 250px; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #222; color: white;" />
+                        <input type="text" @bind="ban.Keywords" placeholder="Keywords (comma separated)" style="flex: 1; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #222; color: white;" />
+                        
+                        @if (!string.IsNullOrWhiteSpace(ban.Description))
+                        {
+                            <span title="@ban.Description" style="cursor: help; font-size: 18px;">ℹ️</span>
+                        }
+                        
+                        <button @onclick="() => ban.ShowDetails = !ban.ShowDetails" title="Edit Details" style="background: #333; border: 1px solid #555; color: #ddd; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;">📝</button>
+                        <button @onclick="() => hardBansList.Remove(ban)" title="Remove" style="background: #442222; border: 1px solid #663333; color: #ff8888; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;">🗑️</button>
+                    </div>
+                    
+                    @if (ban.ShowDetails)
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 5px; padding-top: 10px; border-top: 1px solid #444;">
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="color: #888; font-size: 12px; width: 120px;">Internal Note:</span>
+                                <input type="text" @bind="ban.Description" placeholder="Reasoning for this ban (Admin only)" style="flex: 1; padding: 6px; border: 1px solid #444; border-radius: 4px; background: #222; color: #ddd; font-size: 13px;" />
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="color: #888; font-size: 12px; width: 120px;">Custom Message:</span>
+                                <input type="text" @bind="ban.CustomMessage" placeholder="Optional custom deny message (overrides default)" style="flex: 1; padding: 6px; border: 1px solid #444; border-radius: 4px; background: #222; color: #ddd; font-size: 13px;" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <button class="btn-secondary" @onclick="() => hardBansList.Add(new BanCategoryEditModel())" style="background: #333; border: 1px solid #555; color: #ddd; padding: 5px 10px; font-size: 12px;">+ Add Hard Ban Category</button>
+    </div>
+
+    <button @onclick="SaveSafetySettings" style="margin-top: 20px;">💾 Save Safety Settings</button>
+</div>
+
 <!-- OpenRouter API -->
 <div class="card">
     <h2>
@@ -289,6 +373,10 @@
     private bool streamMode = false;
     private bool blockLinksInCode = true;
 
+    // Safety Settings
+    private List<BanCategoryEditModel> softBansList = new();
+    private List<BanCategoryEditModel> hardBansList = new();
+
     // OpenRouter
     private bool openRouterConfigured = false;
     private string openRouterApiKey = "";
@@ -330,6 +418,25 @@
             // General Settings
             streamMode = settings.General.StreamMode;
             blockLinksInCode = settings.General.BlockLinksInGeneratedCode;
+
+            // Safety Settings
+            softBansList = settings.Safety.SoftBans.Select(b => new BanCategoryEditModel 
+            { 
+                Enabled = b.Enabled, 
+                Name = b.Name, 
+                Keywords = string.Join(", ", b.Keywords),
+                CustomMessage = b.CustomMessage ?? "",
+                Description = b.Description ?? ""
+            }).ToList();
+            
+            hardBansList = settings.Safety.HardBans.Select(b => new BanCategoryEditModel 
+            { 
+                Enabled = b.Enabled, 
+                Name = b.Name, 
+                Keywords = string.Join(", ", b.Keywords),
+                CustomMessage = b.CustomMessage ?? "",
+                Description = b.Description ?? ""
+            }).ToList();
 
             openRouterConfigured = SettingsService.IsOpenRouterConfigured;
 
@@ -402,6 +509,39 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
             ShowAlert("Error saving general settings", "error");
         }
     }
+
+    private void SaveSafetySettings()
+    {
+        try
+        {
+            SettingsService.Settings.Safety.SoftBans = softBansList.Select(b => new BanCategory 
+            { 
+                Enabled = b.Enabled, 
+                Name = b.Name, 
+                Keywords = b.Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+                CustomMessage = string.IsNullOrWhiteSpace(b.CustomMessage) ? null : b.CustomMessage,
+                Description = string.IsNullOrWhiteSpace(b.Description) ? null : b.Description
+            }).ToList();
+
+            SettingsService.Settings.Safety.HardBans = hardBansList.Select(b => new BanCategory 
+            { 
+                Enabled = b.Enabled, 
+                Name = b.Name, 
+                Keywords = b.Keywords.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+                CustomMessage = string.IsNullOrWhiteSpace(b.CustomMessage) ? null : b.CustomMessage,
+                Description = string.IsNullOrWhiteSpace(b.Description) ? null : b.Description
+            }).ToList();
+            
+            SettingsService.SaveSettings();
+            ShowAlert("Safety settings saved!", "success");
+        }
+        catch
+        {
+            ShowAlert("Error saving safety settings", "error");
+        }
+    }
+
+
 
     private async Task StartTunnel(string type)
     {
@@ -555,5 +695,15 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public string Provider { get; set; } = "";
+    }
+
+    public class BanCategoryEditModel
+    {
+        public bool Enabled { get; set; } = true;
+        public string Name { get; set; } = "";
+        public string Keywords { get; set; } = "";
+        public string CustomMessage { get; set; } = "";
+        public string Description { get; set; } = "";
+        public bool ShowDetails { get; set; } = false;
     }
 }
