@@ -27,17 +27,18 @@ Complete port of Source SDK 2013's HUD system to Garry's Mod Lua, transforming t
 
 - **`lua/autorun/client/cl_hud_themes.lua`** (308 lines)
   - Theme system with HL2 and GMod themes
-  - HL2 theme: 32px numbers, 8px corners, authentic SDK values
-  - GMod theme: 36px numbers, 10px corners, enhanced styling
+  - HL2 theme: 32px numbers, 9px text, 10px corners, authentic SDK values
+  - GMod theme: 36px numbers, 8px text, 8px corners, enhanced styling
   - Automatic font scaling for different resolutions
   - Console commands (chaos_hud_theme, chaos_hud_reload)
   - Backward compatibility with ChaosHUD
 
 - **`lua/autorun/client/cl_native_hud_elements.lua`** (583 lines)
-  - 6 native HUD elements:
+  - 7 native HUD elements:
     - HudHealth: Health display with low health warning
     - HudSuit: Armor/suit power display
     - HudAmmo: Primary and reserve ammunition
+    - HudAmmoSecondary: Secondary ammunition (alt-fire weapons)
     - HudSuitPower: Aux power (sprint, flashlight, oxygen)
     - HudCrosshair: Simple HL2-style crosshair
     - HudDamageIndicator: Directional damage arrows

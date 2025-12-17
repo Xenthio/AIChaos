@@ -322,6 +322,113 @@ timer.Simple(0.2, function()
     g_HudAmmo:Init()
 
     -- ============================================================================
+    --  HudAmmoSecondary - Secondary ammunition display (for alt-fire weapons)
+    -- ============================================================================
+
+    local HudAmmoSecondary = setmetatable({}, { __index = CHudElement })
+    HudAmmoSecondary.__index = HudAmmoSecondary
+
+    function HudAmmoSecondary:New()
+        local obj = CHudElement.New(self, "CHudAmmoSecondary")
+        setmetatable(obj, self)
+        
+        obj.m_iAmmo = 0
+        obj.m_flAmmoChangeTime = 0
+        obj.m_iLastAmmo = 0
+        obj.m_hLastWeapon = nil
+        
+        obj:SetHiddenBits(HIDEHUD_WEAPONSELECTION + HIDEHUD_PLAYERDEAD + HIDEHUD_NEEDSUIT)
+        
+        return obj
+    end
+
+    function HudAmmoSecondary:Init()
+        self.m_iAmmo = 0
+    end
+
+    function HudAmmoSecondary:Reset()
+        self.m_iAmmo = 0
+        self.m_flAmmoChangeTime = 0
+    end
+
+    function HudAmmoSecondary:ShouldDraw()
+        if not CHudElement.ShouldDraw(self) then
+            return false
+        end
+        
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return false end
+        
+        local wpn = ply:GetActiveWeapon()
+        if not IsValid(wpn) then return false end
+        
+        -- Only show for weapons with secondary ammo type
+        if wpn:GetSecondaryAmmoType() == -1 then
+            return false
+        end
+        
+        -- Hide in vehicles
+        if ply:InVehicle() then
+            local veh = ply:GetVehicle()
+            if IsValid(veh) and veh:GetClass() == "prop_vehicle_jeep" then
+                return false
+            end
+        end
+        
+        return true
+    end
+
+    function HudAmmoSecondary:Think()
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        
+        local wpn = ply:GetActiveWeapon()
+        if not IsValid(wpn) then return end
+        
+        -- Get secondary ammo count
+        local ammo = 0
+        local ammoType = wpn:GetSecondaryAmmoType()
+        if ammoType ~= -1 then
+            ammo = ply:GetAmmoCount(ammoType)
+        end
+        
+        -- Track changes
+        if ammo ~= self.m_iLastAmmo then
+            self.m_flAmmoChangeTime = CurTime()
+            self.m_iLastAmmo = ammo
+        end
+        
+        self.m_iAmmo = ammo
+    end
+
+    function HudAmmoSecondary:Paint()
+        if not self:ShouldDraw() then return end
+        
+        self:Think()
+        
+        local scale = ChaosHUD.GetScale()
+        local theme = HudTheme.GetCurrent()
+        
+        -- Calculate position (right-aligned, to the right of primary ammo)
+        local layout = theme.Layout.HudAmmoSecondary
+        local x = HudResources.ConvertPosition(layout.xpos, ScrW())
+        local y = ScrH() - (48 * scale)
+        
+        -- Draw as a smaller numeric display
+        ChaosHUD.DrawNumericDisplay(
+            x, y,
+            "",  -- No label for secondary ammo
+            self.m_iAmmo,
+            self.m_flAmmoChangeTime,
+            { warn_low = false }
+        )
+    end
+
+    -- Register the element
+    local g_HudAmmoSecondary = HudAmmoSecondary:New()
+    g_HudAmmoSecondary:Init()
+
+    -- ============================================================================
     --  HudSuitPower - Aux Power display (Sprint, Flashlight, Oxygen)
     -- ============================================================================
 

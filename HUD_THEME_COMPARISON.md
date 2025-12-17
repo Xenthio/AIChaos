@@ -12,11 +12,11 @@
 
 **Typography:**
 - Number Font: HalfLife2, 32px
-- Text Font: Verdana, 8px (weight 900)
+- Text Font: Verdana, 9px (weight 900)
 - Glow Blur: 4px
 
 **Layout:**
-- Corner Radius: 8px
+- Corner Radius: 10px
 - Column Gap: 22px
 - Stack Gap: 6px
 - Aux Bar Height: 4px
@@ -26,7 +26,7 @@
 - Clean, minimal
 - Strong contrast
 - Classic Half-Life 2 aesthetic
-- Tighter spacing
+- Larger rounded corners
 
 ---
 
@@ -41,11 +41,11 @@
 
 **Typography:**
 - Number Font: HalfLife2, 36px (+4px larger)
-- Text Font: Verdana, 9px (weight 900)
+- Text Font: Verdana, 8px (weight 900)
 - Glow Blur: 5px (+1px more blur)
 
 **Layout:**
-- Corner Radius: 10px (+2px rounder)
+- Corner Radius: 8px (-2px sharper)
 - Column Gap: 24px (+2px wider)
 - Stack Gap: 7px (+1px more space)
 - Aux Bar Height: 5px (+1px taller)
@@ -55,7 +55,7 @@
 - Slightly more modern
 - Better readability with larger fonts
 - More breathing room
-- Softer edges
+- Sharper edges for modern look
 
 ---
 
@@ -64,8 +64,8 @@
 | Aspect | HL2 | GMod | Difference |
 |--------|-----|------|------------|
 | Number Size | 32px | 36px | +12.5% larger |
-| Text Size | 8px | 9px | +12.5% larger |
-| Corner Radius | 8px | 10px | +25% rounder |
+| Text Size | 9px | 8px | -11% smaller |
+| Corner Radius | 10px | 8px | -20% smaller |
 | Background Alpha | 76 | 80 | +5% more opaque |
 | Glow Blur | 4px | 5px | +25% more blur |
 | Column Gap | 22px | 24px | +9% wider |

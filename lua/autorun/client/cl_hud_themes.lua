@@ -51,15 +51,15 @@ HudTheme.Themes.hl2 = {
         NumbersGlow = { name = "HalfLife2", tall = 32, weight = 0, blur = 4, additive = true, antialias = true },
         NumbersSmall = { name = "HalfLife2", tall = 16, weight = 1000, additive = true, antialias = true },
         
-        -- Text fonts
-        Text = { name = "Verdana", tall = 8, weight = 900, additive = true, antialias = true },
-        TextSmall = { name = "Verdana", tall = 6, weight = 700, additive = true, antialias = true },
+        -- Text fonts (HL2 uses 9px text, not 8px)
+        Text = { name = "Verdana", tall = 9, weight = 900, additive = true, antialias = true },
+        TextSmall = { name = "Verdana", tall = 7, weight = 700, additive = true, antialias = true },
     },
     
     Layout = {
-        -- Corner radius for panels
-        CornerRadius = 8,
-        AuxCornerRadius = 6,
+        -- Corner radius for panels (HL2 has larger radius than GMod)
+        CornerRadius = 10,
+        AuxCornerRadius = 8,
         
         -- Spacing
         Gap = 22,           -- Gap between columns
@@ -128,15 +128,15 @@ HudTheme.Themes.gmod = {
         NumbersGlow = { name = "HalfLife2", tall = 36, weight = 0, blur = 5, additive = true, antialias = true },
         NumbersSmall = { name = "HalfLife2", tall = 18, weight = 1000, additive = true, antialias = true },
         
-        -- Text fonts
-        Text = { name = "Verdana", tall = 9, weight = 900, additive = true, antialias = true },
-        TextSmall = { name = "Verdana", tall = 7, weight = 700, additive = true, antialias = true },
+        -- Text fonts (GMod uses 8px text)
+        Text = { name = "Verdana", tall = 8, weight = 900, additive = true, antialias = true },
+        TextSmall = { name = "Verdana", tall = 6, weight = 700, additive = true, antialias = true },
     },
     
     Layout = {
-        -- GMod uses more rounded corners
-        CornerRadius = 10,
-        AuxCornerRadius = 8,
+        -- GMod uses smaller rounded corners than HL2
+        CornerRadius = 8,
+        AuxCornerRadius = 6,
         
         -- Spacing (slightly wider gaps)
         Gap = 24,

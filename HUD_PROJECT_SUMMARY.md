@@ -12,7 +12,7 @@ Successfully ported Source SDK 2013's HUD system to Garry's Mod Lua, creating a 
 - **1,623 lines** of Lua code
 - **10 new files** created
 - **22 KB** of documentation
-- **6 HUD elements** ported
+- **7 HUD elements** ported
 - **2 complete themes** (HL2 & GMod)
 - **12 HIDEHUD flags** implemented
 - **5 lifecycle methods** per element
@@ -57,7 +57,7 @@ HUD_CHANGELOG.md              8.3 KB  - Version history
 │  └────────────────┬─────────────────────────────────────┘  │
 │                   │                                          │
 │  ┌────────────────▼──────────────────────────────────────┐  │
-│  │          Native HUD Elements (6 elements)            │  │
+│  │          Native HUD Elements (7 elements)            │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐            │  │
 │  │  │  Health  │ │   Suit   │ │   Ammo   │            │  │
 │  │  └──────────┘ └──────────┘ └──────────┘            │  │
@@ -71,7 +71,8 @@ HUD_CHANGELOG.md              8.3 KB  - Version history
 │  │  ┌────────────────┐  ┌────────────────┐             │  │
 │  │  │   HL2 Theme    │  │  GMod Theme    │             │  │
 │  │  │  • 32px nums   │  │  • 36px nums   │             │  │
-│  │  │  • 8px corners │  │  • 10px corners│             │  │
+│  │  │  • 9px text    │  │  • 8px text    │             │  │
+│  │  │  • 10px corners│  │  • 8px corners │             │  │
 │  │  │  • Authentic   │  │  • Enhanced    │             │  │
 │  │  └────────────────┘  └────────────────┘             │  │
 │  └──────────────────────────────────────────────────────┘  │
@@ -250,7 +251,7 @@ chaos_hud_theme mytheme
 
 ### After (ChaosHUD v2.0 + HL2 Port)
 - **+** Full CHudElement system
-- **+** 6 native HUD elements
+- **+** 7 native HUD elements
 - **+** 2 complete themes
 - **+** Theme switching
 - **+** Settings menu
