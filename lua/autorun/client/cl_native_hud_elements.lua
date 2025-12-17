@@ -774,6 +774,164 @@ timer.Simple(0.2, function()
     end)
 
     -- ============================================================================
+    --  HudWeaponSelection - Weapon selection display
+    -- ============================================================================
+
+    local HudWeaponSelection = setmetatable({}, { __index = CHudElement })
+    HudWeaponSelection.__index = HudWeaponSelection
+
+    function HudWeaponSelection:New()
+        local obj = CHudElement.New(self, "CHudWeaponSelection")
+        setmetatable(obj, self)
+        
+        obj.m_flSelectionTime = 0
+        obj.m_iSelectedSlot = -1
+        obj.m_iSelectedWeapon = 0
+        obj.m_bSelectionVisible = false
+        obj.m_flFadeTime = 0
+        obj:SetHiddenBits(HIDEHUD_WEAPONSELECTION + HIDEHUD_PLAYERDEAD)
+        
+        return obj
+    end
+
+    function HudWeaponSelection:Init()
+        self.m_flSelectionTime = 0
+        self.m_iSelectedSlot = -1
+        self.m_iSelectedWeapon = 0
+        self.m_bSelectionVisible = false
+    end
+
+    function HudWeaponSelection:ShouldDraw()
+        if not CHudElement.ShouldDraw(self) then
+            return false
+        end
+        
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return false end
+        
+        -- Show for a short time after selection
+        local timeSince = CurTime() - self.m_flSelectionTime
+        if timeSince > 2.5 then
+            self.m_bSelectionVisible = false
+            return false
+        end
+        
+        return self.m_bSelectionVisible
+    end
+
+    function HudWeaponSelection:SelectWeapon(slot)
+        self.m_iSelectedSlot = slot
+        self.m_iSelectedWeapon = 0
+        self.m_flSelectionTime = CurTime()
+        self.m_bSelectionVisible = true
+        self.m_flFadeTime = 0
+    end
+
+    function HudWeaponSelection:Paint()
+        if not self:ShouldDraw() then return end
+        
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        
+        local scale = ChaosHUD.GetScale()
+        local theme = HudTheme.GetCurrent()
+        
+        -- Calculate fade alpha
+        local timeSince = CurTime() - self.m_flSelectionTime
+        local alpha = 255
+        if timeSince > 1.5 then
+            -- Start fading after 1.5s
+            alpha = 255 * (1 - ((timeSince - 1.5) / 1.0))
+            alpha = math.Clamp(alpha, 0, 255)
+        end
+        
+        if alpha <= 0 then return end
+        
+        -- Draw weapon slots
+        local boxSize = 84 * scale
+        local boxGap = 8 * scale
+        local startX = (ScrW() - (boxSize * 6 + boxGap * 5)) / 2
+        local startY = 16 * scale
+        
+        for slot = 0, 5 do
+            local x = startX + (slot * (boxSize + boxGap))
+            local y = startY
+            
+            -- Get weapons in this slot
+            local weapons = ply:GetWeapons()
+            local slotWeapons = {}
+            for _, wpn in ipairs(weapons) do
+                if IsValid(wpn) and wpn:GetSlot() == slot then
+                    table.insert(slotWeapons, wpn)
+                end
+            end
+            
+            -- Determine box color
+            local bgColor
+            local fgColor = Color(theme.Colors.BrightFg.r, theme.Colors.BrightFg.g, theme.Colors.BrightFg.b, alpha)
+            
+            if #slotWeapons > 0 then
+                if slot == self.m_iSelectedSlot then
+                    bgColor = Color(theme.Colors.BgColor.r, theme.Colors.BgColor.g, theme.Colors.BgColor.b, alpha * 0.9)
+                else
+                    bgColor = Color(theme.Colors.BgColor.r, theme.Colors.BgColor.g, theme.Colors.BgColor.b, alpha * 0.7)
+                end
+            else
+                bgColor = Color(theme.Colors.BgColor.r, theme.Colors.BgColor.g, theme.Colors.BgColor.b, alpha * 0.3)
+                fgColor = Color(theme.Colors.BrightFg.r, theme.Colors.BrightFg.g, theme.Colors.BrightFg.b, alpha * 0.5)
+            end
+            
+            -- Draw box
+            draw.RoundedBox(theme.Layout.CornerRadius, x, y, boxSize, boxSize, bgColor)
+            
+            -- Draw slot number
+            surface.SetFont("ChaosHUD_NumbersSmall")
+            surface.SetTextColor(fgColor)
+            surface.SetTextPos(x + (4 * scale), y + (4 * scale))
+            surface.DrawText(tostring(slot + 1))
+            
+            -- Draw weapon icon/name
+            if #slotWeapons > 0 then
+                local wpn = slotWeapons[1]
+                local iconText = wpn:GetPrintName() or wpn:GetClass()
+                
+                -- Try to get weapon icon
+                surface.SetFont("ChaosHUD_Text")
+                local textW, textH = surface.GetTextSize(iconText)
+                
+                -- Center the text
+                surface.SetTextPos(x + (boxSize - textW) / 2, y + boxSize / 2 - textH / 2)
+                surface.DrawText(iconText)
+                
+                -- Show active weapon highlight
+                if wpn == ply:GetActiveWeapon() then
+                    local highlightColor = Color(theme.Colors.BrightFg.r, theme.Colors.BrightFg.g, theme.Colors.BrightFg.b, alpha * 0.5)
+                    surface.SetDrawColor(highlightColor)
+                    surface.DrawOutlinedRect(x, y, boxSize, boxSize, 2)
+                end
+            end
+        end
+    end
+
+    -- Register the element
+    local g_HudWeaponSelection = HudWeaponSelection:New()
+    g_HudWeaponSelection:Init()
+
+    -- Hook weapon selection keys
+    hook.Add("PlayerBindPress", "NativeHUD_WeaponSelection", function(ply, bind, pressed)
+        if not pressed then return end
+        
+        -- Check for slot binds (slot1-slot6)
+        local slot = string.match(bind, "slot(%d+)")
+        if slot then
+            slot = tonumber(slot) - 1  -- Convert to 0-based
+            if slot >= 0 and slot <= 5 then
+                g_HudWeaponSelection:SelectWeapon(slot)
+            end
+        end
+    end)
+
+    -- ============================================================================
     --  Main HUD Paint Hook
     -- ============================================================================
 
