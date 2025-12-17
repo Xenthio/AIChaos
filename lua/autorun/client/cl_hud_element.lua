@@ -106,8 +106,13 @@ function CHudElement:ShouldDraw()
         end
         
         -- HIDEHUD_NEEDSUIT
-        if bit.band(self.m_iHiddenBits, HIDEHUD_NEEDSUIT) ~= 0 and ply:Armor() == 0 then
-            return false
+        -- Note: In GMod, we approximate "has suit" by checking if player has ever had armor
+        -- A more accurate check would require gamemode-specific logic
+        if bit.band(self.m_iHiddenBits, HIDEHUD_NEEDSUIT) ~= 0 then
+            -- Only hide if player has never had armor (rough approximation)
+            if ply:GetMaxArmor() == 0 then
+                return false
+            end
         end
         
         -- HIDEHUD_INVEHICLE

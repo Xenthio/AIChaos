@@ -94,7 +94,7 @@ end)
 
 -- Demo: Auto theme switching (optional, can be disabled)
 concommand.Add("chaos_hud_demo_cycle", function(ply, cmd, args)
-    local enabled = tobool(args[1])
+    local enabled = util.tobool(args[1])
     
     if enabled == nil then
         enabled = true

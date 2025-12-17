@@ -199,7 +199,8 @@ function HudTheme.ApplyTheme()
     
     for fontName, fontData in pairs(theme.Fonts) do
         local scaledData = table.Copy(fontData)
-        scaledData.size = math.Round(scaledData.tall * scale)
+        -- Convert 'tall' to 'size' and scale appropriately
+        scaledData.size = math.Round((scaledData.tall or 12) * scale)
         scaledData.tall = nil
         
         if scaledData.blur then

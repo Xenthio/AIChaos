@@ -494,7 +494,7 @@ timer.Simple(0.2, function()
         
         -- Calculate angle to attacker
         local angle = 0
-        if IsValid(attacker) and attacker:IsPlayer() or attacker:IsNPC() then
+        if IsValid(attacker) and (attacker:IsPlayer() or attacker:IsNPC()) then
             local vecDir = (attacker:GetPos() - ply:GetPos()):GetNormalized()
             local forward = ply:GetForward()
             local right = ply:GetRight()
@@ -569,10 +569,10 @@ timer.Simple(0.2, function()
     local g_HudDamageIndicator = HudDamageIndicator:New()
     g_HudDamageIndicator:Init()
 
-    -- Hook for damage events
-    hook.Add("EntityTakeDamage", "NativeHUD_DamageIndicator", function(target, dmg)
-        if target == LocalPlayer() and IsValid(g_HudDamageIndicator) then
-            g_HudDamageIndicator:AddDamage(dmg:GetAttacker(), dmg:GetDamage())
+    -- Hook for damage events (client-side)
+    hook.Add("PlayerHurt", "NativeHUD_DamageIndicator", function(victim, attacker, healthRemaining, damageTaken)
+        if victim == LocalPlayer() and IsValid(g_HudDamageIndicator) then
+            g_HudDamageIndicator:AddDamage(attacker, damageTaken)
         end
     end)
 
