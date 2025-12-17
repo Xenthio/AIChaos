@@ -46,14 +46,15 @@ HudTheme.Themes.hl2 = {
     },
     
     Fonts = {
-        -- Main HUD fonts (using Half-Life 2 font)
-        Numbers = { name = "HalfLife2", tall = 32, weight = 0, additive = true, antialias = true },
-        NumbersGlow = { name = "HalfLife2", tall = 32, weight = 0, blur = 4, additive = true, antialias = true },
-        NumbersSmall = { name = "HalfLife2", tall = 16, weight = 1000, additive = true, antialias = true },
+        -- Main HUD fonts - using HalfLife2 font from ClientScheme.res
+        Numbers = { name = "HalfLife2", tall = 32, weight = 0, additive = true, antialias = true, custom = true },
+        NumbersGlow = { name = "HalfLife2", tall = 32, weight = 0, blur = 4, scanlines = 2, additive = true, antialias = true, custom = true },
+        NumbersSmall = { name = "HalfLife2", tall = 16, weight = 1000, additive = true, antialias = true, custom = true },
         
-        -- Text fonts (HL2 uses 9px text, not 8px)
-        Text = { name = "Verdana", tall = 9, weight = 900, additive = true, antialias = true },
-        TextSmall = { name = "Verdana", tall = 7, weight = 700, additive = true, antialias = true },
+        -- Text fonts - using appropriate HUD fonts
+        Text = { name = "HalfLife2", tall = 9, weight = 0, additive = true, antialias = true, custom = true },
+        TextSmall = { name = "HalfLife2", tall = 7, weight = 0, additive = true, antialias = true, custom = true },
+        SelectionText = { name = "HalfLife2", tall = 9, weight = 0, additive = true, antialias = true, custom = true },
     },
     
     Layout = {
@@ -124,13 +125,14 @@ HudTheme.Themes.gmod = {
     
     Fonts = {
         -- GMod uses slightly larger fonts
-        Numbers = { name = "HalfLife2", tall = 36, weight = 0, additive = true, antialias = true },
-        NumbersGlow = { name = "HalfLife2", tall = 36, weight = 0, blur = 5, additive = true, antialias = true },
-        NumbersSmall = { name = "HalfLife2", tall = 18, weight = 1000, additive = true, antialias = true },
+        Numbers = { name = "HalfLife2", tall = 36, weight = 0, additive = true, antialias = true, custom = true },
+        NumbersGlow = { name = "HalfLife2", tall = 36, weight = 0, blur = 5, scanlines = 2, additive = true, antialias = true, custom = true },
+        NumbersSmall = { name = "HalfLife2", tall = 18, weight = 1000, additive = true, antialias = true, custom = true },
         
         -- Text fonts (GMod uses 8px text)
-        Text = { name = "Verdana", tall = 8, weight = 900, additive = true, antialias = true },
-        TextSmall = { name = "Verdana", tall = 6, weight = 700, additive = true, antialias = true },
+        Text = { name = "HalfLife2", tall = 8, weight = 0, additive = true, antialias = true, custom = true },
+        TextSmall = { name = "HalfLife2", tall = 6, weight = 0, additive = true, antialias = true, custom = true },
+        SelectionText = { name = "HalfLife2", tall = 8, weight = 0, additive = true, antialias = true, custom = true },
     },
     
     Layout = {
@@ -208,8 +210,13 @@ function HudTheme.ApplyTheme()
             scaledData.blur = nil
         end
         
-        -- Create both HudTheme_ and ChaosHUD_ versions for compatibility
-        surface.CreateFont("HudTheme_" .. fontName, scaledData)
+        if scaledData.scanlines then
+            scaledData.scanlines = math.Round(scaledData.scanlines * scale)
+        end
+        
+        -- Create fonts with SDK-compatible names
+        surface.CreateFont("Hud" .. fontName, scaledData)  -- HudNumbers, HudNumbersGlow, etc.
+        surface.CreateFont("HudTheme_" .. fontName, scaledData)  -- For theme system
         surface.CreateFont("ChaosHUD_" .. fontName, scaledData)  -- For backward compatibility
     end
     
