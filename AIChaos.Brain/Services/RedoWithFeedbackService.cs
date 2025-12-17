@@ -11,17 +11,23 @@ public class RedoService
     private readonly AccountService _accountService;
     private readonly CommandQueueService _commandQueue;
     private readonly AiCodeGeneratorService _codeGenerator;
+    private readonly PromptModerationService _promptModerationService;
+    private readonly CodeModerationService _codeModerationService;
     private readonly ILogger<RedoService> _logger;
 
     public RedoService(
         AccountService accountService,
         CommandQueueService commandQueue,
         AiCodeGeneratorService codeGenerator,
+        PromptModerationService promptModerationService,
+        CodeModerationService codeModerationService,
         ILogger<RedoService> logger)
     {
         _accountService = accountService;
         _commandQueue = commandQueue;
         _codeGenerator = codeGenerator;
+        _promptModerationService = promptModerationService;
+        _codeModerationService = codeModerationService;
         _logger = logger;
     }
 
@@ -86,9 +92,27 @@ public class RedoService
             };
         }
 
-        // Determine if this redo is free
+        // Determine if this redo is free (needed for accurate error responses)
         var isFree = account.RedoCount == 0;
         var cost = isFree ? 0 : Constants.Redo.RedoCost;
+
+        // Security check: Check if feedback contains URLs or external content that needs moderation
+        var feedbackNeedsModeration = _promptModerationService.NeedsModeration(feedback);
+        if (feedbackNeedsModeration)
+        {
+            var urls = _promptModerationService.ExtractContentUrls(feedback);
+            _logger.LogWarning(
+                "[FIX-SECURITY] User {Username} attempted to bypass moderation by including {Count} URL(s) in fix feedback for command #{CommandId}",
+                account.Username, urls.Count, commandId);
+            
+            return new RedoResponse
+            {
+                Status = "error",
+                Message = "Your feedback contains URLs or external links which are not allowed for security reasons. Please describe the issue in your own words without including links.",
+                NewBalance = account.CreditBalance,
+                WasFree = isFree
+            };
+        }
 
         // Check credits if not free and not single user mode
         if (!isSingleUserMode && !isFree && account.CreditBalance < cost)
@@ -131,8 +155,66 @@ public class RedoService
 
         try
         {
-            var (executionCode, undoCode, _, _) = 
+            var (executionCode, undoCode, codeNeedsModeration, moderationReason) = 
                 await _codeGenerator.GenerateCodeAsync(feedbackPrompt);
+
+            // If the generated code contains filtered patterns, send to code moderation queue
+            if (codeNeedsModeration)
+            {
+                _logger.LogInformation(
+                    "[FIX-SECURITY] Generated code for fix by {Username} requires moderation. Reason: {Reason}",
+                    account.Username, moderationReason);
+                
+                // Create placeholder command with PendingModeration status
+                // The placeholder uses empty execution/undo code because the actual generated code
+                // is stored in the moderation queue and will be applied to this command upon approval.
+                // This prevents unapproved code from being visible or executable while pending review.
+                var placeholderCommand = _commandQueue.AddCommandWithStatus(
+                    userPrompt: originalCommand.UserPrompt,
+                    executionCode: "", // Will be set after approval
+                    undoCode: "", // Will be set after approval
+                    source: originalCommand.Source,
+                    author: originalCommand.Author,
+                    imageContext: originalCommand.ImageContext,
+                    userId: accountId,
+                    aiResponse: "⏳ Waiting for code moderation approval...",
+                    status: CommandStatus.PendingModeration,
+                    queueForExecution: false); // Don't queue yet
+                
+                // Add to code moderation queue with the actual generated code
+                // Upon approval, the code will be transferred from the queue to the placeholder command
+                _codeModerationService.AddPendingCode(
+                    originalCommand.UserPrompt,
+                    executionCode,
+                    undoCode,
+                    moderationReason ?? "Filtered content detected",
+                    originalCommand.Source,
+                    originalCommand.Author,
+                    accountId,
+                    placeholderCommand.Id);
+                
+                // Mark as redo
+                placeholderCommand.IsRedo = true;
+                placeholderCommand.OriginalCommandId = commandId;
+                placeholderCommand.RedoFeedback = feedback;
+                
+                var accountAfterModeration = _accountService.GetAccountById(accountId);
+                
+                _logger.LogInformation(
+                    "[FIX] User {Username} requested fix for command #{OriginalId}. New command #{NewId} pending moderation. Free: {IsFree}", 
+                    account.Username, commandId, placeholderCommand.Id, isFree);
+                
+                return new RedoResponse
+                {
+                    Status = "success",
+                    Message = isFree 
+                        ? "Free fix submitted! The generated code requires moderator approval." 
+                        : $"Fix submitted! ${cost:F2} deducted. The generated code requires moderator approval.",
+                    NewCommandId = placeholderCommand.Id,
+                    NewBalance = accountAfterModeration?.CreditBalance ?? account.CreditBalance,
+                    WasFree = isFree
+                };
+            }
 
             // Create new command entry as a redo
             var newCommand = _commandQueue.AddCommand(
