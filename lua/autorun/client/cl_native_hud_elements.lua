@@ -402,6 +402,181 @@ timer.Simple(0.2, function()
     g_HudSuitPower:Init()
 
     -- ============================================================================
+    --  HudCrosshair - Crosshair display
+    -- ============================================================================
+
+    local HudCrosshair = setmetatable({}, { __index = CHudElement })
+    HudCrosshair.__index = HudCrosshair
+
+    function HudCrosshair:New()
+        local obj = CHudElement.New(self, "CHudCrosshair")
+        setmetatable(obj, self)
+        
+        obj:SetHiddenBits(HIDEHUD_CROSSHAIR + HIDEHUD_PLAYERDEAD)
+        
+        return obj
+    end
+
+    function HudCrosshair:ShouldDraw()
+        if not CHudElement.ShouldDraw(self) then
+            return false
+        end
+        
+        -- Use GMod's native crosshair system
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return false end
+        
+        local wpn = ply:GetActiveWeapon()
+        if not IsValid(wpn) then return false end
+        
+        -- Let weapon override crosshair
+        if wpn.DrawCrosshair == false then
+            return false
+        end
+        
+        return true
+    end
+
+    function HudCrosshair:Paint()
+        if not self:ShouldDraw() then return end
+        
+        -- Simple HL2-style crosshair
+        local x = ScrW() / 2
+        local y = ScrH() / 2
+        local size = 8
+        local gap = 6
+        local thickness = 2
+        
+        local theme = HudTheme.GetCurrent()
+        local color = theme.Colors.BrightFg
+        
+        -- Draw crosshair lines
+        surface.SetDrawColor(color)
+        
+        -- Top
+        surface.DrawRect(x - thickness/2, y - gap - size, thickness, size)
+        -- Bottom
+        surface.DrawRect(x - thickness/2, y + gap, thickness, size)
+        -- Left
+        surface.DrawRect(x - gap - size, y - thickness/2, size, thickness)
+        -- Right
+        surface.DrawRect(x + gap, y - thickness/2, size, thickness)
+    end
+
+    -- Register the element
+    local g_HudCrosshair = HudCrosshair:New()
+    g_HudCrosshair:Init()
+
+    -- ============================================================================
+    --  HudDamageIndicator - Shows direction of damage
+    -- ============================================================================
+
+    local HudDamageIndicator = setmetatable({}, { __index = CHudElement })
+    HudDamageIndicator.__index = HudDamageIndicator
+
+    function HudDamageIndicator:New()
+        local obj = CHudElement.New(self, "CHudDamageIndicator")
+        setmetatable(obj, self)
+        
+        obj.m_DamageIndicators = {}
+        obj:SetHiddenBits(HIDEHUD_HEALTH + HIDEHUD_PLAYERDEAD)
+        
+        return obj
+    end
+
+    function HudDamageIndicator:Init()
+        self.m_DamageIndicators = {}
+    end
+
+    function HudDamageIndicator:AddDamage(attacker, damage)
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        
+        -- Calculate angle to attacker
+        local angle = 0
+        if IsValid(attacker) and attacker:IsPlayer() or attacker:IsNPC() then
+            local vecDir = (attacker:GetPos() - ply:GetPos()):GetNormalized()
+            local forward = ply:GetForward()
+            local right = ply:GetRight()
+            
+            -- Calculate angle
+            angle = math.deg(math.atan2(vecDir:Dot(right), vecDir:Dot(forward)))
+        end
+        
+        -- Add damage indicator
+        table.insert(self.m_DamageIndicators, {
+            angle = angle,
+            time = CurTime(),
+            damage = damage
+        })
+    end
+
+    function HudDamageIndicator:Paint()
+        if not self:ShouldDraw() then return end
+        
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        
+        local cx = ScrW() / 2
+        local cy = ScrH() / 2
+        local radius = 100
+        
+        -- Draw damage indicators
+        for i = #self.m_DamageIndicators, 1, -1 do
+            local indicator = self.m_DamageIndicators[i]
+            local timeSince = CurTime() - indicator.time
+            
+            -- Remove old indicators
+            if timeSince > 2 then
+                table.remove(self.m_DamageIndicators, i)
+            else
+                -- Calculate alpha (fade out)
+                local alpha = 255 * (1 - timeSince / 2)
+                
+                -- Calculate position
+                local rad = math.rad(indicator.angle)
+                local x = cx + math.sin(rad) * radius
+                local y = cy - math.cos(rad) * radius
+                
+                -- Draw indicator
+                local size = 16
+                local color = Color(255, 0, 0, alpha)
+                
+                draw.NoTexture()
+                surface.SetDrawColor(color)
+                
+                -- Draw arrow pointing to damage source
+                local points = {
+                    { x = x, y = y - size },
+                    { x = x - size/2, y = y + size/2 },
+                    { x = x + size/2, y = y + size/2 }
+                }
+                
+                -- Rotate points
+                for _, point in ipairs(points) do
+                    local dx = point.x - x
+                    local dy = point.y - y
+                    point.x = x + dx * math.cos(rad) - dy * math.sin(rad)
+                    point.y = y + dx * math.sin(rad) + dy * math.cos(rad)
+                end
+                
+                surface.DrawPoly(points)
+            end
+        end
+    end
+
+    -- Register the element
+    local g_HudDamageIndicator = HudDamageIndicator:New()
+    g_HudDamageIndicator:Init()
+
+    -- Hook for damage events
+    hook.Add("EntityTakeDamage", "NativeHUD_DamageIndicator", function(target, dmg)
+        if target == LocalPlayer() and IsValid(g_HudDamageIndicator) then
+            g_HudDamageIndicator:AddDamage(dmg:GetAttacker(), dmg:GetDamage())
+        end
+    end)
+
+    -- ============================================================================
     --  Main HUD Paint Hook
     -- ============================================================================
 
