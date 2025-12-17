@@ -208,7 +208,9 @@ function HudTheme.ApplyTheme()
             scaledData.blur = nil
         end
         
+        -- Create both HudTheme_ and ChaosHUD_ versions for compatibility
         surface.CreateFont("HudTheme_" .. fontName, scaledData)
+        surface.CreateFont("ChaosHUD_" .. fontName, scaledData)  -- For backward compatibility
     end
     
     -- Store colors and layout in HudResources for compatibility

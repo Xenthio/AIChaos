@@ -302,8 +302,10 @@ timer.Simple(0.2, function()
         local theme = HudTheme.GetCurrent()
         
         -- Calculate position (right-aligned)
+        -- In Source SDK, "r150" means left edge is 150 pixels from right edge
         local layout = theme.Layout.HudAmmo
         local x = HudResources.ConvertPosition(layout.xpos, ScrW())
+        -- Position from bottom like SDK (ypos 432 from bottom at 480 height = 48 from bottom)
         local y = ScrH() - (48 * scale)
         
         ChaosHUD.DrawAmmoDisplay(
@@ -439,14 +441,25 @@ timer.Simple(0.2, function()
         local obj = CHudElement.New(self, "CHudSuitPower")
         setmetatable(obj, self)
         
-        obj.m_flSuitPower = 100
+        obj.m_flSuitPower = -1  -- Initialize to -1 like SDK
+        obj.m_iActiveSuitDevices = 0
+        obj.m_AnimatedHeight = 26  -- Start at minimum height
+        obj.m_TargetHeight = 26
+        obj.m_AnimatedY = 400  -- Start at base position
+        obj.m_TargetY = 400
+        obj.m_AnimSpeed = 0
         obj:SetHiddenBits(HIDEHUD_HEALTH + HIDEHUD_PLAYERDEAD + HIDEHUD_NEEDSUIT)
         
         return obj
     end
 
     function HudSuitPower:Init()
-        self.m_flSuitPower = 100
+        self.m_flSuitPower = -1
+        self.m_iActiveSuitDevices = 0
+        self.m_AnimatedHeight = 26
+        self.m_TargetHeight = 26
+        self.m_AnimatedY = 400
+        self.m_TargetY = 400
     end
 
     function HudSuitPower:ShouldDraw()
@@ -487,6 +500,79 @@ timer.Simple(0.2, function()
         
         return items
     end
+    
+    function HudSuitPower:Think()
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        
+        local suitPower = ply:GetSuitPower()
+        local activeItems = self:GetActiveItems()
+        local numActiveDevices = #activeItems
+        
+        -- Check if number of active devices changed
+        if numActiveDevices ~= self.m_iActiveSuitDevices then
+            self.m_iActiveSuitDevices = numActiveDevices
+            
+            -- Determine target size and position based on active devices
+            -- From HudAnimations.txt:
+            -- NoItems: Size 102x26, Position y=400
+            -- OneItem: Size 102x36, Position y=390
+            -- TwoItems: Size 102x46, Position y=380
+            -- ThreeItems: Size 102x56, Position y=370
+            if numActiveDevices == 0 then
+                self.m_TargetHeight = 26
+                self.m_TargetY = 400
+            elseif numActiveDevices == 1 then
+                self.m_TargetHeight = 36
+                self.m_TargetY = 390
+            elseif numActiveDevices == 2 then
+                self.m_TargetHeight = 46
+                self.m_TargetY = 380
+            else  -- 3 or more
+                self.m_TargetHeight = 56
+                self.m_TargetY = 370
+            end
+            
+            -- Calculate animation speed (0.4 seconds like SDK)
+            local heightDiff = math.abs(self.m_TargetHeight - self.m_AnimatedHeight)
+            local yDiff = math.abs(self.m_TargetY - self.m_AnimatedY)
+            self.m_AnimSpeed = math.max(heightDiff, yDiff) / 0.4
+        end
+        
+        -- Animate height and position
+        if self.m_AnimSpeed > 0 then
+            local delta = self.m_AnimSpeed * FrameTime()
+            
+            -- Animate height
+            if math.abs(self.m_TargetHeight - self.m_AnimatedHeight) < delta then
+                self.m_AnimatedHeight = self.m_TargetHeight
+            else
+                if self.m_TargetHeight > self.m_AnimatedHeight then
+                    self.m_AnimatedHeight = self.m_AnimatedHeight + delta
+                else
+                    self.m_AnimatedHeight = self.m_AnimatedHeight - delta
+                end
+            end
+            
+            -- Animate Y position
+            if math.abs(self.m_TargetY - self.m_AnimatedY) < delta then
+                self.m_AnimatedY = self.m_TargetY
+            else
+                if self.m_TargetY > self.m_AnimatedY then
+                    self.m_AnimatedY = self.m_AnimatedY + delta
+                else
+                    self.m_AnimatedY = self.m_AnimatedY - delta
+                end
+            end
+            
+            -- Stop animating if we reached target
+            if self.m_AnimatedHeight == self.m_TargetHeight and self.m_AnimatedY == self.m_TargetY then
+                self.m_AnimSpeed = 0
+            end
+        end
+        
+        self.m_flSuitPower = suitPower
+    end
 
     function HudSuitPower:Paint()
         if not self:ShouldDraw() then return end
@@ -494,14 +580,18 @@ timer.Simple(0.2, function()
         local ply = LocalPlayer()
         if not IsValid(ply) then return end
         
-        self.m_flSuitPower = ply:GetSuitPower()
+        self:Think()
+        
         local activeItems = self:GetActiveItems()
         
         local scale = ChaosHUD.GetScale()
         local x = 16 * scale
-        local y = ScrH() - (48 * scale) - (36 * scale) - (6 * scale)
+        -- Use animated Y position
+        local y = ScrH() - (48 * scale) - (self.m_AnimatedY * scale)
+        local height = self.m_AnimatedHeight * scale
         
-        ChaosHUD.DrawAuxBar(x, y, "AUX", self.m_flSuitPower, activeItems)
+        -- Draw with proper label "AUX POWER"
+        ChaosHUD.DrawAuxBar(x, y, "AUX POWER", self.m_flSuitPower, activeItems, height)
     end
 
     -- Register the element
