@@ -85,8 +85,9 @@ public class CodeModerationService
             // Workshop download functions - require moderation for external content
             [@"steamworks\.Download\s*\("] = "Workshop download (steamworks.Download)",
             [@"steamworks\.DownloadUGC\s*\("] = "Workshop download (steamworks.DownloadUGC)",
-            
+
             // AI Chaos Workshop helper functions - require moderation for workshop content
+            [@"DownloadAndSpawn\s*\("] = "Workshop smart download/spawn",
             [@"DownloadAndSpawnWorkshopModel\s*\("] = "Workshop model download/spawn",
             [@"DownloadAndMountWorkshopAddon\s*\("] = "Workshop addon download/mount",
             [@"DownloadAndGetWorkshopAssets\s*\("] = "Workshop assets download",
