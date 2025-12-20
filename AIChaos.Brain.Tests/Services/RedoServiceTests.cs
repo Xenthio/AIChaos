@@ -90,10 +90,10 @@ public class RedoServiceTests
     }
 
     [Fact]
-    public void Constants_RedoCost_IsOneDollar()
+    public void Constants_RedoCost_IsFiftyCents()
     {
         // Assert
-        Assert.Equal(1.00m, Constants.Redo.RedoCost);
+        Assert.Equal(0.50m, Constants.Redo.RedoCost);
     }
 
     [Fact]

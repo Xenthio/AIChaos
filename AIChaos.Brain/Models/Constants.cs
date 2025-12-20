@@ -97,7 +97,7 @@ public static class Constants
         /// <summary>
         /// The cost in credits for a redo after the first free one.
         /// </summary>
-        public const decimal RedoCost = 1.00m;
+        public const decimal RedoCost = 0.50m;
     }
 
     /// <summary>
