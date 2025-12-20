@@ -208,14 +208,6 @@ else
         var isFree = currentAccount != null && RedoService.IsNextRedoFree(currentAccount.Id);
         var cost = currentAccount != null ? RedoService.GetRedoCost(currentAccount.Id) : Constants.Redo.RedoCost;
     }
-    @if (isFree)
-    {
-        <p style="color: var(--success); font-weight: bold;">✨ Your first fix is FREE!</p>
-    }
-    else
-    {
-        <p style="color: var(--warning);">This fix will cost <strong>$@cost.ToString("F2")</strong></p>
-    }
     <p style="margin-top: 10px;">Explain briefly what stopped your request from working and we will try to fix it:</p>
     <div style="margin: 15px 0;">
         <textarea 
@@ -234,7 +226,7 @@ else
             }
             else
             {
-                <span>@(isFree ? "🔧 Fix (Free)" : $"🔧 Fix (${cost:F2})")</span>
+                <span>🔧 Fix</span>
             }
         </button>
     </div>
