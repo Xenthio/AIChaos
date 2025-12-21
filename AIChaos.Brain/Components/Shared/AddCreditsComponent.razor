@@ -1,0 +1,260 @@
+@inject StripeService StripeService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using AIChaos.Brain.Services
+
+<div class="add-credits-container">
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-error" style="margin-bottom: 15px;">
+            @errorMessage
+        </div>
+    }
+
+    <div class="add-credits-options">
+        <h3>Add Credits</h3>
+        <p style="color: var(--text-dim); margin-bottom: 20px;">
+            Select an amount to add to your account. $1 = 1 Idea submission.
+        </p>
+
+        <div class="credit-amounts">
+            @foreach (var amount in PredefinedAmounts)
+            {
+                <button class="credit-amount-btn @(selectedAmount == amount ? "selected" : "")"
+                        @onclick="() => SelectAmount(amount)"
+                        disabled="@isProcessing">
+                    <span class="amount">${amount:F2}</span>
+                    <span class="ideas">@amount Ideas</span>
+                </button>
+            }
+        </div>
+
+        <div class="custom-amount" style="margin-top: 20px;">
+            <label>Or enter a custom amount:</label>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <span style="font-size: 20px;">$</span>
+                <input type="number" 
+                       @bind="customAmount" 
+                       @bind:event="oninput"
+                       placeholder="0.00" 
+                       step="0.01" 
+                       min="@minAmount"
+                       max="1000"
+                       disabled="@isProcessing"
+                       style="flex: 1;" />
+            </div>
+        </div>
+
+        <button class="btn-primary" 
+                @onclick="StartCheckout" 
+                disabled="@(isProcessing || GetSelectedAmount() < minAmount)"
+                style="width: 100%; margin-top: 25px; padding: 15px;">
+            @if (isProcessing)
+            {
+                <text>⏳ Opening Payment...</text>
+            }
+            else
+            {
+                <text>💳 Add $@GetSelectedAmount():F2 Credits via Stripe</text>
+            }
+        </button>
+
+        <div class="payment-info" style="margin-top: 20px; font-size: 13px; color: var(--text-dim); text-align: center;">
+            <p>✓ Secure payment via Stripe</p>
+            <p>✓ No manual username entry needed</p>
+            <p>✓ Credits added instantly after payment</p>
+            <p style="margin-top: 10px;">
+                💡 Processing fee: 2.9% + $0.30 per transaction<br/>
+                <span style="font-size: 11px;">Much lower than YouTube's ~30% fee!</span>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<decimal> PredefinedAmounts = new() { 5m, 10m, 20m, 50m };
+    private decimal? selectedAmount = null;
+    private decimal? customAmount = null;
+    private decimal minAmount = 1.00m;
+    private bool isProcessing = false;
+    private string? errorMessage = null;
+
+    private void SelectAmount(decimal amount)
+    {
+        selectedAmount = amount;
+        customAmount = null; // Clear custom amount when selecting predefined
+    }
+
+    private decimal GetSelectedAmount()
+    {
+        if (customAmount.HasValue && customAmount.Value >= minAmount)
+        {
+            return customAmount.Value;
+        }
+        if (selectedAmount.HasValue)
+        {
+            return selectedAmount.Value;
+        }
+        return 0;
+    }
+
+    private async Task StartCheckout()
+    {
+        errorMessage = null;
+        var amount = GetSelectedAmount();
+
+        if (amount < minAmount)
+        {
+            errorMessage = $"Amount must be at least ${minAmount:F2}";
+            return;
+        }
+
+        isProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            // Call API to create checkout session
+            var baseUrl = Navigation.BaseUri.TrimEnd('/');
+            var response = await Http.PostAsJsonAsync($"{baseUrl}/api/payments/stripe/create-checkout", new
+            {
+                amount = amount,
+                successUrl = $"{baseUrl}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+                cancelUrl = $"{baseUrl}/"
+            });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<CheckoutResponse>();
+                if (result != null && !string.IsNullOrEmpty(result.CheckoutUrl))
+                {
+                    // Redirect to Stripe Checkout
+                    Navigation.NavigateTo(result.CheckoutUrl, forceLoad: true);
+                    return;
+                }
+            }
+
+            var error = await response.Content.ReadAsStringAsync();
+            errorMessage = "Failed to create payment session. Please try again.";
+            _logger.LogError("Failed to create Stripe checkout: {Error}", error);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred. Please try again.";
+            _logger.LogError(ex, "Error starting Stripe checkout");
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private class CheckoutResponse
+    {
+        public string? CheckoutUrl { get; set; }
+    }
+
+    [Inject]
+    private HttpClient Http { get; set; } = default!;
+
+    [Inject]
+    private ILogger<AddCreditsComponent> _logger { get; set; } = default!;
+}
+
+<style>
+    .add-credits-container {
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+    .add-credits-options {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 30px;
+    }
+
+    .add-credits-options h3 {
+        margin: 0 0 10px 0;
+        font-size: 24px;
+    }
+
+    .credit-amounts {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .credit-amount-btn {
+        background: var(--surface);
+        border: 2px solid var(--border);
+        border-radius: 8px;
+        padding: 20px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .credit-amount-btn:hover:not(:disabled) {
+        border-color: var(--primary);
+        background: var(--primary-dim);
+    }
+
+    .credit-amount-btn.selected {
+        border-color: var(--primary);
+        background: var(--primary-dim);
+        box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2);
+    }
+
+    .credit-amount-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .credit-amount-btn .amount {
+        font-size: 28px;
+        font-weight: bold;
+        color: var(--primary);
+    }
+
+    .credit-amount-btn .ideas {
+        font-size: 14px;
+        color: var(--text-dim);
+    }
+
+    .custom-amount {
+        padding: 20px;
+        background: var(--surface);
+        border-radius: 8px;
+    }
+
+    .custom-amount label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: 500;
+    }
+
+    .custom-amount input {
+        font-size: 18px;
+        padding: 12px;
+    }
+
+    .payment-info p {
+        margin: 5px 0;
+    }
+
+    @@media (max-width: 600px) {
+        .credit-amounts {
+            grid-template-columns: 1fr;
+        }
+
+        .add-credits-options {
+            padding: 20px;
+        }
+    }
+</style>
