@@ -28,15 +28,34 @@ This guide walks you through setting up Stripe for on-site credit purchases, eli
 
 ### Step 1: Create Stripe Account
 
+**For Individuals (Sole Proprietors) - Including Australia** ✅
+
 1. Go to [stripe.com](https://stripe.com/)
 2. Click **"Sign Up"**
-3. Complete business verification
-   - Business name
-   - Tax ID (EIN or SSN)
-   - Bank account details
-4. Verify your email
+3. Select **"Individual"** as account type (not "Business")
+4. Provide personal details:
+   - Full legal name
+   - Date of birth
+   - Home address
+   - **Australia:** Tax File Number (TFN) or ABN if you have one
+   - Bank account details (for payouts)
+5. Verify your identity (photo ID may be required)
+6. Verify your email
 
-> **Note:** Verification can take a few hours to a few days depending on your region.
+> **✅ Good News for Australians:** Stripe fully supports individual accounts in Australia! You don't need:
+> - ❌ Registered business name
+> - ❌ ABN (Australian Business Number) - optional but can help
+> - ❌ Company registration
+> 
+> You can operate as an individual receiving money, just like a freelancer or content creator.
+
+> **Note:** Initial verification is instant for basic features. Full verification (for higher limits) can take 1-2 business days.
+
+**Why You Might Want an ABN (Optional):**
+- Easier tax reporting
+- Can claim GST credits (if registered for GST)
+- Looks more professional
+- But **NOT required** to use Stripe!
 
 ### Step 2: Get API Keys
 
@@ -333,33 +352,77 @@ Before accepting real payments:
 
 ### Switching from Test to Live
 
-1. **Get live API keys**
+1. **Complete Account Verification** (if not done)
+   - Stripe Dashboard → Settings → Account details
+   - Provide any additional info requested
+   - **For Australians:** TFN for tax reporting (required for payouts)
+
+2. **Get live API keys**
    - Stripe Dashboard → Developers → API keys
    - Toggle from "Test mode" to "Live mode"
    - Copy live keys (pk_live_... and sk_live_...)
 
-2. **Update AIChaos settings**
+3. **Update AIChaos settings**
    - Replace test keys with live keys
    - Update webhook secret (live webhooks have different secret)
 
-3. **Update Stripe webhook**
+4. **Update Stripe webhook**
    - Create new webhook endpoint for live mode
    - Use same URL but ensure it's production URL
    - Copy new webhook secret
 
-4. **Test with small payment**
+5. **Test with small payment**
    - Use real card with small amount ($1)
    - Verify credits added correctly
    - Check webhook delivery in Stripe Dashboard
 
-5. **Monitor closely**
+6. **Monitor closely**
    - Watch first few payments carefully
    - Check logs for any errors
    - Verify all webhooks are processing
 
 ---
 
-## 🎯 Comparison: Stripe vs Ko-fi
+## 🌏 Stripe in Australia - Specific Info
+
+### What You Need
+- ✅ Australian bank account
+- ✅ Valid photo ID (driver's license or passport)
+- ✅ Tax File Number (TFN) - for tax reporting and payouts
+- ⚠️ ABN (optional but recommended for higher volume)
+
+### Supported Payment Methods in Australia
+- ✅ Credit/Debit cards (Visa, Mastercard, Amex)
+- ✅ Apple Pay
+- ✅ Google Pay
+- ✅ International cards (for overseas viewers)
+
+### Fees for Australian Merchants
+- **Standard:** 1.75% + 30¢ AUD per domestic card
+- **International cards:** 2.9% + 30¢ AUD
+- **Currency conversion:** +1% when accepting foreign currencies
+- **No monthly fees, setup fees, or hidden costs**
+
+### Tax Considerations
+- **Income:** Money received is taxable income
+- **GST:** If annual turnover exceeds $75,000 AUD, you must register for GST
+- **TFN:** Required for Stripe payouts (prevents withholding tax)
+- **ABN:** Not required but useful for tax deductions and GST
+- **Recommendation:** Consult an accountant for your specific situation
+
+### Verification Timeline
+- **Instant:** Test mode access (for development)
+- **1-2 business days:** Full verification (for live payments)
+- **Additional checks:** May be required for larger transaction volumes
+
+### Payout Schedule
+- **Default:** 2 business days after payment
+- **Custom:** Can change to daily, weekly, or monthly
+- **Bank:** Payouts go to your linked Australian bank account in AUD
+
+---
+
+## ❓ FAQ
 
 | Feature | Stripe (On-Site) | Ko-fi (Off-Site) |
 |---------|------------------|------------------|
@@ -400,8 +463,24 @@ Before accepting real payments:
 
 ## ❓ FAQ
 
-**Q: Do I need a business to use Stripe?**
-A: Yes, Stripe requires business verification (can be sole proprietorship with SSN).
+**Q: Do I need to be a registered business to use Stripe?**
+A: **No!** You can sign up as an individual (sole proprietor). Perfect for content creators, streamers, and hobbyists. No business registration needed.
+
+**Q: I'm in Australia - can I use Stripe?**
+A: **Yes!** Stripe fully supports Australian individuals. You need:
+- Australian bank account
+- Photo ID
+- Tax File Number (TFN)
+- ABN is optional (not required)
+
+**Q: What if I don't have an ABN?**
+A: That's fine! You can use Stripe as an individual without an ABN. You'll just report the income on your personal tax return like any other income.
+
+**Q: Do I need GST registration?**
+A: Only if your annual turnover exceeds $75,000 AUD. Below that, GST registration is optional.
+
+**Q: What fees apply to Australian accounts?**
+A: 1.75% + 30¢ AUD for domestic cards, 2.9% + 30¢ AUD for international cards. Much lower than YouTube's ~30%!
 
 **Q: What currencies does Stripe support?**
 A: 135+ currencies. Automatic conversion to your account currency.

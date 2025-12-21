@@ -84,9 +84,9 @@ This document compares alternative payment solutions for AIChaos to help streame
 - ✅ **Test mode** (easy development/testing)
 
 ### Cons
-- ❌ Account verification required (can take days)
+- ❌ Account verification required (1-2 days, photo ID needed)
 - ❌ More complex setup (API keys, webhooks, HTTPS)
-- ❌ Requires business details (tax ID, etc.)
+- ❌ Requires bank account and tax info (TFN for Australians)
 - ❌ HTTPS mandatory for production
 
 ---
