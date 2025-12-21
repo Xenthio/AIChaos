@@ -1068,6 +1068,69 @@ public class AccountService
     {
         return _pendingCredits.Values.ToList();
     }
+
+    /// <summary>
+    /// Adds pending credits for a user when we don't have their YouTube channel or account yet.
+    /// Used for Ko-fi donations where username might not exist yet.
+    /// Uses a special identifier format: "kofi:{transactionId}" or "unknown:{username}"
+    /// </summary>
+    public void AddPendingCreditsForUnknownUser(string identifier, decimal amount, string displayName, string message, string source = "kofi")
+    {
+        // Create a special pending credit entry with the identifier
+        var pending = _pendingCredits.GetOrAdd(identifier, _ => new PendingChannelCredits
+        {
+            ChannelId = identifier,
+            DisplayName = displayName
+        });
+        
+        lock (pending)
+        {
+            pending.PendingBalance += amount;
+            pending.DisplayName = displayName;
+            pending.Donations.Add(new DonationRecord
+            {
+                Timestamp = DateTime.UtcNow,
+                Amount = amount,
+                Source = source,
+                Message = message
+            });
+        }
+        
+        SavePendingCredits();
+        _logger.LogInformation("[ACCOUNT] Stored ${Amount} pending credits for identifier {Identifier} ({DisplayName}) via {Source}", 
+            amount, identifier, displayName, source);
+    }
+
+    /// <summary>
+    /// Claims pending credits when a user creates an account or logs in.
+    /// Checks for pending credits using username-based identifiers.
+    /// </summary>
+    public decimal ClaimPendingCreditsForUsername(string username)
+    {
+        var identifier = $"unknown:{username}";
+        if (!_pendingCredits.TryGetValue(identifier, out var pending))
+        {
+            return 0;
+        }
+
+        var amount = pending.PendingBalance;
+        if (amount > 0)
+        {
+            var account = GetAccountByUsername(username);
+            if (account != null)
+            {
+                AddCredits(account.Id, amount);
+                _pendingCredits.TryRemove(identifier, out _);
+                SavePendingCredits();
+                
+                _logger.LogInformation("[ACCOUNT] Claimed ${Amount} pending credits for username {Username}", 
+                    amount, username);
+                return amount;
+            }
+        }
+
+        return 0;
+    }
     
     /// <summary>
     /// Manually links a pending channel's credits to an account.

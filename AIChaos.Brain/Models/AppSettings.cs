@@ -8,6 +8,7 @@ public class AppSettings
     public OpenRouterSettings OpenRouter { get; set; } = new();
     public TwitchSettings Twitch { get; set; } = new();
     public YouTubeSettings YouTube { get; set; } = new();
+    public PaymentProvidersSettings PaymentProviders { get; set; } = new();
     public SafetySettings Safety { get; set; } = new();
     public AdminSettings Admin { get; set; } = new();
     public TunnelSettings Tunnel { get; set; } = new();
@@ -237,4 +238,49 @@ public class StreamStateSettings
     /// Timestamp when the stream state was last updated.
     /// </summary>
     public DateTime? LastUpdated { get; set; }
+}
+
+/// <summary>
+/// Settings for payment provider integrations.
+/// </summary>
+public class PaymentProvidersSettings
+{
+    public KofiSettings Kofi { get; set; } = new();
+    public StripeSettings Stripe { get; set; } = new();
+    public PayPalSettings PayPal { get; set; } = new();
+}
+
+/// <summary>
+/// Ko-fi payment integration settings.
+/// </summary>
+public class KofiSettings
+{
+    public bool Enabled { get; set; } = false;
+    public string VerificationToken { get; set; } = "";
+    public decimal MinDonationAmount { get; set; } = 1.00m;
+}
+
+/// <summary>
+/// Stripe payment integration settings.
+/// </summary>
+public class StripeSettings
+{
+    public bool Enabled { get; set; } = false;
+    public string PublishableKey { get; set; } = "";
+    public string SecretKey { get; set; } = "";
+    public string WebhookSecret { get; set; } = "";
+    public decimal MinPaymentAmount { get; set; } = 1.00m;
+}
+
+/// <summary>
+/// PayPal payment integration settings.
+/// </summary>
+public class PayPalSettings
+{
+    public bool Enabled { get; set; } = false;
+    public string ClientId { get; set; } = "";
+    public string ClientSecret { get; set; } = "";
+    public string WebhookId { get; set; } = "";
+    public decimal MinPaymentAmount { get; set; } = 1.00m;
+    public bool UseSandbox { get; set; } = false;
 }
