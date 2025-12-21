@@ -270,6 +270,124 @@
     }
 </div>
 
+<!-- Payment Providers -->
+<div class="card">
+    <h2>💳 Payment Providers</h2>
+    <p style="color: var(--text-dim); margin-bottom: 15px;">
+        Configure alternative payment methods with lower fees than YouTube Super Chat (~30%).
+    </p>
+
+    <div class="alert alert-info" style="margin-bottom: 20px;">
+        <strong>💡 Tip:</strong> YouTube takes ~30% in fees. Ko-fi and Stripe reduce this to 3-6%, giving you 35-38% more revenue per donation!
+    </div>
+
+    <!-- Ko-fi Section -->
+    <div style="margin-bottom: 25px; padding: 20px; background: rgba(255, 93, 177, 0.05); border-left: 4px solid #ff5db1; border-radius: 8px;">
+        <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
+            ☕ Ko-fi Integration
+            <span class="status-badge @(kofiEnabled ? "status-connected" : "status-disconnected")">
+                @(kofiEnabled ? "Enabled" : "Disabled")
+            </span>
+        </h3>
+        <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 15px;">
+            <strong>Lowest fees:</strong> 0% platform + ~3% processor = ~3% total<br/>
+            <strong>Setup time:</strong> 5 minutes | <a href="/KOFI_SETUP.md" target="_blank" style="color: var(--primary);">📖 Setup Guide</a>
+        </p>
+
+        <div class="form-group checkbox-group">
+            <input type="checkbox" @bind="kofiEnabled" id="kofiEnabled">
+            <label for="kofiEnabled" style="margin: 0; font-weight: bold;">Enable Ko-fi Payments</label>
+        </div>
+
+        @if (kofiEnabled)
+        {
+            <div style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Verification Token</label>
+                    <input type="password" @bind="kofiVerificationToken" placeholder="Your Ko-fi webhook verification token">
+                    <small>Found in Ko-fi Settings → API → Webhooks</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Minimum Donation ($USD)</label>
+                    <input type="number" @bind="kofiMinAmount" min="0.01" step="0.01">
+                    <small>Minimum amount to accept (default: $1.00)</small>
+                </div>
+
+                <div class="alert alert-warning" style="margin-top: 15px; font-size: 13px;">
+                    <strong>⚠️ Important:</strong> Users must include their username in the donation message.<br/>
+                    Example: <code>username: JohnDoe</code> or <code>@@JohnDoe</code><br/>
+                    Webhook URL: <code>@(GetWebhookUrl())/api/payments/kofi</code>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Stripe Section -->
+    <div style="margin-bottom: 25px; padding: 20px; background: rgba(99, 91, 255, 0.05); border-left: 4px solid #635bff; border-radius: 8px;">
+        <h3 style="margin: 0 0 10px 0; display: flex; align-items: center; gap: 10px;">
+            💳 Stripe Integration
+            <span class="status-badge @(stripeEnabled ? "status-connected" : "status-disconnected")">
+                @(stripeEnabled ? "Enabled" : "Disabled")
+            </span>
+        </h3>
+        <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 15px;">
+            <strong>On-site payments:</strong> 2.9% + $0.30 (1.75% + 30¢ AUD for Australian domestic)<br/>
+            <strong>Setup time:</strong> 15 minutes | <strong>No business required!</strong> | <a href="/STRIPE_SETUP.md" target="_blank" style="color: var(--primary);">📖 Setup Guide</a>
+        </p>
+
+        <div class="form-group checkbox-group">
+            <input type="checkbox" @bind="stripeEnabled" id="stripeEnabled">
+            <label for="stripeEnabled" style="margin: 0; font-weight: bold;">Enable Stripe Payments</label>
+        </div>
+
+        @if (stripeEnabled)
+        {
+            <div style="margin-top: 15px;">
+                <div class="form-group">
+                    <label>Publishable Key</label>
+                    <input type="text" @bind="stripePublishableKey" placeholder="pk_test_... or pk_live_...">
+                    <small>Found in Stripe Dashboard → Developers → API Keys</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Secret Key</label>
+                    <input type="password" @bind="stripeSecretKey" placeholder="sk_test_... or sk_live_...">
+                    <small>Keep this secret! Never commit to source control.</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Webhook Secret</label>
+                    <input type="password" @bind="stripeWebhookSecret" placeholder="whsec_...">
+                    <small>Found when creating webhook endpoint in Stripe Dashboard</small>
+                </div>
+
+                <div class="form-group">
+                    <label>Minimum Payment ($USD)</label>
+                    <input type="number" @bind="stripeMinAmount" min="0.50" step="0.01">
+                    <small>Minimum amount to accept (default: $1.00)</small>
+                </div>
+
+                <div class="alert alert-success" style="margin-top: 15px; font-size: 13px;">
+                    <strong>✅ Advantage:</strong> No username entry needed! Users are logged in, so we automatically know who's paying.<br/>
+                    Webhook URL: <code>@(GetWebhookUrl())/api/payments/stripe/webhook</code>
+                </div>
+            </div>
+        }
+    </div>
+
+    <button @onclick="SavePaymentProviders" style="margin-top: 10px;">💾 Save Payment Settings</button>
+
+    <div style="margin-top: 20px; padding: 15px; background: rgba(100, 100, 255, 0.1); border-radius: 8px;">
+        <h4 style="margin: 0 0 10px 0;">📚 Quick Links</h4>
+        <ul style="margin: 0; padding-left: 20px; color: var(--text-dim); font-size: 13px;">
+            <li><a href="/PAYMENT_OPTIONS.md" target="_blank" style="color: var(--primary);">Compare All Payment Options</a> - Full comparison of 6 providers</li>
+            <li><a href="/KOFI_SETUP.md" target="_blank" style="color: var(--primary);">Ko-fi Setup Guide</a> - Step-by-step Ko-fi configuration</li>
+            <li><a href="/STRIPE_SETUP.md" target="_blank" style="color: var(--primary);">Stripe Setup Guide</a> - Individual/business setup with Australia info</li>
+        </ul>
+    </div>
+</div>
+
 <!-- YouTube Integration -->
 <div class="card">
     <h2>
@@ -402,6 +520,16 @@
     private bool youtubeAllowChat = false;
     private bool youtubeAllowViewerOAuth = true;
 
+    // Payment Providers
+    private bool kofiEnabled = false;
+    private string kofiVerificationToken = "";
+    private decimal kofiMinAmount = 1.00m;
+    private bool stripeEnabled = false;
+    private string stripePublishableKey = "";
+    private string stripeSecretKey = "";
+    private string stripeWebhookSecret = "";
+    private decimal stripeMinAmount = 1.00m;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadSetupStatus();
@@ -450,12 +578,32 @@
 
             youtubeConfigured = SettingsService.IsYouTubeConfigured;
             youtubeAllowViewerOAuth = settings.YouTube.AllowViewerOAuth;
+
+            // Payment Providers
+            kofiEnabled = settings.PaymentProviders.Kofi.Enabled;
+            kofiVerificationToken = settings.PaymentProviders.Kofi.VerificationToken;
+            kofiMinAmount = settings.PaymentProviders.Kofi.MinDonationAmount;
+            stripeEnabled = settings.PaymentProviders.Stripe.Enabled;
+            stripePublishableKey = settings.PaymentProviders.Stripe.PublishableKey;
+            stripeSecretKey = settings.PaymentProviders.Stripe.SecretKey;
+            stripeWebhookSecret = settings.PaymentProviders.Stripe.WebhookSecret;
+            stripeMinAmount = settings.PaymentProviders.Stripe.MinPaymentAmount;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Load setup status failed: {ex.Message}");
         }
         return Task.CompletedTask;
+    }
+
+    private string GetWebhookUrl()
+    {
+        var tunnelStatus = TunnelService.GetStatus();
+        if (tunnelStatus.IsRunning && !string.IsNullOrEmpty(tunnelStatus.Url))
+        {
+            return tunnelStatus.Url;
+        }
+        return "https://your-domain.com";
     }
 
     private void LoadModels()
@@ -629,6 +777,33 @@ new Model { Id = "x-ai/grok-4.1-fast:free", Name = "Grok 4.1 Fast (Free)", Provi
         catch
         {
             ShowAlert("Error saving YouTube credentials", "error");
+        }
+    }
+
+    private void SavePaymentProviders()
+    {
+        try
+        {
+            var settings = SettingsService.Settings.PaymentProviders;
+            
+            // Ko-fi settings
+            settings.Kofi.Enabled = kofiEnabled;
+            settings.Kofi.VerificationToken = kofiVerificationToken;
+            settings.Kofi.MinDonationAmount = kofiMinAmount;
+            
+            // Stripe settings
+            settings.Stripe.Enabled = stripeEnabled;
+            settings.Stripe.PublishableKey = stripePublishableKey;
+            settings.Stripe.SecretKey = stripeSecretKey;
+            settings.Stripe.WebhookSecret = stripeWebhookSecret;
+            settings.Stripe.MinPaymentAmount = stripeMinAmount;
+            
+            SettingsService.SaveSettings();
+            ShowAlert("Payment provider settings saved!", "success");
+        }
+        catch (Exception ex)
+        {
+            ShowAlert($"Error saving payment settings: {ex.Message}", "error");
         }
     }
 
