@@ -1,8 +1,10 @@
 @using AIChaos.Brain.Services
 @using AIChaos.Brain.Models
+@implements IDisposable
 @inject YouTubeService YouTubeService
 @inject SettingsService SettingsService
 @inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
 
 <!-- YouTube Video ID Setting -->
 <div class="card control-panel">
@@ -116,7 +118,38 @@
     
     private void LoginWithYouTube()
     {
-        Navigation.NavigateTo("/api/youtube/login");
+        try
+        {
+            // Build the redirect URI properly to support subdirectory deployments
+            var httpContext = HttpContextAccessor.HttpContext;
+            if (httpContext == null)
+            {
+                ShowMessage("Unable to access request context", "error");
+                return;
+            }
+            
+            var request = httpContext.Request;
+            var scheme = request.Scheme;
+            var host = request.Host.Value;
+            var pathBase = request.PathBase.Value;
+            
+            var redirectUri = $"{scheme}://{host}{pathBase}/api/setup/youtube/callback";
+            
+            var authUrl = YouTubeService.GetAuthorizationUrl(redirectUri);
+            
+            if (!string.IsNullOrEmpty(authUrl))
+            {
+                Navigation.NavigateTo(authUrl, true);
+            }
+            else
+            {
+                ShowMessage("Failed to get authorization URL. Check YouTube settings.", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"Error: {ex.Message}", "error");
+        }
     }
     
     private void ShowMessage(string message, string type)
