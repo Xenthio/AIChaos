@@ -5,6 +5,7 @@ namespace AIChaos.Brain.Services;
 /// <summary>
 /// Service for handling command redos with feedback.
 /// First redo per user is free, subsequent redos cost credits.
+/// Maintains conversational context across multiple fix attempts.
 /// </summary>
 public class RedoService
 {
@@ -13,6 +14,8 @@ public class RedoService
     private readonly AiCodeGeneratorService _codeGenerator;
     private readonly PromptModerationService _promptModerationService;
     private readonly CodeModerationService _codeModerationService;
+    private readonly OpenRouterService _openRouterService;
+    private readonly SettingsService _settingsService;
     private readonly ILogger<RedoService> _logger;
 
     public RedoService(
@@ -21,6 +24,8 @@ public class RedoService
         AiCodeGeneratorService codeGenerator,
         PromptModerationService promptModerationService,
         CodeModerationService codeModerationService,
+        OpenRouterService openRouterService,
+        SettingsService settingsService,
         ILogger<RedoService> logger)
     {
         _accountService = accountService;
@@ -28,6 +33,8 @@ public class RedoService
         _codeGenerator = codeGenerator;
         _promptModerationService = promptModerationService;
         _codeModerationService = codeModerationService;
+        _openRouterService = openRouterService;
+        _settingsService = settingsService;
         _logger = logger;
     }
 
@@ -141,22 +148,147 @@ public class RedoService
         // Increment redo count
         account.RedoCount++;
 
-        // Generate new code with feedback context
-        var feedbackPrompt = $"""
-            REDO REQUEST for previous command.
+        // Build conversation history for this fix
+        // Start with the system prompt that defines the AI's role
+        var systemPrompt = AiCodeGeneratorService.GroundRules;
+        
+        // Get or initialize conversation history from the original command
+        // This allows multiple fixes to build upon previous conversations
+        var conversationHistory = new List<ChatMessage>();
+        
+        // If this is a subsequent fix on an already-fixed command, inherit the conversation
+        if (originalCommand.FixConversationHistory.Any())
+        {
+            _logger.LogInformation(
+                "[FIX-CONVERSATION] Continuing conversation thread with {Count} previous messages for command #{CommandId}",
+                originalCommand.FixConversationHistory.Count, commandId);
+            conversationHistory.AddRange(originalCommand.FixConversationHistory);
+        }
+        else
+        {
+            // First fix - initialize conversation with the original request
+            _logger.LogInformation(
+                "[FIX-CONVERSATION] Starting new conversation thread for command #{CommandId}",
+                commandId);
+            conversationHistory.Add(new ChatMessage
+            {
+                Role = "system",
+                Content = systemPrompt
+            });
+            conversationHistory.Add(new ChatMessage
+            {
+                Role = "user",
+                Content = $"Original request: {originalCommand.UserPrompt}\n\nPlease generate Lua code for Garry's Mod that fulfills this request. Format your response as:\n```lua\n[execution code]\n---UNDO---\n[undo code]\n```"
+            });
             
-            Original request: {originalCommand.UserPrompt}
-            
-            User feedback about what went wrong:
-            {feedback}
-            
-            Please generate improved code that addresses the user's feedback.
-            """;
+            // Add the assistant's previous response (the code that didn't work)
+            if (!string.IsNullOrEmpty(originalCommand.ExecutionCode))
+            {
+                var previousCode = originalCommand.ExecutionCode;
+                if (!string.IsNullOrEmpty(originalCommand.UndoCode))
+                {
+                    previousCode += "\n---UNDO---\n" + originalCommand.UndoCode;
+                }
+                conversationHistory.Add(new ChatMessage
+                {
+                    Role = "assistant",
+                    Content = $"```lua\n{previousCode}\n```"
+                });
+            }
+        }
+        
+        // Add the new user feedback to continue the conversation
+        conversationHistory.Add(new ChatMessage
+        {
+            Role = "user",
+            Content = $"The previous code didn't work as expected. User feedback:\n\n{feedback}\n\nPlease generate improved code that addresses this feedback. Format your response as:\n```lua\n[execution code]\n---UNDO---\n[undo code]\n```"
+        });
 
         try
         {
-            var (executionCode, undoCode, codeNeedsModeration, moderationReason) = 
-                await _codeGenerator.GenerateCodeAsync(feedbackPrompt);
+            _logger.LogDebug("[FIX] Generating code with {MessageCount} conversation messages", conversationHistory.Count);
+            
+            // Use OpenRouterService directly to maintain conversation context
+            var response = await _openRouterService.ChatCompletionAsync(conversationHistory);
+            
+            if (string.IsNullOrEmpty(response))
+            {
+                _logger.LogError("[FIX] OpenRouter returned empty response for command #{CommandId}", commandId);
+                
+                // Refund credits if we already deducted them
+                if (!isSingleUserMode && !isFree)
+                {
+                    _accountService.AddCredits(accountId, cost);
+                }
+                
+                return new RedoResponse
+                {
+                    Status = "error",
+                    Message = "Failed to generate fix code. Credits have been refunded.",
+                    NewBalance = account.CreditBalance + (isFree ? 0 : cost),
+                    WasFree = isFree
+                };
+            }
+            
+            // Add assistant's response to conversation history for future fixes
+            conversationHistory.Add(new ChatMessage
+            {
+                Role = "assistant",
+                Content = response
+            });
+            
+            // Parse the code from the response
+            var code = OpenRouterService.CleanLuaCode(response);
+            string executionCode;
+            string undoCode;
+            
+            // Parse execution and undo code
+            if (code.Contains("---UNDO---"))
+            {
+                var parts = code.Split("---UNDO---");
+                executionCode = parts[0].Trim();
+                undoCode = parts.Length > 1 ? parts[1].Trim() : "print(\"No undo code provided\")";
+            }
+            else
+            {
+                executionCode = code;
+                undoCode = "print(\"No undo code provided\")";
+            }
+            
+            // Check for dangerous patterns first (always block these)
+            var dangerousReason = CodeModerationService.GetDangerousPatternReason(executionCode);
+            if (dangerousReason != null)
+            {
+                _logger.LogWarning("[FIX] AI generated code containing dangerous patterns: {Reason}. Blocking.", dangerousReason);
+                
+                // Refund credits
+                if (!isSingleUserMode && !isFree)
+                {
+                    _accountService.AddCredits(accountId, cost);
+                }
+                
+                return new RedoResponse
+                {
+                    Status = "error",
+                    Message = $"Generated code would break the game: {dangerousReason}. Credits have been refunded.",
+                    NewBalance = account.CreditBalance + (isFree ? 0 : cost),
+                    WasFree = isFree
+                };
+            }
+            
+            // Check for filtered patterns (send to moderation if BlockLinksInGeneratedCode is enabled)
+            bool codeNeedsModeration = false;
+            string? moderationReason = null;
+            var settings = _settingsService.Settings;
+            if (settings.General.BlockLinksInGeneratedCode)
+            {
+                moderationReason = CodeModerationService.GetFilteredPatternReason(executionCode);
+                if (moderationReason != null)
+                {
+                    _logger.LogInformation("[FIX] AI generated code with filtered content: {Reason}. Sending to moderation.", moderationReason);
+                    codeNeedsModeration = true;
+                }
+            }
 
             // If the generated code contains filtered patterns, send to code moderation queue
             if (codeNeedsModeration)
@@ -193,10 +325,11 @@ public class RedoService
                     accountId,
                     placeholderCommand.Id);
                 
-                // Mark as redo
+                // Mark as redo and store conversation history
                 placeholderCommand.IsRedo = true;
                 placeholderCommand.OriginalCommandId = commandId;
                 placeholderCommand.RedoFeedback = feedback;
+                placeholderCommand.FixConversationHistory = conversationHistory;
                 
                 var accountAfterModeration = _accountService.GetAccountById(accountId);
                 
@@ -228,10 +361,11 @@ public class RedoService
                 $"[REDO] Based on feedback: {feedback}"
             );
 
-            // Mark as redo
+            // Mark as redo and store conversation history
             newCommand.IsRedo = true;
             newCommand.OriginalCommandId = commandId;
             newCommand.RedoFeedback = feedback;
+            newCommand.FixConversationHistory = conversationHistory;
 
             var updatedAccount = _accountService.GetAccountById(accountId);
             

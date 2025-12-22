@@ -285,5 +285,40 @@ public class RedoServiceTests
         Assert.Single(urls);
         Assert.Contains("https://discord.gg/malicious", urls);
     }
+    
+    [Fact]
+    public void CommandEntry_FixConversationHistory_DefaultsToEmptyList()
+    {
+        // Arrange & Act
+        var command = new CommandEntry();
+        
+        // Assert
+        Assert.NotNull(command.FixConversationHistory);
+        Assert.Empty(command.FixConversationHistory);
+    }
+    
+    [Fact]
+    public void CommandEntry_CanStoreConversationHistory()
+    {
+        // Arrange
+        var command = _commandQueue.AddCommand("test prompt", "code", "undo");
+        var conversationHistory = new List<ChatMessage>
+        {
+            new() { Role = "system", Content = "You are an AI assistant" },
+            new() { Role = "user", Content = "Make everyone fly" },
+            new() { Role = "assistant", Content = "Here's the code..." },
+            new() { Role = "user", Content = "That didn't work, they're falling" }
+        };
+        
+        // Act
+        command.FixConversationHistory = conversationHistory;
+        
+        // Assert
+        Assert.Equal(4, command.FixConversationHistory.Count);
+        Assert.Equal("system", command.FixConversationHistory[0].Role);
+        Assert.Equal("You are an AI assistant", command.FixConversationHistory[0].Content);
+        Assert.Equal("user", command.FixConversationHistory[3].Role);
+        Assert.Equal("That didn't work, they're falling", command.FixConversationHistory[3].Content);
+    }
 }
 
