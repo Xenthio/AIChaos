@@ -207,6 +207,15 @@ else
     @{
         var isFree = currentAccount != null && RedoService.IsNextRedoFree(currentAccount.Id);
         var cost = currentAccount != null ? RedoService.GetRedoCost(currentAccount.Id) : Constants.Redo.RedoCost;
+        var selectedCommand = recentCommands?.FirstOrDefault(c => c.Id == selectedCommandIdForRedo);
+        var hasConversation = selectedCommand?.FixConversationHistory.Any() ?? false;
+        var conversationCount = selectedCommand?.FixConversationHistory.Count(m => m.Role == "user" && m.Content.Contains("feedback")) ?? 0;
+    }
+    @if (hasConversation)
+    {
+        <div style="background: rgba(0,150,255,0.15); border: 1px solid rgba(0,150,255,0.3); border-radius: 5px; padding: 10px; margin: 10px 0;">
+            <span style="font-size: 14px;">💬 This is a continuing conversation (@conversationCount previous fix attempt@(conversationCount == 1 ? "" : "s"))</span>
+        </div>
     }
     <p style="margin-top: 10px;">Explain briefly what stopped your request from working and we will try to fix it:</p>
     <div style="margin: 15px 0;">
