@@ -50,6 +50,12 @@ public class CommandEntry
     /// User-provided feedback explaining why the command failed (for redo).
     /// </summary>
     public string? RedoFeedback { get; set; }
+    
+    /// <summary>
+    /// Conversation history for fix/redo operations. Maintains context across multiple fixes.
+    /// Used to build upon previous feedback and create a conversational experience.
+    /// </summary>
+    public List<ChatMessage> FixConversationHistory { get; set; } = new();
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
