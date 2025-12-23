@@ -14,7 +14,7 @@ public class ChaosController : ControllerBase
     private readonly CommandQueueService _commandQueue;
     private readonly QueueSlotService _queueSlots;
     private readonly AiCodeGeneratorService _codeGenerator;
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly PromptModerationService _moderationService;
     private readonly TestClientService _testClientService;
     private readonly AgenticGameService _agenticService;
@@ -25,7 +25,7 @@ public class ChaosController : ControllerBase
         CommandQueueService commandQueue,
         QueueSlotService queueSlots,
         AiCodeGeneratorService codeGenerator,
-        SettingsService settingsService,
+        ISettingsService settingsService,
         PromptModerationService moderationService,
         TestClientService testClientService,
         AgenticGameService agenticService,

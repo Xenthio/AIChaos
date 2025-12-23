@@ -1,8 +1,10 @@
 using AIChaos.Brain.Models;
 using AIChaos.Brain.Services;
 using AIChaos.Brain.Components;
+using AIChaos.Brain.Data;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,9 +40,19 @@ builder.Services.AddRazorComponents()
 // Configure settings
 builder.Services.Configure<AppSettings>(builder.Configuration.GetSection("AIChaos"));
 
+// Configure Entity Framework Core with SQLite
+var dbPath = Path.Combine(AppContext.BaseDirectory, "aichaos.db");
+// Register DbContextFactory for singleton services (SettingsService, AccountService)
+builder.Services.AddDbContextFactory<AIChaosDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
+// Register DbContext for scoped services (DataMigrationService, controllers)
+builder.Services.AddDbContext<AIChaosDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
+
 // Register services as singletons
 builder.Services.AddSingleton<LogCaptureService>();
-builder.Services.AddSingleton<SettingsService>();
+builder.Services.AddSingleton<ISettingsService, SettingsService>();
+builder.Services.AddSingleton<SettingsService>(sp => (SettingsService)sp.GetRequiredService<ISettingsService>());
 builder.Services.AddSingleton<CommandQueueService>();
 builder.Services.AddSingleton<QueueSlotService>();
 builder.Services.AddSingleton<AiCodeGeneratorService>();
@@ -56,8 +68,12 @@ builder.Services.AddSingleton<TestClientService>();
 builder.Services.AddSingleton<AgenticGameService>();
 builder.Services.AddSingleton<CommandConsumptionService>();
 builder.Services.AddSingleton<RedoService>();
-builder.Services.AddSingleton<OpenRouterService>();
+builder.Services.AddSingleton<ILLMService, OpenRouterService>();
+builder.Services.AddSingleton<OpenRouterService>(sp => (OpenRouterService)sp.GetRequiredService<ILLMService>());
 builder.Services.AddSingleton<FavouritesService>();
+
+// Register DataMigrationService as scoped (needs DbContext)
+builder.Services.AddScoped<DataMigrationService>();
 
 // Configure log capture for admin viewing - use a factory to avoid BuildServiceProvider warning
 builder.Services.AddSingleton<ILoggerProvider>(sp => 
@@ -75,6 +91,17 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Initialize database (apply migrations and migrate from JSON if needed)
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AIChaosDbContext>();
+    dbContext.Database.Migrate();
+    
+    // Migrate data from JSON files if this is a first-time setup
+    var migrationService = scope.ServiceProvider.GetRequiredService<DataMigrationService>();
+    await migrationService.MigrateFromJsonIfNeededAsync();
+}
 
 // Handle X-Forwarded-Prefix from nginx for subdirectory deployment
 // This MUST be before UseForwardedHeaders and other middleware

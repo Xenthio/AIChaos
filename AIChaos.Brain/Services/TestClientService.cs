@@ -10,7 +10,7 @@ namespace AIChaos.Brain.Services;
 /// </summary>
 public class TestClientService
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<TestClientService> _logger;
     
@@ -53,7 +53,7 @@ public class TestClientService
         The code should be ready to execute directly.
         """;
     
-    public TestClientService(SettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<TestClientService> logger)
+    public TestClientService(ISettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<TestClientService> logger)
     {
         _settingsService = settingsService;
         _httpClientFactory = httpClientFactory;

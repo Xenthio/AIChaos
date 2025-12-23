@@ -12,7 +12,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Check out this image: https://example.com/image.png";
@@ -30,7 +30,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Images: https://example.com/1.png and https://example.com/2.jpg";
@@ -49,7 +49,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "No URLs here";
@@ -66,7 +66,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "Check https://example.com/image.png";
@@ -83,7 +83,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var prompt = "No URLs here";
@@ -100,7 +100,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var url = "https://example.com/image.png";
@@ -131,7 +131,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var entry1 = service.AddPendingPrompt("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);
@@ -153,7 +153,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var entry = service.AddPendingPrompt("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
@@ -172,7 +172,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         var entry = service.AddPendingPrompt("https://example.com/image.png", "prompt", "web", "user", "uid", 1);
@@ -191,7 +191,7 @@ public class PromptModerationServiceTests
     {
         // Arrange
         var mockLogger = new Mock<ILogger<PromptModerationService>>();
-        var mockSettings = new Mock<SettingsService>(new Mock<ILogger<SettingsService>>().Object);
+        var mockSettings = new Mock<ISettingsService>();
         var service = new PromptModerationService(mockSettings.Object, mockLogger.Object);
         
         service.AddPendingPrompt("https://example.com/1.png", "prompt1", "web", "user1", "uid1", 1);

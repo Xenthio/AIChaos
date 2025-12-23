@@ -5,6 +5,7 @@ namespace AIChaos.Brain.Models;
 /// </summary>
 public class AppSettings
 {
+    public int Id { get; set; } = 1; // Singleton settings row
     public OpenRouterSettings OpenRouter { get; set; } = new();
     public TwitchSettings Twitch { get; set; } = new();
     public YouTubeSettings YouTube { get; set; } = new();

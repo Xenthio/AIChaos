@@ -11,12 +11,12 @@ namespace AIChaos.Brain.Controllers;
 [Route("api/setup")]
 public class StreamPanelController : ControllerBase
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<StreamPanelController> _logger;
 
     public StreamPanelController(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         IHttpClientFactory httpClientFactory,
         ILogger<StreamPanelController> logger)
     {

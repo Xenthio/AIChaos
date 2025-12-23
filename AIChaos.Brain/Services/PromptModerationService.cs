@@ -10,7 +10,7 @@ namespace AIChaos.Brain.Services;
 public class PromptModerationService
 {
     private readonly List<PendingPromptEntry> _pendingPrompts = new();
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly ILogger<PromptModerationService> _logger;
     private readonly object _lock = new();
     private int _nextId = 1;
@@ -27,7 +27,7 @@ public class PromptModerationService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
     
     public PromptModerationService(
-        SettingsService settingsService,
+        ISettingsService settingsService,
         ILogger<PromptModerationService> logger)
     {
         _settingsService = settingsService;

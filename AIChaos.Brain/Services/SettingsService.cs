@@ -1,23 +1,31 @@
 using System.Text.Json;
 using AIChaos.Brain.Models;
+using AIChaos.Brain.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace AIChaos.Brain.Services;
 
 /// <summary>
-/// Service for managing application settings persistence.
+/// Service for managing application settings persistence using Entity Framework Core.
+/// Uses IDbContextFactory for thread-safe database access from singleton service.
 /// </summary>
-public class SettingsService
+public class SettingsService : ISettingsService
 {
-    private readonly string _settingsPath;
+    private readonly IDbContextFactory<AIChaosDbContext> _dbContextFactory;
     private readonly ILogger<SettingsService> _logger;
     private AppSettings _settings;
     private readonly object _lock = new();
     
-    public SettingsService(ILogger<SettingsService> logger)
+    // Settings is a singleton row in the database
+    private const int SINGLETON_SETTINGS_ID = 1;
+    
+    public SettingsService(
+        IDbContextFactory<AIChaosDbContext> dbContextFactory,
+        ILogger<SettingsService> logger)
     {
+        _dbContextFactory = dbContextFactory;
         _logger = logger;
-        _settingsPath = Path.Combine(AppContext.BaseDirectory, "settings.json");
         _settings = LoadSettings();
     }
     
@@ -33,37 +41,36 @@ public class SettingsService
     }
     
     /// <summary>
-    /// Loads settings from disk or returns defaults.
+    /// Loads settings from database or returns defaults.
     /// </summary>
     private AppSettings LoadSettings()
     {
         try
         {
-            if (File.Exists(_settingsPath))
+            using var context = _dbContextFactory.CreateDbContext();
+            var settings = context.Settings.FirstOrDefault();
+            
+            if (settings != null)
             {
-                var json = File.ReadAllText(_settingsPath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-                
-                if (settings != null)
-                {
-                    _logger.LogInformation("Settings loaded from {Path}", _settingsPath);
-                    return settings;
-                }
+                _logger.LogInformation("Settings loaded from database");
+                return settings;
             }
+            
+            _logger.LogInformation("No settings found in database, creating defaults");
+            var newSettings = new AppSettings { Id = SINGLETON_SETTINGS_ID };
+            context.Settings.Add(newSettings);
+            context.SaveChanges();
+            return newSettings;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load settings, using defaults");
+            _logger.LogError(ex, "Failed to load settings from database, using defaults");
+            return new AppSettings { Id = SINGLETON_SETTINGS_ID };
         }
-        
-        return new AppSettings();
     }
     
     /// <summary>
-    /// Saves current settings to disk.
+    /// Saves current settings to database using Update for proper upsert.
     /// </summary>
     public void SaveSettings()
     {
@@ -71,16 +78,15 @@ public class SettingsService
         {
             try
             {
-                var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-                File.WriteAllText(_settingsPath, json);
-                _logger.LogInformation("Settings saved to {Path}", _settingsPath);
+                using var context = _dbContextFactory.CreateDbContext();
+                // Use Update which handles both insert and update scenarios
+                context.Settings.Update(_settings);
+                context.SaveChanges();
+                _logger.LogInformation("Settings saved to database");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to save settings");
+                _logger.LogError(ex, "Failed to save settings to database");
             }
         }
     }
