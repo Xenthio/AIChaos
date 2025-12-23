@@ -6,11 +6,13 @@
 @inject QueueSlotService QueueSlots
 @inject AiCodeGeneratorService CodeGenerator
 @inject AccountService AccountService
+@inject PersistentCodeService PersistentCodeService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject HttpClient Http
 @using AIChaos.Brain.Components.Layout
 @using AIChaos.Brain.Components.Shared
+@using AIChaos.Brain.Components.Shared.Panels
 @using AIChaos.Brain.Helpers
 @using AIChaos.Brain.Models
 
@@ -88,6 +90,9 @@ else
         {
             <button class="admin-tab @(activeSubPage == "favourites" ? "active" : "")" @onclick='() => NavigateToSubPage("favourites")'>
                 ⭐ Favourites
+            </button>
+            <button class="admin-tab @(activeSubPage == "persistent" ? "active" : "")" @onclick='() => NavigateToSubPage("persistent")'>
+                🔮 Persistent Code
             </button>
             <button class="admin-tab @(activeSubPage == "users" ? "active" : "")" @onclick='() => NavigateToSubPage("users")'>
                 👥 Users
@@ -208,6 +213,10 @@ else
     else if (activeSubPage == "favourites")
     {
         <FavouritesManagementContent />
+    }
+    else if (activeSubPage == "persistent")
+    {
+        <PersistentCodePanel />
     }
     else if (activeSubPage == "users")
     {

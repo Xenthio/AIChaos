@@ -1,0 +1,306 @@
+@inject PersistentCodeService PersistentCodeService
+@inject ILogger<PersistentCodePanel> Logger
+@implements IDisposable
+
+<div class="card">
+    <h2>🔮 Persistent Code</h2>
+    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 15px;">
+        Semi-permanent code (entities, weapons, etc.) that persists across map changes.
+    </p>
+    
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert alert-@_messageType" style="margin-bottom: 15px;">
+            @_message
+        </div>
+    }
+    
+    <div style="margin-bottom: 20px;">
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+            <span style="font-weight: 600;">Total Entries:</span>
+            <span>@_entries.Count (@_entries.Count(e => e.IsActive) active)</span>
+            <button @onclick="RefreshList" style="margin-left: auto; padding: 5px 15px;">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+    
+    @if (_entries.Count == 0)
+    {
+        <div style="text-align: center; padding: 40px; color: var(--text-dim);">
+            <div style="font-size: 48px; margin-bottom: 10px;">📭</div>
+            <p>No persistent code yet</p>
+            <p style="font-size: 12px;">The AI can create persistent entities and weapons using CreatePersistent()</p>
+        </div>
+    }
+    else
+    {
+        <div class="persistent-code-list">
+            @foreach (var entry in _entries.OrderByDescending(e => e.CreatedAt))
+            {
+                <div class="persistent-code-entry @(entry.IsActive ? "active" : "inactive")">
+                    <div class="entry-header">
+                        <div class="entry-info">
+                            <span class="entry-name">@entry.Name</span>
+                            <span class="entry-type">@entry.Type</span>
+                            <span class="entry-status">@(entry.IsActive ? "✓ Active" : "✗ Inactive")</span>
+                        </div>
+                        <div class="entry-actions">
+                            @if (entry.IsActive)
+                            {
+                                <button @onclick="() => DeactivateEntry(entry.Id)" class="btn-sm btn-warning">
+                                    Deactivate
+                                </button>
+                            }
+                            else
+                            {
+                                <button @onclick="() => ReactivateEntry(entry.Id)" class="btn-sm">
+                                    Reactivate
+                                </button>
+                            }
+                            <button @onclick="() => DeleteEntry(entry.Id)" class="btn-sm btn-danger">
+                                Delete
+                            </button>
+                            <button @onclick="() => ToggleCode(entry.Id)" class="btn-sm">
+                                @(_expandedEntries.Contains(entry.Id) ? "▲ Hide Code" : "▼ Show Code")
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="entry-details">
+                        <div><strong>Description:</strong> @(string.IsNullOrEmpty(entry.Description) ? "(no description)" : entry.Description)</div>
+                        <div><strong>Author:</strong> @entry.AuthorName</div>
+                        <div><strong>Created:</strong> @entry.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</div>
+                        @if (entry.OriginCommandId.HasValue)
+                        {
+                            <div><strong>Origin:</strong> Command #@entry.OriginCommandId</div>
+                        }
+                    </div>
+                    
+                    @if (_expandedEntries.Contains(entry.Id))
+                    {
+                        <div class="entry-code">
+                            <pre>@entry.Code</pre>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .persistent-code-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .persistent-code-entry {
+        background: var(--bg-elevated);
+        border: 2px solid var(--border);
+        border-radius: 8px;
+        padding: 15px;
+        transition: all 0.2s ease;
+    }
+    
+    .persistent-code-entry.inactive {
+        opacity: 0.6;
+        border-style: dashed;
+    }
+    
+    .entry-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .entry-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .entry-name {
+        font-weight: 600;
+        font-size: 16px;
+        color: var(--text-primary);
+    }
+    
+    .entry-type {
+        background: var(--accent);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        text-transform: uppercase;
+    }
+    
+    .entry-status {
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+    
+    .entry-actions {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+    
+    .entry-details {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 13px;
+        color: var(--text-dim);
+        margin-bottom: 10px;
+    }
+    
+    .entry-code {
+        margin-top: 10px;
+        background: var(--bg-dark);
+        border-radius: 4px;
+        padding: 10px;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    
+    .entry-code pre {
+        margin: 0;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    
+    .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+        min-width: auto;
+    }
+    
+    .btn-warning {
+        background: var(--warning);
+    }
+    
+    .btn-danger {
+        background: var(--error);
+    }
+</style>
+
+@code {
+    private List<PersistentCodeEntry> _entries = new();
+    private HashSet<int> _expandedEntries = new();
+    private string _message = "";
+    private string _messageType = "info";
+    private System.Threading.Timer? _refreshTimer;
+    
+    protected override void OnInitialized()
+    {
+        RefreshList();
+        
+        // Auto-refresh every 5 seconds
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            RefreshList();
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        
+        // Subscribe to changes
+        PersistentCodeService.PersistentCodeChanged += OnPersistentCodeChanged;
+    }
+    
+    private void OnPersistentCodeChanged(object? sender, EventArgs e)
+    {
+        RefreshList();
+        InvokeAsync(StateHasChanged);
+    }
+    
+    private void RefreshList()
+    {
+        _entries = PersistentCodeService.GetAll();
+    }
+    
+    private void ToggleCode(int id)
+    {
+        if (_expandedEntries.Contains(id))
+        {
+            _expandedEntries.Remove(id);
+        }
+        else
+        {
+            _expandedEntries.Add(id);
+        }
+    }
+    
+    private async Task DeactivateEntry(int id)
+    {
+        if (PersistentCodeService.Deactivate(id))
+        {
+            await ShowMessage("Persistent code deactivated. It will not load on next map change.", "success");
+            RefreshList();
+        }
+        else
+        {
+            await ShowMessage("Failed to deactivate entry.", "error");
+        }
+    }
+    
+    private async Task ReactivateEntry(int id)
+    {
+        if (PersistentCodeService.Reactivate(id))
+        {
+            await ShowMessage("Persistent code reactivated. It will load on next map change.", "success");
+            RefreshList();
+        }
+        else
+        {
+            await ShowMessage("Failed to reactivate entry.", "error");
+        }
+    }
+    
+    private async Task DeleteEntry(int id)
+    {
+        var entry = PersistentCodeService.GetById(id);
+        if (entry == null)
+        {
+            await ShowMessage("Entry not found.", "error");
+            return;
+        }
+        
+        // Simple confirmation (in a real app, use a modal)
+        if (PersistentCodeService.Delete(id))
+        {
+            await ShowMessage($"Deleted persistent code '{entry.Name}'.", "success");
+            RefreshList();
+        }
+        else
+        {
+            await ShowMessage("Failed to delete entry.", "error");
+        }
+    }
+    
+    private async Task ShowMessage(string message, string type)
+    {
+        _message = message;
+        _messageType = type;
+        await InvokeAsync(StateHasChanged);
+        
+        // Clear message after 5 seconds
+        _ = Task.Delay(5000).ContinueWith(_ =>
+        {
+            _message = "";
+            InvokeAsync(StateHasChanged);
+        });
+    }
+    
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+        PersistentCodeService.PersistentCodeChanged -= OnPersistentCodeChanged;
+    }
+}
