@@ -526,4 +526,18 @@ public class PendingRerunCommand
     public int DelaySeconds { get; set; }
 }
 
+/// <summary>
+/// Response containing persistent code script for GMod.
+/// </summary>
+public class PersistentCodeScriptResponse
+{
+    [JsonPropertyName("has_code")]
+    public bool HasCode { get; set; }
+    
+    [JsonPropertyName("code")]
+    public string? Code { get; set; }
+    
+    [JsonPropertyName("active_count")]
+    public int ActiveCount { get; set; }
+}
 

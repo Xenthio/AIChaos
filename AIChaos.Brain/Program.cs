@@ -58,6 +58,7 @@ builder.Services.AddSingleton<CommandConsumptionService>();
 builder.Services.AddSingleton<RedoService>();
 builder.Services.AddSingleton<OpenRouterService>();
 builder.Services.AddSingleton<FavouritesService>();
+builder.Services.AddSingleton<PersistentCodeService>();
 
 // Configure log capture for admin viewing - use a factory to avoid BuildServiceProvider warning
 builder.Services.AddSingleton<ILoggerProvider>(sp => 

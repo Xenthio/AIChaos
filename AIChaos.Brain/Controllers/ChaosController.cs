@@ -19,6 +19,7 @@ public class ChaosController : ControllerBase
     private readonly TestClientService _testClientService;
     private readonly AgenticGameService _agenticService;
     private readonly CommandConsumptionService _consumptionService;
+    private readonly PersistentCodeService _persistentCode;
     private readonly ILogger<ChaosController> _logger;
 
     public ChaosController(
@@ -30,6 +31,7 @@ public class ChaosController : ControllerBase
         TestClientService testClientService,
         AgenticGameService agenticService,
         CommandConsumptionService consumptionService,
+        PersistentCodeService persistentCode,
         ILogger<ChaosController> logger)
     {
         _commandQueue = commandQueue;
@@ -40,6 +42,7 @@ public class ChaosController : ControllerBase
         _testClientService = testClientService;
         _agenticService = agenticService;
         _consumptionService = consumptionService;
+        _persistentCode = persistentCode;
         _logger = logger;
     }
 
@@ -285,5 +288,85 @@ public class ChaosController : ControllerBase
             Status = "success",
             PendingReruns = reruns
         });
+    }
+    
+    /// <summary>
+    /// Gets all active persistent code as a combined Lua script.
+    /// Called by GMod on startup and map load to restore semi-permanent entities/weapons.
+    /// </summary>
+    [HttpGet("persistent-code")]
+    [HttpPost("persistent-code")]
+    public ActionResult<PersistentCodeScriptResponse> GetPersistentCode()
+    {
+        Response.Headers.Append("ngrok-skip-browser-warning", "true");
+        
+        var script = _persistentCode.GetCombinedLuaScript();
+        var activeCount = _persistentCode.GetActive().Count;
+        
+        _logger.LogInformation("[PERSISTENT CODE] Sending {Count} active persistent code entries to GMod", activeCount);
+        
+        return Ok(new PersistentCodeScriptResponse
+        {
+            HasCode = !string.IsNullOrEmpty(script),
+            Code = script,
+            ActiveCount = activeCount
+        });
+    }
+    
+    /// <summary>
+    /// Creates a new persistent code entry from GMod.
+    /// </summary>
+    [HttpPost("persistent-code/create")]
+    public ActionResult<ApiResponse> CreatePersistentCode([FromBody] CreatePersistentCodeRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Status = "error",
+                    Message = "Name is required"
+                });
+            }
+            
+            if (string.IsNullOrWhiteSpace(request.Code))
+            {
+                return BadRequest(new ApiResponse
+                {
+                    Status = "error",
+                    Message = "Code is required"
+                });
+            }
+            
+            var entry = _persistentCode.AddPersistentCode(
+                request.Name,
+                request.Description,
+                request.Type,
+                request.Code,
+                request.UserId ?? "gmod",
+                request.AuthorName ?? "AI Chaos",
+                request.OriginCommandId
+            );
+            
+            _logger.LogInformation("[PERSISTENT CODE] Created: {Name} (Type: {Type}, ID: {Id})", 
+                entry.Name, entry.Type, entry.Id);
+            
+            return Ok(new ApiResponse
+            {
+                Status = "success",
+                Message = $"Persistent code '{entry.Name}' created successfully",
+                CommandId = entry.Id
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PERSISTENT CODE] Failed to create persistent code");
+            return StatusCode(500, new ApiResponse
+            {
+                Status = "error",
+                Message = "Internal server error"
+            });
+        }
     }
 }

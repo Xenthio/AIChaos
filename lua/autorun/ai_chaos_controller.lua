@@ -65,6 +65,65 @@ if SERVER then
         net.Broadcast()
     end
     
+    -- Helper Function: Create persistent code (entities, weapons, etc.)
+    -- This allows the AI to create semi-permanent code that survives map changes
+    function CreatePersistent(name, description, codeType, code)
+        -- Validate inputs
+        if not name or name == "" then
+            error("CreatePersistent: name is required")
+            return false
+        end
+        
+        if not code or code == "" then
+            error("CreatePersistent: code is required")
+            return false
+        end
+        
+        -- Default values
+        description = description or ""
+        codeType = codeType or "generic"
+        
+        -- Validate type
+        local validTypes = {entity = true, weapon = true, generic = true, gamemode = true}
+        if not validTypes[codeType] then
+            error("CreatePersistent: invalid type '" .. tostring(codeType) .. "'. Must be: entity, weapon, generic, or gamemode")
+            return false
+        end
+        
+        print("[AI Chaos] Creating persistent code: " .. name .. " (type: " .. codeType .. ")")
+        
+        -- Send to server
+        local createUrl = BASE_URL .. "/persistent-code/create"
+        local body = {
+            name = name,
+            description = description,
+            type = codeType,
+            code = code
+        }
+        
+        HTTP({
+            method = "POST",
+            url = createUrl,
+            body = util.TableToJSON(body),
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(statusCode, responseBody, headers)
+                if statusCode == 200 then
+                    print("[AI Chaos] ✓ Persistent code created: " .. name)
+                else
+                    print("[AI Chaos] ✗ Failed to create persistent code (status: " .. tostring(statusCode) .. ")")
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] ✗ Failed to create persistent code: " .. tostring(err))
+            end
+        })
+        
+        return true
+    end
+    
     -- Helper Function: Report execution result back to server (with optional captured data)
     -- Note: commandId can be negative for interactive sessions, nil/0 is not valid
     local function ReportResult(commandId, success, errorMsg, resultData)
@@ -170,6 +229,50 @@ if SERVER then
             end
         })
     end
+    
+    -- Helper Function: Load and execute persistent code (entities, weapons, etc.)
+    local function LoadPersistentCode()
+        local persistentUrl = BASE_URL .. "/persistent-code"
+        
+        HTTP({
+            method = "GET",
+            url = persistentUrl,
+            headers = { 
+                ["Content-Type"] = "application/json",
+                ["ngrok-skip-browser-warning"] = "true"
+            },
+            success = function(code, responseBody, headers)
+                if code == 200 then
+                    local data = util.JSONToTable(responseBody)
+                    local hasCode = data and (data.has_code or data.hasCode or false)
+                    local persistentCode = data and (data.code or data.Code)
+                    local activeCount = data and (data.active_count or data.activeCount or 0)
+                    
+                    if hasCode and persistentCode and persistentCode ~= "" then
+                        print("[AI Chaos] Loading " .. activeCount .. " persistent code entrie(s)")
+                        
+                        -- Execute persistent code in protected call
+                        local success, err = pcall(function()
+                            RunString(persistentCode, "AI_Chaos_Persistent")
+                        end)
+                        
+                        if success then
+                            print("[AI Chaos] ✓ Persistent code loaded successfully")
+                        else
+                            print("[AI Chaos] ✗ Error loading persistent code: " .. tostring(err))
+                        end
+                    else
+                        print("[AI Chaos] No persistent code to load")
+                    end
+                else
+                    print("[AI Chaos] Persistent code request returned status: " .. tostring(code))
+                end
+            end,
+            failed = function(err)
+                print("[AI Chaos] Failed to load persistent code: " .. tostring(err))
+            end
+        })
+    end
 
     -- 2. Helper Function: Run the code safely using CompileString + pcall for proper error messages
     -- This approach captures both syntax errors (from CompileString) and runtime errors (from pcall)
@@ -236,6 +339,12 @@ if SERVER then
         print("[AI Chaos] Checking for pending re-runs after load...")
         CheckPendingReruns()
     --end)
+    
+    -- Load persistent code after checking for reruns
+    timer.Simple(0.5, function()
+        print("[AI Chaos] Loading persistent code...")
+        LoadPersistentCode()
+    end)
     
     -- Track map for detecting changes in poll loop (backup detection)
     local lastKnownMap = game.GetMap()

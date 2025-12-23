@@ -139,6 +139,8 @@ public class AiCodeGeneratorService
            - Find NPCs: `for _, npc in pairs(ents.FindByClass("npc_*")) do print(npc:GetClass()) end`
            - List sounds: Use `file.Find("sound/*", "GAME")` to discover available sounds
            
+        14. **Semi-Permanent Code:** You can create custom entities/weapons that persist across map changes using `CreatePersistent(name, desc, type, code)`. Types: "entity", "weapon", "generic". Only definitions persist, not instances - spawn them after creating.
+           
         """;
     
     // Note: GetSystemPromptBase is static and cannot pass logger to GetHudExamples.
