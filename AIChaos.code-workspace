@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../hl2_loading_screen"
+		},
+		{
+			"path": "../hl2_lua_hud_port"
+		},
+		{
+			"path": "../../../../GMod_HL2ified"
+		},
+		{
+			"path": "../../../../GMod_Runtime_Build"
+		}
+	],
+	"settings": {
+		"powershell.cwd": "GMod_HL2ified"
+	}
+}
