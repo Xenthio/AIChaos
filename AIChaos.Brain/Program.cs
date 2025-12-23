@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
+builder.Services.AddHttpContextAccessor();
 
 // Configure forwarded headers for reverse proxy support
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

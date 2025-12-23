@@ -43,8 +43,10 @@
                         🔗 <a href="@prompt.ContentUrl" target="_blank" rel="noopener noreferrer" style="color: var(--info); text-decoration: underline;">@prompt.ContentUrl</a>
                     </div>
                     <div class="prompt-actions">
-                        <button @onclick="() => ApprovePrompt(prompt.Id)" class="btn-success btn-small" disabled="@isProcessing">✅</button>
-                        <button @onclick="() => DenyPrompt(prompt.Id)" class="btn-danger btn-small" disabled="@isProcessing">❌</button>
+                        <button @onclick="() => ApprovePrompt(prompt.Id)" class="btn-success btn-small" disabled="@processingPromptIds.Contains(prompt.Id)">
+                            @(processingPromptIds.Contains(prompt.Id) ? "⏳" : "✅")
+                        </button>
+                        <button @onclick="() => DenyPrompt(prompt.Id)" class="btn-danger btn-small" disabled="@processingPromptIds.Contains(prompt.Id)">❌</button>
                     </div>
                 </div>
             }
@@ -58,7 +60,7 @@
     
     private List<PendingPromptEntry>? pendingPrompts;
     private bool autoRefresh = false;
-    private bool isProcessing = false;
+    private HashSet<int> processingPromptIds = new();
     private string statusMessage = "";
     private string statusType = "info";
     private System.Threading.Timer? refreshTimer;
@@ -151,7 +153,7 @@
     {
         try
         {
-            isProcessing = true;
+            processingPromptIds.Add(promptId);
             StateHasChanged();
             
             var (success, message) = await ModerationService.ApproveAndProcessPromptAsync(promptId);
@@ -175,7 +177,7 @@
         }
         finally
         {
-            isProcessing = false;
+            processingPromptIds.Remove(promptId);
             StateHasChanged();
         }
     }
