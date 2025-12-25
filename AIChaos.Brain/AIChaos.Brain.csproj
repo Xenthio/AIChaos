@@ -12,6 +12,7 @@
     <PackageReference Include="TwitchLib" Version="3.5.3" />
     <PackageReference Include="TwitchLib.Api" Version="3.10.1" />
     <PackageReference Include="Google.Apis.YouTube.v3" Version="1.69.0.3742" />
+    <PackageReference Include="Stripe.net" Version="46.4.0" />
   </ItemGroup>
 
   <!-- Copy BuiltInFavourites folder to build output (use Update instead of Include to avoid duplicates) -->

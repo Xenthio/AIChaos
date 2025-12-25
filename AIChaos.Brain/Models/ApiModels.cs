@@ -526,4 +526,88 @@ public class PendingRerunCommand
     public int DelaySeconds { get; set; }
 }
 
+// ========================================
+// Payment Provider Models
+// ========================================
+
+/// <summary>
+/// Ko-fi webhook payload received when someone makes a donation.
+/// </summary>
+public class KofiWebhookPayload
+{
+    [JsonPropertyName("verification_token")]
+    public string? VerificationToken { get; set; }
+    
+    [JsonPropertyName("message_id")]
+    public string? MessageId { get; set; }
+    
+    [JsonPropertyName("timestamp")]
+    public string? Timestamp { get; set; }
+    
+    [JsonPropertyName("type")]
+    public string? Type { get; set; } // "Donation", "Subscription", "Shop Order"
+    
+    [JsonPropertyName("is_public")]
+    public bool IsPublic { get; set; }
+    
+    [JsonPropertyName("from_name")]
+    public string? FromName { get; set; }
+    
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+    
+    [JsonPropertyName("amount")]
+    public string? Amount { get; set; } // String format like "5.00"
+    
+    [JsonPropertyName("url")]
+    public string? Url { get; set; }
+    
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+    
+    [JsonPropertyName("currency")]
+    public string? Currency { get; set; }
+    
+    [JsonPropertyName("is_subscription_payment")]
+    public bool IsSubscriptionPayment { get; set; }
+    
+    [JsonPropertyName("is_first_subscription_payment")]
+    public bool IsFirstSubscriptionPayment { get; set; }
+    
+    [JsonPropertyName("kofi_transaction_id")]
+    public string? KofiTransactionId { get; set; }
+    
+    [JsonPropertyName("shop_items")]
+    public List<KofiShopItem>? ShopItems { get; set; }
+    
+    [JsonPropertyName("tier_name")]
+    public string? TierName { get; set; }
+}
+
+/// <summary>
+/// Ko-fi shop item in webhook payload.
+/// </summary>
+public class KofiShopItem
+{
+    [JsonPropertyName("direct_link_code")]
+    public string? DirectLinkCode { get; set; }
+    
+    [JsonPropertyName("variation_name")]
+    public string? VariationName { get; set; }
+    
+    [JsonPropertyName("quantity")]
+    public int Quantity { get; set; }
+}
+
+/// <summary>
+/// Response to payment webhook.
+/// </summary>
+public class PaymentWebhookResponse
+{
+    public string Status { get; set; } = "success";
+    public string? Message { get; set; }
+    public decimal? CreditsAdded { get; set; }
+    public string? Username { get; set; }
+}
+
 
